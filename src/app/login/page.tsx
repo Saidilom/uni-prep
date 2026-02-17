@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { signInWithGoogle } from "@/lib/auth-utils";
 import { useAuthStore } from "@/store/useAuthStore";
-import { Chrome } from "lucide-react";
+import Image from "next/image";
 
 export default function LoginPage() {
     const [error, setError] = useState<string | null>(null);
@@ -13,58 +13,76 @@ export default function LoginPage() {
         try {
             setError(null);
             await signInWithGoogle();
-            // Перенаправление произойдет автоматически через AuthProvider
         } catch (err: any) {
             setError(err.message || "Ошибка при входе через Google");
         }
     };
 
     return (
-        <div className="flex flex-col items-center justify-center min-h-screen bg-white p-4">
-            {/* Логотип / Название */}
-            <div className="mb-12 flex flex-col items-center gap-2">
-                <div className="w-10 h-10 bg-neutral-900 rounded-lg flex items-center justify-center text-white font-bold text-2xl">
-                    L
-                </div>
-                <h1 className="text-xl font-semibold tracking-tight text-neutral-900">
-                    LessonApp.
-                </h1>
-            </div>
+        <div className="relative flex flex-col items-center justify-center min-h-screen bg-[#F8FAFC] overflow-hidden">
+            {/* Background Decorative Elements */}
+            <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-100 rounded-full blur-[120px] opacity-50" />
+            <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-indigo-100 rounded-full blur-[120px] opacity-50" />
 
-            {/* Карточка входа */}
-            <div className="w-full max-w-sm bg-white p-8 rounded-xl border border-neutral-200 shadow-sm">
-                <div className="text-center mb-8">
-                    <h2 className="text-3xl font-semibold tracking-tight text-neutral-900">
-                        С возвращением
-                    </h2>
-                    <p className="text-sm text-neutral-500 mt-2">
-                        Войдите через Google, чтобы продолжить обучение.
+            <div className="relative z-10 flex flex-col items-center w-full max-w-sm px-4">
+                {/* Logo Section */}
+                <div className="mb-10 flex flex-col items-center animate-in fade-in slide-in-from-top-4 duration-700">
+                    <div className="relative w-72 h-32 transition-transform hover:scale-105 duration-300">
+                        <Image
+                            src="/logo.png"
+                            alt="Uni-Prep Logo"
+                            fill
+                            className="object-contain"
+                            priority
+                        />
+                    </div>
+                </div>
+
+                {/* Login Card */}
+                <div className="w-full bg-white/70 backdrop-blur-xl p-8 rounded-[2rem] border border-white/50 shadow-[0_8px_30px_rgb(0,0,0,0.04)] animate-in fade-in slide-in-from-bottom-8 duration-700 delay-150">
+                    <div className="text-center mb-8">
+                        <h2 className="text-3xl font-semibold tracking-tight text-neutral-900">
+                            С возвращением
+                        </h2>
+                        <p className="text-neutral-500 mt-2 text-sm">
+                            Войдите через Google, чтобы продолжить обучение в системе Uni-Prep
+                        </p>
+                    </div>
+
+                    {error && (
+                        <div className="mb-6 p-4 rounded-2xl bg-red-50 text-red-600 text-xs border border-red-100 animate-in fade-in zoom-in duration-300">
+                            {error}
+                        </div>
+                    )}
+
+                    <button
+                        onClick={handleLogin}
+                        disabled={isLoading}
+                        className="group relative w-full flex items-center justify-center gap-3 py-4 px-4 bg-neutral-900 text-white rounded-2xl font-semibold transition-all hover:bg-neutral-800 active:scale-[0.98] disabled:opacity-50 overflow-hidden"
+                    >
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+                        <Image
+                            src="/google.png"
+                            alt="Google"
+                            width={20}
+                            height={20}
+                            className="relative z-10"
+                        />
+                        <span className="relative z-10">Войти через Google</span>
+                    </button>
+
+                    <div className="mt-8 flex items-center gap-4">
+                        <div className="h-px flex-1 bg-neutral-200" />
+                        <span className="text-[10px] uppercase tracking-widest text-neutral-400 font-bold">Университетская подготовка</span>
+                        <div className="h-px flex-1 bg-neutral-200" />
+                    </div>
+
+                    <p className="mt-8 text-center text-xs text-neutral-400 leading-relaxed italic">
+                        Единственный путь к успеху — это постоянное обучение.
                     </p>
                 </div>
 
-                {error && (
-                    <div className="mb-6 p-4 rounded-lg bg-red-50 text-red-600 text-sm border border-red-100 italic">
-                        {error}
-                    </div>
-                )}
 
-                <button
-                    onClick={handleLogin}
-                    disabled={isLoading}
-                    className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-neutral-900 text-white rounded-lg font-medium transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
-                >
-                    <Chrome size={20} />
-                    <span>Войти через Google</span>
-                </button>
-
-                <p className="mt-8 text-center text-xs text-neutral-400">
-                    Это просто работает. Понятно и эффективно.
-                </p>
-            </div>
-
-            {/* Footer Text */}
-            <div className="mt-12 text-neutral-400 text-sm">
-                © {new Date().getFullYear()} LessonApp Engineering
             </div>
         </div>
     );

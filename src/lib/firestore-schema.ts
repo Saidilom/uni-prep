@@ -24,6 +24,8 @@ export interface Subject {
   color: string;
   order: number;
   backgroundImage: string;
+  topicCount?: number; // Количество тем
+  questionCount?: number; // Количество вопросов
 }
 
 export interface Textbook {

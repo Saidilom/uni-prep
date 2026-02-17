@@ -2,48 +2,65 @@
 
 import Link from "next/link";
 import { Subject } from "@/lib/firestore-schema";
+import { useState } from "react";
 
 interface SubjectCardProps {
     subject: Subject;
 }
 
 export default function SubjectCard({ subject }: SubjectCardProps) {
+    const [isHovered, setIsHovered] = useState(false);
+
     return (
-        <Link
-            href={`/subject/${subject.id}`}
-            className="group relative h-64 rounded-[2.5rem] overflow-hidden border border-neutral-100 bg-white transition-all hover:border-neutral-200 hover:shadow-[0_30px_60px_rgba(0,0,0,0.1)] active:scale-[0.98] block"
+        <div
+            className="group relative h-[400px] rounded-3xl overflow-hidden bg-white border border-neutral-200 transition-all duration-500 hover:shadow-xl hover:shadow-neutral-900/5 hover:-translate-y-1 flex flex-col"
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
         >
-            {/* Background Image with Saturation Effect */}
-            <div
-                className="absolute inset-0 bg-cover bg-center grayscale opacity-10 transition-all duration-700 group-hover:scale-110 group-hover:grayscale-0 group-hover:opacity-25"
-                style={{ backgroundImage: `url(${subject.backgroundImage})` }}
-            />
-
-            {/* Background Accent Gradient */}
-            <div
-                className="absolute top-0 right-0 w-48 h-48 blur-3xl opacity-20 transition-opacity group-hover:opacity-40"
-                style={{ backgroundColor: subject.color || '#000' }}
-            />
-
-            <div className="absolute inset-0 p-8 flex flex-col justify-between">
+            {/* Top Section - Background Image */}
+            <div className="relative h-44 overflow-hidden">
                 <div
-                    className="w-16 h-16 rounded-2xl bg-white shadow-xl flex items-center justify-center text-4xl transform transition-all duration-500 group-hover:scale-110 group-hover:rotate-6"
-                >
-                    {subject.emoji}
-                </div>
+                    className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-110"
+                    style={{ backgroundImage: `url(${subject.backgroundImage})` }}
+                />
+                {/* Gradient overlay for depth */}
+                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/20" />
 
-                <div className="relative z-10">
-                    <h3 className="text-2xl font-bold text-neutral-900 tracking-tight mb-2 transition-colors">
-                        {subject.name}
-                    </h3>
-                    <div className="flex items-center gap-2">
-                        <div className="w-8 h-1 rounded-full" style={{ backgroundColor: subject.color }} />
-                        <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">
-                            Начать подготовку
-                        </p>
+                {/* Stats badges on image */}
+                <div className="absolute bottom-4 left-4 right-4 flex gap-2">
+                    <div className="px-3 py-1.5 bg-white/90 backdrop-blur-sm rounded-lg shadow-sm">
+                        <span className="text-xs font-semibold text-neutral-700">
+                            📚 {subject.topicCount || 0} учебников
+                        </span>
+                    </div>
+                    <div className="px-3 py-1.5 bg-white/90 backdrop-blur-sm rounded-lg shadow-sm">
+                        <span className="text-xs font-semibold text-neutral-700">
+                            📖 {subject.questionCount || 0} тем
+                        </span>
                     </div>
                 </div>
             </div>
-        </Link>
+
+            {/* Bottom Section - White Content Area */}
+            <div className="flex-1 p-6 bg-white flex flex-col">
+                {/* Title */}
+                <h3 className="text-2xl font-bold text-neutral-900 tracking-tight mb-6">
+                    {subject.name}
+                </h3>
+
+                {/* Start Button */}
+                <div className="mt-auto">
+                    <Link
+                        href={`/subject/${subject.id}`}
+                        className="w-full flex items-center justify-center gap-2 px-6 py-3.5 bg-neutral-900 text-white rounded-xl font-bold text-sm transition-all hover:bg-neutral-800 active:scale-95"
+                    >
+                        Начать обучение
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                        </svg>
+                    </Link>
+                </div>
+            </div>
+        </div>
     );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { useAuthStore } from "@/store/useAuthStore";
 import { Class } from "@/lib/firestore-schema";
 import { SUBJECTS } from "@/lib/constants";
@@ -257,10 +258,15 @@ export default function ProfilePage() {
 
             {/* Engineering Footer Info */}
             <section className="mt-12 py-12 border-t border-neutral-100 flex flex-col items-center">
-                <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-indigo-700 rounded flex items-center justify-center text-white font-bold text-xs mb-4 shadow-sm">U</div>
-                <p className="text-xs text-neutral-400 font-mono uppercase tracking-[0.2em]">
-                    Uni-Prep Learning Suite v2.1.0
-                </p>
+                <div className="relative w-24 h-12 overflow-hidden mb-4 opacity-50 grayscale hover:opacity-100 hover:grayscale-0 transition-all duration-500">
+                    <Image
+                        src="/logo.png"
+                        alt="Uni-Prep Logo"
+                        fill
+                        className="object-contain"
+                    />
+                </div>
+            
             </section>
         </div>
     );

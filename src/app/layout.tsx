@@ -34,11 +34,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${plusJakarta.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${plusJakarta.variable} antialiased min-h-screen relative app-bg`}
       >
-        <AuthProvider>
-          {children}
-        </AuthProvider>
+        <div className="relative z-10 min-h-screen">
+          <AuthProvider>{children}</AuthProvider>
+        </div>
       </body>
     </html>
   );

@@ -77,6 +77,11 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply text-foreground;
   }
+}
+
+/* Глобальный фон: тёмно-синий + тёмно-фиолетовый градиент */
+.app-bg {
+  background-color: #060010;
 }

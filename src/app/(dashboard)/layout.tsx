@@ -21,7 +21,7 @@ export default function DashboardLayout({
 
     if (isLoading) {
         return (
-            <div className="flex items-center justify-center min-h-screen bg-white">
+            <div className="flex items-center justify-center min-h-screen bg-transparent">
                 <div className="w-8 h-1 bg-neutral-200 rounded-full overflow-hidden">
                     <div className="h-full bg-neutral-900 animate-[loading_1.5s_infinite_ease-in-out]"></div>
                 </div>
@@ -39,7 +39,7 @@ export default function DashboardLayout({
     if (!user) return null;
 
     return (
-        <div className="min-h-screen bg-white selection:bg-neutral-900 selection:text-white">
+        <div className="min-h-screen bg-transparent selection:bg-neutral-900 selection:text-white">
             <Navbar />
             <main className="max-w-6xl mx-auto px-6 py-24">
                 {children}

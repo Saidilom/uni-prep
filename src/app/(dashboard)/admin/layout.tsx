@@ -31,7 +31,7 @@ export default function AdminLayout({
 
     if (isLoading || !user || user.role !== "admin") {
         return (
-            <div className="flex items-center justify-center min-h-screen bg-white">
+            <div className="flex items-center justify-center min-h-screen bg-transparent">
                 <div className="w-8 h-1 bg-neutral-200 rounded-full overflow-hidden">
                     <div className="h-full bg-neutral-900 animate-pulse"></div>
                 </div>
@@ -48,7 +48,7 @@ export default function AdminLayout({
     ];
 
     return (
-        <div className="flex min-h-screen bg-white">
+        <div className="flex min-h-screen bg-transparent">
             {/* Sidebar */}
             <aside className="w-64 border-r border-neutral-200 flex flex-col sticky top-0 h-screen">
                 <div className="p-8 border-b border-neutral-100 flex items-center gap-3">
@@ -89,7 +89,7 @@ export default function AdminLayout({
             </aside>
 
             {/* Main Content */}
-            <main className="flex-1 p-12 bg-neutral-50/30">
+            <main className="flex-1 p-12 bg-transparent">
                 <div className="max-w-5xl mx-auto">
                     {children}
                 </div>

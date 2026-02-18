@@ -28,70 +28,65 @@ export default function Navbar() {
     ];
 
     return (
-        <nav className="sticky top-0 z-50 w-full bg-white border-b border-neutral-100 h-20">
-            <div className="max-w-7xl mx-auto px-6 h-full">
-                <div className="flex justify-between items-center h-full">
+        <nav className="sticky top-4 z-50 w-full px-4">
+            <div className="max-w-3xl mx-auto rounded-[999px] h-20 bg-white/5 border border-white/15 shadow-[0_0_40px_rgba(0,0,0,0.6)] backdrop-blur-2xl">
+                <div className="flex items-center justify-between h-full px-4">
                     {/* Logo Area */}
-                    <div className="flex items-center">
+                    <div className="flex items-center ml-[16px]">
                         <Link href="/" className="flex items-center">
-                            <div className="relative w-36 h-10">
+                            <div className="relative w-60 h-16">
                                 <Image
-                                    src="/logo.png"
+                                    src="/лого.png"
                                     alt="Uni-Prep Logo"
                                     fill
-                                    className="object-contain object-left"
+                                    className="object-contain object-left opacity-95"
                                 />
                             </div>
                         </Link>
                     </div>
 
-                    {/* Nav Links */}
-                    <div className="hidden lg:flex items-center gap-10">
+                    {/* Nav Links - Centered */}
+                    <div className="absolute left-1/2 -translate-x-1/2 hidden lg:flex items-center gap-6">
                         {navLinks.map((link) => {
                             const isActive = pathname === link.href;
                             return (
                                 <Link
                                     key={link.href}
                                     href={link.href}
-                                    className={`text-[15px] font-semibold transition-colors ${isActive
-                                        ? "text-neutral-900"
-                                        : "text-neutral-500 hover:text-neutral-900"
-                                        }`}
+                                    className="relative text-[15px] font-semibold text-white/80 hover:text-white transition-colors group py-2"
                                 >
                                     {link.name}
+                                    <span
+                                        className={`absolute -bottom-1 left-0 h-[2px] rounded-full bg-white transition-all duration-300 ease-out ${
+                                            isActive
+                                                ? "w-full opacity-100"
+                                                : "w-0 opacity-0 group-hover:w-full group-hover:opacity-100"
+                                        }`}
+                                    />
                                 </Link>
                             );
                         })}
                     </div>
 
                     {/* Right Action Area */}
-                    <div className="flex items-center gap-5">
-                        {/* Premium Button */}
-                        <Link
-                            href="/plus"
-                            className="hidden sm:flex items-center gap-2 px-5 py-2.5 bg-[#22C55E] text-white rounded-full text-[14px] font-bold shadow-sm hover:shadow-md hover:bg-[#1eb054] transition-all"
-                        >
-                            <Sparkles size={16} fill="white" />
-                            Uni-Prep Plus
-                        </Link>
-
+                    <div className="flex items-center gap-2">
                         {/* Notification Icon */}
-                        <button className="p-2 text-neutral-400 hover:text-neutral-600 transition-colors">
-                            <Bell size={22} />
+                        <button className="p-2 text-white/50 hover:text-white transition-colors rounded-full hover:bg-white/10">
+                            <Bell size={20} />
                         </button>
 
                         {/* Profile/Logout Area */}
-                        <div className="flex items-center gap-3 pl-2 h-10 border-l border-neutral-100">
+                        <div className="flex items-center gap-2 pl-2 h-10 border-l border-white/10">
                             <Link
                                 href="/profile"
-                                className="w-10 h-10 rounded-full bg-neutral-50 flex items-center justify-center border border-neutral-200 text-neutral-500 hover:bg-neutral-100 transition-colors"
+                                className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center border border-white/20 text-white/80 hover:bg-white/10 transition-colors"
                             >
-                                <User size={20} />
+                                <User size={18} />
                             </Link>
 
                             <button
                                 onClick={handleLogout}
-                                className="px-5 py-2 bg-neutral-50 text-neutral-900 rounded-xl text-[14px] font-bold hover:bg-neutral-100 transition-colors border border-neutral-200"
+                                className="px-3.5 py-2 bg-white/10 text-white rounded-xl text-[13px] font-semibold hover:bg-white/20 transition-colors border border-white/20 shadow-[0_0_20px_rgba(0,0,0,0.4)]"
                             >
                                 Выйти
                             </button>

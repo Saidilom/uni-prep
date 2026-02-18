@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { adminFetchCollection, adminAddItem, adminDeleteItem } from "@/lib/admin-utils";
 import { Subject } from "@/lib/firestore-schema";
+import { getSubjectImage } from "@/lib/constants";
 import { Plus, Trash2, Edit2, Search } from "lucide-react";
 
 export default function AdminSubjectsPage() {
@@ -22,10 +23,42 @@ export default function AdminSubjectsPage() {
         });
     }, []);
 
+    // Функция для генерации ID из названия (транслитерация в латиницу)
+    const generateSubjectId = (name: string): string => {
+        const translitMap: Record<string, string> = {
+            "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "yo", "ж": "zh",
+            "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m", "н": "n", "о": "o",
+            "п": "p", "р": "r", "с": "s", "т": "t", "у": "u", "ф": "f", "х": "h", "ц": "ts",
+            "ч": "ch", "ш": "sh", "щ": "sch", "ъ": "", "ы": "y", "ь": "", "э": "e", "ю": "yu", "я": "ya"
+        };
+        
+        const normalized = name.toLowerCase().trim();
+        let id = "";
+        for (let i = 0; i < normalized.length; i++) {
+            const char = normalized[i];
+            if (translitMap[char]) {
+                id += translitMap[char];
+            } else if (/[a-z0-9]/.test(char)) {
+                id += char;
+            } else if (char === " ") {
+                id += "-";
+            }
+        }
+        return id || "subject";
+    };
+
     const handleCreate = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            const newSubject = { name, emoji, color, order: subjects.length };
+            const subjectId = generateSubjectId(name);
+            const backgroundImage = getSubjectImage(subjectId);
+            const newSubject = { 
+                name, 
+                emoji, 
+                color, 
+                order: subjects.length,
+                backgroundImage 
+            };
             const created = await adminAddItem("subjects", newSubject);
             setSubjects(prev => [...prev, created as Subject]);
             setName("");

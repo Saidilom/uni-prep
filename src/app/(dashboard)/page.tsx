@@ -7,21 +7,16 @@ import SubjectCard from "@/components/subject-card";
 import { fetchUserGlobalStats, GlobalStats } from "@/lib/stats-utils";
 import { fetchSubjects } from "@/lib/data-fetching";
 import Plasma from "@/components/Plasma";
-
-import Image from "next/image";
+import { CheckCircle2, Target, Trophy } from "lucide-react";
 
 export default function HomePage() {
     const { user } = useAuthStore();
     const [stats, setStats] = useState<GlobalStats | null>(null);
     const [subjects, setSubjects] = useState<Subject[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [showDashboard, setShowDashboard] = useState(false);
 
     // загрузка данных
     useEffect(() => {
-        const hasEntered = sessionStorage.getItem("hasEnteredDashboard");
-        if (hasEntered) setShowDashboard(true);
-
         if (user) {
             fetchUserGlobalStats(user.id).then(setStats);
         }
@@ -31,76 +26,36 @@ export default function HomePage() {
         });
     }, [user]);
 
-    const handleEnter = () => {
-        sessionStorage.setItem("hasEnteredDashboard", "true");
-        setShowDashboard(true);
-    };
-
-
-    if (!showDashboard) {
-        return (
-            <div className="fixed inset-0 z-50 bg-white flex flex-col items-center justify-center overflow-hidden">
-                <div className="relative z-10 text-center px-4 animate-in fade-in zoom-in duration-1000">
-                    <div className="flex flex-col items-center justify-center gap-6 mb-12">
-                        <div className="relative w-64 h-24 overflow-hidden">
-                            <Image
-                                src="/logo.png"
-                                alt="Uni-Prep Logo"
-                                fill
-                                className="object-contain"
-                            />
-                        </div>
-                    </div>
-
-                    <h1 className="text-5xl md:text-7xl font-bold text-neutral-900 tracking-tight mb-6">
-                        Добро пожаловать.
-                    </h1>
-
-                    <p className="text-lg text-neutral-500 max-w-lg mx-auto mb-12 leading-relaxed font-medium">
-                        Ваше персональное пространство для эффективной подготовки к университету.
-                    </p>
-
-                    <button
-                        onClick={handleEnter}
-                        className="px-12 py-5 bg-neutral-900 text-white rounded-2xl font-bold text-lg transition-all hover:bg-neutral-800 active:scale-95"
-                    >
-                        Войти в кабинет
-                    </button>
-                </div>
-            </div>
-        );
-    }
-
     const statsBlocks = [
         {
             label: "Решено вопросов",
             value: stats?.totalSolved || 0,
-            icon: "✅"
+            icon: CheckCircle2
         },
         {
             label: "Общая точность",
             value: `${stats?.accuracy || 0}%`,
-            icon: "🎯"
+            icon: Target
         },
         {
             label: "Мои достижения",
             value: stats ? (
                 <div className="flex items-center gap-3">
-                    <span className="flex items-center gap-1.5 px-3 py-1 bg-green-50 text-green-700 rounded-full text-sm font-bold">
-                        <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                    <span className="flex items-center gap-1.5 px-3 py-1 bg-white/10 text-white rounded-full text-sm font-bold border border-white/15 backdrop-blur">
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-300" />
                         {stats.medals.green}
                     </span>
-                    <span className="flex items-center gap-1.5 px-3 py-1 bg-neutral-100 text-neutral-600 rounded-full text-sm font-bold">
-                        <div className="w-1.5 h-1.5 rounded-full bg-neutral-500" />
+                    <span className="flex items-center gap-1.5 px-3 py-1 bg-white/10 text-white/80 rounded-full text-sm font-bold border border-white/10 backdrop-blur">
+                        <div className="w-1.5 h-1.5 rounded-full bg-white/60" />
                         {stats.medals.grey}
                     </span>
-                    <span className="flex items-center gap-1.5 px-3 py-1 bg-orange-50 text-orange-700 rounded-full text-sm font-bold">
-                        <div className="w-1.5 h-1.5 rounded-full bg-orange-500" />
+                    <span className="flex items-center gap-1.5 px-3 py-1 bg-white/10 text-white rounded-full text-sm font-bold border border-white/15 backdrop-blur">
+                        <div className="w-1.5 h-1.5 rounded-full bg-orange-300" />
                         {stats.medals.bronze}
                     </span>
                 </div>
             ) : "—",
-            icon: "🏆"
+            icon: Trophy
         },
     ];
 
@@ -119,49 +74,52 @@ export default function HomePage() {
             </div>
 
             {/* Header Content */}
-            <section className="relative z-10 flex flex-col items-center text-center gap-10 pt-10 pb-8">
-                <div className="max-w-4xl">
-                    <h1 className="text-5xl md:text-6xl lg:text-7xl font-extrabold tracking-tight leading-tight mb-6 text-white">
-                        Минимальные волны
-                        <br />
-                        <span className="bg-gradient-to-r from-indigo-300 via-fuchsia-300 to-sky-300 bg-clip-text text-transparent">
-                            для спокойной подготовки
-                        </span>
+            <section className="relative z-10 flex flex-col items-center text-center gap-8 pt-20 md:pt-28 pb-8">
+                <div className="max-w-3xl">
+                    <h1 className="text-5xl md:text-6xl font-bold tracking-tight leading-tight mb-4 text-white">
+                        Подготовка без стресса
                     </h1>
-                    <p className="mt-4 text-base md:text-lg text-white/60 max-w-2xl mx-auto">
-                        Uni‑Prep помогает готовиться к экзаменам без стресса: чёткие темы, умные тесты и
-                        аккуратная аналитика в одном личном кабинете.
+                    <p className="mt-2 text-lg md:text-xl text-neutral-300 max-w-2xl mx-auto">
+                        Структурированные материалы, интеллектуальные тесты и мгновенная обратная связь
                     </p>
                 </div>
 
-                <div className="flex flex-col sm:flex-row items-center gap-2 mt-4">
-                    <button className="px-6 py-3.5 rounded-full bg-white text-neutral-900 font-semibold text-sm md:text-base shadow-[0_18px_45px_rgba(0,0,0,0.45)] hover:bg-neutral-100 active:scale-[0.97] transition-transform transition-colors">
-                        Начать тренировку
+                <div className="flex flex-col sm:flex-row items-center gap-3 mt-2">
+                    <button className="px-8 py-3 rounded-full bg-white hover:bg-neutral-100 text-neutral-900 font-semibold text-sm md:text-base shadow-[0_18px_45px_rgba(0,0,0,0.45)] active:scale-[0.97] transition-transform transition-colors">
+                        Начать учиться
                     </button>
-                    <button className="px-6 py-3.5 rounded-full bg-white/5 text-white/80 font-semibold text-sm md:text-base border border-white/15 hover:bg-white/10 active:scale-[0.97] transition-all">
-                        Посмотреть статистику
+                    <button className="px-8 py-3 rounded-full border-2 border-white hover:bg-white/10 text-white font-semibold text-sm md:text-base active:scale-[0.97] transition-all">
+                        Узнать больше
                     </button>
                 </div>
             </section>
 
             {/* Statistics Dashboard */}
-            <div className="relative z-10 mt-32">
+            <div className="relative z-10 mt-72 md:mt-80">
                 <section className="grid grid-cols-1 md:grid-cols-3 gap-8">
                     {statsBlocks.map((block, idx) => (
                         <div
                             key={idx}
-                            className="p-8 bg-white border border-neutral-200 rounded-3xl transition-all group hover:shadow-xl hover:-translate-y-2 animate-in fade-in slide-in-from-bottom-8 duration-700"
+                            className="p-8 bg-white/5 border border-white/10 rounded-3xl backdrop-blur-xl shadow-[0_0_40px_rgba(0,0,0,0.35)] transition-all group hover:bg-white/7 hover:-translate-y-1 animate-in fade-in slide-in-from-bottom-8 duration-700"
                             style={{
                                 animationDelay: `${idx * 150}ms`,
                                 animationFillMode: 'both'
                             }}
                         >
-                            <div className="text-3xl mb-6">{block.icon}</div>
+                            <div className="mb-6 flex items-center gap-3">
+                                {typeof block.icon === "string" ? (
+                                    <div className="text-3xl">{block.icon}</div>
+                                ) : (
+                                    <div className="w-11 h-11 rounded-2xl bg-white/5 border border-white/15 backdrop-blur flex items-center justify-center">
+                                        <block.icon className="w-5 h-5 text-white" />
+                                    </div>
+                                )}
+                            </div>
                             <div className="flex flex-col">
-                                <span className="text-[10px] text-neutral-400 uppercase font-black tracking-widest mb-1">
+                                <span className="text-[10px] text-white/55 uppercase font-black tracking-widest mb-1">
                                     {block.label}
                                 </span>
-                                <span className="text-4xl font-bold text-neutral-900 tracking-tight">
+                                <span className="text-4xl font-bold text-white tracking-tight">
                                     {block.value}
                                 </span>
                             </div>
@@ -171,28 +129,28 @@ export default function HomePage() {
             </div>
 
             {/* Subjects Grid */}
-            <div className="relative z-10">
+            <div className="relative z-10 mt-6 md:mt-8">
                 <section>
                     <div className="flex items-center justify-between mb-16 px-2">
                         <div className="flex items-center gap-4">
-                            <h2 className="text-2xl font-bold text-neutral-900 tracking-tight">Доступные дисциплины.</h2>
-                            <div className="px-3 py-1 bg-neutral-900 text-white rounded-full text-[10px] font-bold uppercase tracking-widest animate-pulse">
+                            <h2 className="text-2xl font-bold text-white tracking-tight">Доступные предметы</h2>
+                            <div className="px-3 py-1 bg-white/10 text-white rounded-full text-[10px] font-bold uppercase tracking-widest border border-white/15">
                                 New
                             </div>
                         </div>
-                        <span className="text-sm font-bold text-neutral-400 uppercase tracking-widest bg-neutral-50 px-4 py-2 rounded-xl">
+                        <span className="text-sm font-bold text-white/60 uppercase tracking-widest bg-white/5 px-4 py-2 rounded-xl border border-white/10 backdrop-blur">
                             {subjects.length} предметов
                         </span>
                     </div>
 
                     {isLoading ? (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
                             {[1, 2, 3, 4].map((n) => (
                                 <div key={n} className="h-64 bg-neutral-50 rounded-[2.5rem] animate-pulse border border-neutral-100" />
                             ))}
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
                             {subjects.map((subject) => (
                                 <SubjectCard key={subject.id} subject={subject} />
                             ))}

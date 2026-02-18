@@ -1,5 +1,87 @@
 import { Subject, Medal } from "./firestore-schema";
 
+// Маппинг названий предметов на локальные изображения из public/subjects
+export const getSubjectImage = (subjectId: string, subjectName?: string): string => {
+    // Нормализуем ID: убираем пробелы и приводим к нижнему регистру
+    const normalizedId = subjectId.trim().toLowerCase();
+    
+    // Сначала пробуем по ID
+    const imageMapById: Record<string, string> = {
+        "math": "/subjects/math.png",
+        "physics": "/subjects/physics.jpeg",
+        "chemistry": "/subjects/chemistry.jpeg",
+        "biology": "/subjects/biology.png",
+        "history": "/subjects/history.jpeg",
+        "english": "/subjects/english.jpeg",
+        "russian": "/subjects/russion.jpeg", // опечатка в имени файла сохранена
+        "geography": "/subjects/history.jpeg", // используем history как fallback
+        "it": "/subjects/math.png", // используем math как fallback
+    };
+    
+    // Если есть маппинг по ID, используем его
+    if (imageMapById[normalizedId]) {
+        return imageMapById[normalizedId];
+    }
+    
+    // Иначе пробуем по названию предмета (приоритет названию над ID)
+    if (subjectName) {
+        // Нормализуем название: убираем пробелы в начале/конце, множественные пробелы и приводим к нижнему регистру
+        const nameLower = subjectName.trim().replace(/\s+/g, ' ').toLowerCase();
+        
+        // Специальные проверки для сложных названий (делаем их первыми, до общего маппинга)
+        // Проверяем "родной язык и литература" или "родной язык"
+        if (nameLower.includes("родной язык и литература")) {
+            return "/subjects/russion.jpeg";
+        }
+        if (nameLower.includes("родной") && nameLower.includes("язык")) {
+            return "/subjects/russion.jpeg";
+        }
+        if (nameLower.includes("родной") && nameLower.includes("литература")) {
+            return "/subjects/russion.jpeg";
+        }
+        if (nameLower.includes("иностранные языки") || nameLower.includes("иностранный язык")) {
+            return "/subjects/english.jpeg";
+        }
+        
+        const imageMapByName: Record<string, string> = {
+            "родной язык и литература": "/subjects/russion.jpeg",
+            "родной язык": "/subjects/russion.jpeg",
+            "иностранные языки": "/subjects/english.jpeg",
+            "иностранный язык": "/subjects/english.jpeg",
+            "английский язык": "/subjects/english.jpeg",
+            "русский язык": "/subjects/russion.jpeg",
+            "математика": "/subjects/math.png",
+            "физика": "/subjects/physics.jpeg",
+            "химия": "/subjects/chemistry.jpeg",
+            "биология": "/subjects/biology.png",
+            "история": "/subjects/history.jpeg",
+            "английский": "/subjects/english.jpeg",
+            "русский": "/subjects/russion.jpeg",
+            "литература": "/subjects/russion.jpeg",
+            "география": "/subjects/history.jpeg",
+            "информатика": "/subjects/math.png",
+        };
+        
+        // Проверяем точное совпадение
+        if (imageMapByName[nameLower]) {
+            return imageMapByName[nameLower];
+        }
+        
+        // Проверяем частичное совпадение (на случай, если название содержит дополнительные слова)
+        // Приоритет: более длинные ключи проверяем первыми
+        const sortedKeys = Object.keys(imageMapByName).sort((a, b) => b.length - a.length);
+        for (const key of sortedKeys) {
+            // Проверяем только: содержит ли название ключ (не наоборот!)
+            if (nameLower.includes(key)) {
+                return imageMapByName[key];
+            }
+        }
+    }
+    
+    // Используем math.png как fallback
+    return "/subjects/math.png";
+};
+
 export const SUBJECTS: Subject[] = [
     {
         id: "history",
@@ -7,7 +89,7 @@ export const SUBJECTS: Subject[] = [
         emoji: "📜",
         color: "#171717",
         order: 1,
-        backgroundImage: "https://images.unsplash.com/photo-1461360370896-922624d12aa1?q=80&w=1000&auto=format&fit=crop",
+        backgroundImage: "/subjects/history.jpeg",
     },
     {
         id: "math",
@@ -15,7 +97,7 @@ export const SUBJECTS: Subject[] = [
         emoji: "🔢",
         color: "#171717",
         order: 2,
-        backgroundImage: "https://images.unsplash.com/photo-1509228468518-180dd482180c?q=80&w=1000&auto=format&fit=crop",
+        backgroundImage: "/subjects/math.png",
     },
     {
         id: "biology",
@@ -23,7 +105,7 @@ export const SUBJECTS: Subject[] = [
         emoji: "🧬",
         color: "#171717",
         order: 3,
-        backgroundImage: "https://images.unsplash.com/photo-1530026405186-ed1f139313f8?q=80&w=1000&auto=format&fit=crop",
+        backgroundImage: "/subjects/biology.png",
     },
     {
         id: "geography",
@@ -31,7 +113,7 @@ export const SUBJECTS: Subject[] = [
         emoji: "🌍",
         color: "#171717",
         order: 4,
-        backgroundImage: "https://images.unsplash.com/photo-1521295121783-8a321d551ad2?q=80&w=1000&auto=format&fit=crop",
+        backgroundImage: "/subjects/history.jpeg",
     },
     {
         id: "chemistry",
@@ -39,7 +121,7 @@ export const SUBJECTS: Subject[] = [
         emoji: "⚗️",
         color: "#171717",
         order: 5,
-        backgroundImage: "https://images.unsplash.com/photo-1532187875605-1ef6c23ce921?q=80&w=1000&auto=format&fit=crop",
+        backgroundImage: "/subjects/chemistry.jpeg",
     },
     {
         id: "physics",
@@ -47,7 +129,7 @@ export const SUBJECTS: Subject[] = [
         emoji: "⚡",
         color: "#171717",
         order: 6,
-        backgroundImage: "https://images.unsplash.com/photo-1635070041078-e363dbe005cb?q=80&w=1000&auto=format&fit=crop",
+        backgroundImage: "/subjects/physics.jpeg",
     },
     {
         id: "english",
@@ -55,7 +137,7 @@ export const SUBJECTS: Subject[] = [
         emoji: "🇬🇧",
         color: "#171717",
         order: 7,
-        backgroundImage: "https://images.unsplash.com/photo-1444858291040-58f756a3bdd6?q=80&w=1000&auto=format&fit=crop",
+        backgroundImage: "/subjects/english.jpeg",
     },
     {
         id: "russian",
@@ -63,7 +145,7 @@ export const SUBJECTS: Subject[] = [
         emoji: "🖋️",
         color: "#171717",
         order: 8,
-        backgroundImage: "https://images.unsplash.com/photo-1512485600893-b08ec1d59f1c?q=80&w=1000&auto=format&fit=crop",
+        backgroundImage: "/subjects/russion.jpeg",
     },
     {
         id: "it",
@@ -71,7 +153,7 @@ export const SUBJECTS: Subject[] = [
         emoji: "💻",
         color: "#171717",
         order: 9,
-        backgroundImage: "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?q=80&w=1000&auto=format&fit=crop",
+        backgroundImage: "/subjects/math.png",
     },
 ];
 

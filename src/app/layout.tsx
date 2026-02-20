@@ -30,6 +30,11 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "Uni-Prep",
   description: "Система подготовки к университету",
+  icons: {
+    icon: "/atooo.png",
+    shortcut: "/atooo.png",
+    apple: "/atooo.png",
+  },
 };
 
 export default function RootLayout({

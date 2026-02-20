@@ -31,9 +31,14 @@ export const metadata: Metadata = {
   title: "Uni-Prep",
   description: "Система подготовки к университету",
   icons: {
-    icon: "/atooo.png",
-    shortcut: "/atooo.png",
-    apple: "/atooo.png",
+    icon: [
+      { url: "/auto-Photoroom.png", sizes: "any", type: "image/png" },
+      { url: "/auto-Photoroom.png", sizes: "512x512", type: "image/png" },
+    ],
+    shortcut: "/auto-Photoroom.png",
+    apple: [
+      { url: "/auto-Photoroom.png", sizes: "180x180", type: "image/png" },
+    ],
   },
 };
 
@@ -44,6 +49,15 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        <link rel="icon" type="image/png" sizes="512x512" href="/auto-Photoroom.png" />
+        <link rel="icon" type="image/png" sizes="256x256" href="/auto-Photoroom.png" />
+        <link rel="icon" type="image/png" sizes="128x128" href="/auto-Photoroom.png" />
+        <link rel="icon" type="image/png" sizes="64x64" href="/auto-Photoroom.png" />
+        <link rel="icon" type="image/png" sizes="32x32" href="/auto-Photoroom.png" />
+        <link rel="shortcut icon" href="/auto-Photoroom.png" />
+        <link rel="apple-touch-icon" sizes="180x180" href="/auto-Photoroom.png" />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${plusJakarta.variable} ${inter.variable} antialiased min-h-screen relative app-bg`}
       >

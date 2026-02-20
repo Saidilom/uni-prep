@@ -37,7 +37,7 @@ export default function AdminTextbooksPage() {
             setTitle("");
             setGrade("");
             setIsAdding(false);
-        } catch (error) {
+        } catch {
             alert("Ошибка при добавлении учебника");
         }
     };
@@ -47,7 +47,7 @@ export default function AdminTextbooksPage() {
         try {
             await adminDeleteItem("textbooks", id);
             setTextbooks(prev => prev.filter(t => t.id !== id));
-        } catch (error) {
+        } catch {
             alert("Ошибка при удалении");
         }
     };

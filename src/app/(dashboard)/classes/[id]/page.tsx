@@ -57,7 +57,7 @@ export default function ClassDetailPage() {
             } else {
                 setError("Ученик не найден. Проверьте правильность ID.");
             }
-        } catch (err) {
+        } catch {
             setError("Ошибка при поиске ученика.");
         } finally {
             setIsSearching(false);
@@ -76,7 +76,7 @@ export default function ClassDetailPage() {
             setCls((prev) => prev ? { ...prev, students: [...prev.students, searchResult.id] } : null);
             setSearchResult(null);
             setSearchQuery("");
-        } catch (err) {
+        } catch {
             setError("Ошибка при добавлении ученика.");
         }
     };
@@ -87,7 +87,7 @@ export default function ClassDetailPage() {
             await deleteStudentFromClass(cls.id, studentId);
             setStudents((prev) => prev.filter(s => s.id !== studentId));
             setCls((prev) => prev ? { ...prev, students: prev.students.filter(id => id !== studentId) } : null);
-        } catch (err) {
+        } catch {
             alert("Ошибка при удалении ученика.");
         }
     };
@@ -97,7 +97,7 @@ export default function ClassDetailPage() {
         try {
             await deleteClass(cls.id);
             router.push("/classes");
-        } catch (err) {
+        } catch {
             alert("Ошибка при удалении класса.");
         }
     };

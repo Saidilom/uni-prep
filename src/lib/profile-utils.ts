@@ -1,6 +1,6 @@
-import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
+import { collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "./firebase";
-import { Class, User } from "./firestore-schema";
+import { Class, SubjectRating } from "./firestore-schema";
 
 /**
  * Получение списка классов, в которых состоит ученик
@@ -33,7 +33,8 @@ export const fetchUserRatings = async (userId: string): Promise<Record<string, n
         const ratings: Record<string, number> = {};
 
         ratingsSnap.forEach((doc) => {
-            ratings[doc.id] = (doc.data() as any).stars || 0;
+            const ratingData = doc.data() as SubjectRating;
+            ratings[doc.id] = ratingData.stars || 0;
         });
 
         return ratings;
@@ -46,14 +47,14 @@ export const fetchUserRatings = async (userId: string): Promise<Record<string, n
 /**
  * Получение бейджей (достижений) пользователя
  */
-export const fetchUserBadges = async (userId: string): Promise<any[]> => {
+export const fetchUserBadges = async (userId: string): Promise<Array<{ id: string; name: string; description?: string; icon?: string; unlockedAt?: Date | { toDate: () => Date } | string | { seconds: number } }>> => {
     try {
         const badgesRef = collection(db, "users", userId, "badges");
         const querySnapshot = await getDocs(badgesRef);
 
-        const badges: any[] = [];
+        const badges: Array<{ id: string; name: string; description?: string; icon?: string; unlockedAt?: Date | { toDate: () => Date } | string | { seconds: number } }> = [];
         querySnapshot.forEach((doc) => {
-            badges.push({ id: doc.id, ...doc.data() });
+            badges.push({ id: doc.id, ...doc.data() } as { id: string; name: string; description?: string; icon?: string; unlockedAt?: Date | { toDate: () => Date } | string | { seconds: number } });
         });
 
         return badges;

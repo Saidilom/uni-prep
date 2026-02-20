@@ -1,6 +1,6 @@
-import { collection, query, getDocs } from "firebase/firestore";
+import { collection, getDocs } from "firebase/firestore";
 import { db } from "./firebase";
-import { UserProgress, SubjectRating, Medal } from "./firestore-schema";
+import { UserProgress, SubjectRating } from "./firestore-schema";
 
 export interface GlobalStats {
     totalSolved: number;
@@ -39,8 +39,8 @@ export const fetchUserGlobalStats = async (userId: string): Promise<GlobalStats>
             // В userProgress поля называются по-другому в ТЗ (solvedQuestions, errors)
             // В схеме: correctAnswers, mistakes
             // Будем использовать поля из ТЗ: solvedQuestions, errors
-            const solved = (data as any).solvedQuestions || 0;
-            const errors = (data as any).errors || 0;
+            const solved = ('solvedQuestions' in data ? (data as UserProgress & { solvedQuestions?: number }).solvedQuestions : 0) || 0;
+            const errors = ('errors' in data ? (data as UserProgress & { errors?: number }).errors : 0) || 0;
 
             totalCorrect += solved;
             totalAttempted += (solved + errors);
@@ -88,11 +88,11 @@ export const fetchUserSubjectRatings = async (userId: string): Promise<Record<st
 /**
  * Получение всех бейджей пользователя
  */
-export const fetchUserBadges = async (userId: string) => {
+export const fetchUserBadges = async (userId: string): Promise<Array<{ id: string; name: string; description?: string; icon?: string; unlockedAt?: Date | { toDate: () => Date } | string | { seconds: number } }>> => {
     try {
         const badgesRef = collection(db, "users", userId, "badges");
         const badgesSnap = await getDocs(badgesRef);
-        return badgesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        return badgesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as { id: string; name: string; description?: string; icon?: string; unlockedAt?: Date | { toDate: () => Date } | string | { seconds: number } }));
     } catch (error) {
         console.error("Error fetching user badges:", error);
         return [];

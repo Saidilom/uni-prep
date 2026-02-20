@@ -28,7 +28,7 @@ export default function ClassesPage() {
     const handleCreateClass = async (name: string, subjectId: string) => {
         if (!user) return;
         const newClass = await createClass(user.id, name, subjectId);
-        setClasses((prev) => [newClass as any as Class, ...prev]);
+        setClasses((prev) => [{ ...newClass, createdAt: typeof newClass.createdAt === 'string' ? newClass.createdAt : new Date().toISOString() } as Class, ...prev]);
     };
 
     if (user?.role !== "teacher") {

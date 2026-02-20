@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 
 export default function AdminDashboard() {
-    const [stats, setStats] = useState<any>(null);
+    const [stats, setStats] = useState<{ subjects: number; textbooks: number; topics: number; questions: number; students: number; teachers: number } | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {

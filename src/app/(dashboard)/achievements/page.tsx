@@ -8,8 +8,31 @@ import Plasma from "@/components/Plasma";
 
 export default function AchievementsPage() {
     const { user } = useAuthStore();
-    const [badges, setBadges] = useState<any[]>([]);
+    const [badges, setBadges] = useState<Array<{ id: string; name: string; description?: string; icon?: string; unlockedAt?: Date | { toDate: () => Date } | string | { seconds: number } }>>([]);
     const [isLoading, setIsLoading] = useState(true);
+
+    // Функция для преобразования unlockedAt в дату
+    const getUnlockedDate = (unlockedAt?: Date | { toDate: () => Date } | string | { seconds: number }): Date | null => {
+        if (!unlockedAt) return null;
+        
+        if (typeof unlockedAt === 'string') {
+            return new Date(unlockedAt);
+        }
+        
+        if (unlockedAt instanceof Date) {
+            return unlockedAt;
+        }
+        
+        if ('toDate' in unlockedAt && typeof unlockedAt.toDate === 'function') {
+            return unlockedAt.toDate();
+        }
+        
+        if ('seconds' in unlockedAt && typeof unlockedAt.seconds === 'number') {
+            return new Date(unlockedAt.seconds * 1000);
+        }
+        
+        return null;
+    };
 
     useEffect(() => {
         if (user?.id) {
@@ -71,8 +94,8 @@ export default function AchievementsPage() {
                                 <div className="mt-6 pt-6 border-t border-white/10 w-full flex items-center justify-center gap-2 text-xs text-white/30 font-medium uppercase tracking-widest">
                                     <Calendar size={12} />
                                     <span>
-                                        {badge.unlockedAt?.seconds
-                                            ? new Date(badge.unlockedAt.seconds * 1000).toLocaleDateString('ru-RU')
+                                        {getUnlockedDate(badge.unlockedAt)
+                                            ? getUnlockedDate(badge.unlockedAt)!.toLocaleDateString('ru-RU')
                                             : "Недавно"}
                                     </span>
                                 </div>

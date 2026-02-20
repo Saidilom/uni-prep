@@ -6,7 +6,7 @@ import { useAuthStore } from "@/store/useAuthStore";
 import Image from "next/image";
 import Plasma from "@/components/Plasma";
 import Particles from "@/components/Particles";
-import { BookOpen, Target, Award, CheckCircle2 } from "lucide-react";
+import { BookOpen, Target, Award } from "lucide-react";
 
 export default function LoginPage() {
     const [error, setError] = useState<string | null>(null);
@@ -16,8 +16,9 @@ export default function LoginPage() {
         try {
             setError(null);
             await signInWithGoogle();
-        } catch (err: any) {
-            setError(err.message || "Ошибка при входе через Google");
+        } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : "Ошибка при входе через Google";
+            setError(errorMessage);
         }
     };
 

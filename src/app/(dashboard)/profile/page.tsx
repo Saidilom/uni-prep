@@ -1,15 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Image from "next/image";
 import { useAuthStore } from "@/store/useAuthStore";
-import { Class, Subject } from "@/lib/firestore-schema";
+import { Class, Subject, Topic } from "@/lib/firestore-schema";
 import { SUBJECTS } from "@/lib/constants";
 import { fetchStudentClasses, fetchUserRatings } from "@/lib/profile-utils";
 import { fetchSubjects, fetchTextbooksBySubject, fetchTopicsByTextbook } from "@/lib/data-fetching";
 import { fetchSubjectProgress } from "@/lib/stats-utils";
-import { logOut, updateUserProfile } from "@/lib/auth-utils";
-import { Star, LogOut, ShieldCheck, Copy, Check, Settings2, X } from "lucide-react";
+import { updateUserProfile } from "@/lib/auth-utils";
+import { Star, ShieldCheck, Copy, Check, Settings2, X } from "lucide-react";
 import Plasma from "@/components/Plasma";
 
 export default function ProfilePage() {
@@ -49,7 +48,7 @@ export default function ProfilePage() {
                     const allTopicIds: string[] = [];
                     for (const textbook of textbooks) {
                         const topics = await fetchTopicsByTextbook(textbook.id);
-                        allTopicIds.push(...topics.map((t: any) => t.id));
+                        allTopicIds.push(...topics.map((t: Topic) => t.id));
                     }
                     const progress = await fetchSubjectProgress(user.id, subject.id, allTopicIds);
                     progressMap[subject.id] = progress;
@@ -81,7 +80,7 @@ export default function ProfilePage() {
             });
             setUser(updatedUser);
             setIsEditModalOpen(false);
-        } catch (error) {
+        } catch {
             alert("Ошибка при обновлении профиля");
         } finally {
             setIsUpdating(false);

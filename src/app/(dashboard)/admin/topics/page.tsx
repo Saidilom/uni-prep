@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { adminFetchCollection, adminAddItem, adminDeleteItem } from "@/lib/admin-utils";
 import { Topic, Textbook, Subject } from "@/lib/firestore-schema";
-import { Plus, Trash2, ListTree, ChevronRight } from "lucide-react";
+import { Plus, Trash2, ListTree } from "lucide-react";
 import { fetchTextbooksBySubject, fetchTopicsByTextbook } from "@/lib/data-fetching";
 
 export default function AdminTopicsPage() {
@@ -59,7 +59,7 @@ export default function AdminTopicsPage() {
             setOrder("");
             setTotalQuestions("");
             setIsAdding(false);
-        } catch (error) {
+        } catch {
             alert("Ошибка при добавлении темы");
         }
     };
@@ -69,7 +69,7 @@ export default function AdminTopicsPage() {
         try {
             await adminDeleteItem("topics", id);
             setTopics(prev => prev.filter(t => t.id !== id));
-        } catch (error) {
+        } catch {
             alert("Ошибка при удалении");
         }
     };

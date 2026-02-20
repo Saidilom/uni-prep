@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { adminFetchCollection, adminAddItem, adminDeleteItem } from "@/lib/admin-utils";
 import { Question, Topic, Textbook, Subject } from "@/lib/firestore-schema";
-import { Plus, Trash2, HelpCircle } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { fetchTextbooksBySubject, fetchTopicsByTextbook, fetchQuestionsByTopic } from "@/lib/data-fetching";
 
 export default function AdminQuestionsPage() {
@@ -16,7 +16,6 @@ export default function AdminQuestionsPage() {
     const [selectedTextbook, setSelectedTextbook] = useState("");
     const [selectedTopic, setSelectedTopic] = useState("");
 
-    const [isLoading, setIsLoading] = useState(true);
     const [isAdding, setIsAdding] = useState(false);
 
     // Форма
@@ -31,7 +30,6 @@ export default function AdminQuestionsPage() {
     useEffect(() => {
         adminFetchCollection("subjects", "name").then(data => {
             setSubjects(data as Subject[]);
-            setIsLoading(false);
         });
     }, []);
 
@@ -79,7 +77,7 @@ export default function AdminQuestionsPage() {
             setOptionC("");
             setOptionD("");
             setIsAdding(false);
-        } catch (error) {
+        } catch {
             alert("Ошибка при добавлении вопроса");
         }
     };
@@ -89,7 +87,7 @@ export default function AdminQuestionsPage() {
         try {
             await adminDeleteItem("questions", id);
             setQuestions(prev => prev.filter(q => q.id !== id));
-        } catch (error) {
+        } catch {
             alert("Ошибка при удалении");
         }
     };
@@ -187,7 +185,7 @@ export default function AdminQuestionsPage() {
                                 <label className="text-xs font-bold text-neutral-400 uppercase tracking-widest">Правильный ответ</label>
                                 <select
                                     value={correctAnswer}
-                                    onChange={e => setCorrectAnswer(e.target.value as any)}
+                                    onChange={e => setCorrectAnswer(e.target.value as "a" | "b" | "c" | "d")}
                                     className="w-full bg-neutral-50 border border-neutral-100 rounded-lg p-3 focus:outline-none focus:border-neutral-900"
                                 >
                                     <option value="a">Вариант A</option>
@@ -200,7 +198,7 @@ export default function AdminQuestionsPage() {
                                 <label className="text-xs font-bold text-neutral-400 uppercase tracking-widest">Сложность</label>
                                 <select
                                     value={difficulty}
-                                    onChange={e => setDifficulty(e.target.value as any)}
+                                    onChange={e => setDifficulty(e.target.value as "easy" | "medium" | "hard")}
                                     className="w-full bg-neutral-50 border border-neutral-100 rounded-lg p-3 focus:outline-none focus:border-neutral-900"
                                 >
                                     <option value="easy">Простой</option>

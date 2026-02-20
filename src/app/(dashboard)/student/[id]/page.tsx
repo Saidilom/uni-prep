@@ -18,8 +18,31 @@ export default function StudentProfilePage() {
     const [student, setStudent] = useState<User | null>(null);
     const [stats, setStats] = useState<GlobalStats | null>(null);
     const [ratings, setRatings] = useState<Record<string, number>>({});
-    const [badges, setBadges] = useState<any[]>([]);
+    const [badges, setBadges] = useState<Array<{ id: string; name: string; description?: string; icon?: string; unlockedAt?: Date | { toDate: () => Date } | string | { seconds: number } }>>([]);
     const [isLoading, setIsLoading] = useState(true);
+
+    // Функция для преобразования unlockedAt в дату
+    const getUnlockedDate = (unlockedAt?: Date | { toDate: () => Date } | string | { seconds: number }): Date | null => {
+        if (!unlockedAt) return null;
+        
+        if (typeof unlockedAt === 'string') {
+            return new Date(unlockedAt);
+        }
+        
+        if (unlockedAt instanceof Date) {
+            return unlockedAt;
+        }
+        
+        if ('toDate' in unlockedAt && typeof unlockedAt.toDate === 'function') {
+            return unlockedAt.toDate();
+        }
+        
+        if ('seconds' in unlockedAt && typeof unlockedAt.seconds === 'number') {
+            return new Date(unlockedAt.seconds * 1000);
+        }
+        
+        return null;
+    };
 
     useEffect(() => {
         // Only teachers should see this
@@ -208,9 +231,9 @@ export default function StudentProfilePage() {
                                             </h4>
                                             <p className="text-[10px] text-white/50 mt-0.5 uppercase tracking-wider font-bold">
                                                 Получено{" "}
-                                                {new Date(
-                                                    badge.unlockedAt?.toDate?.() || badge.unlockedAt
-                                                ).toLocaleDateString()}
+                                                {getUnlockedDate(badge.unlockedAt)
+                                                    ? getUnlockedDate(badge.unlockedAt)!.toLocaleDateString('ru-RU')
+                                                    : "Недавно"}
                                             </p>
                                         </div>
                                     </div>

@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { Subject } from "@/lib/firestore-schema";
-import { useState } from "react";
 import { getSubjectImage } from "@/lib/constants";
 
 interface SubjectCardProps {
@@ -22,7 +22,6 @@ export default function SubjectCard({
     medals = { green: 0, grey: 0, bronze: 0 },
     progress = 0
 }: SubjectCardProps) {
-    const [imageError, setImageError] = useState(false);
 
     // Автоматически подставляем изображение на основе ID и названия предмета
     const backgroundImage = getSubjectImage(subject.id, subject.name);
@@ -37,11 +36,11 @@ export default function SubjectCard({
             className="group relative h-64 rounded-2xl overflow-hidden cursor-pointer block"
         >
             {/* ФОТО ПРЕДМЕТА */}
-            <img
+            <Image
                 src={backgroundImage}
                 alt={subject.name}
-                className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                onError={() => setImageError(true)}
+                fill
+                className="object-cover group-hover:scale-105 transition-transform duration-300"
             />
 
             {/* ГРАДИЕНТНЫЙ ОВЕРЛЕЙ (тёмный снизу) */}

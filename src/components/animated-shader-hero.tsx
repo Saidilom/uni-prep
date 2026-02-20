@@ -1,6 +1,15 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect } from 'react';
 
 // Types for component props
+interface WebGLProgramWithUniforms extends WebGLProgram {
+  resolution?: WebGLUniformLocation | null;
+  time?: WebGLUniformLocation | null;
+  move?: WebGLUniformLocation | null;
+  touch?: WebGLUniformLocation | null;
+  pointerCount?: WebGLUniformLocation | null;
+  pointers?: WebGLUniformLocation | null;
+}
+
 interface HeroProps {
   trustBadge?: {
     text: string;
@@ -41,9 +50,9 @@ const useShaderBackground = () => {
     private buffer: WebGLBuffer | null = null;
     private scale: number;
     private shaderSource: string;
-    private mouseMove = [0, 0];
-    private mouseCoords = [0, 0];
-    private pointerCoords = [0, 0];
+    private mouseMove: [number, number] = [0, 0];
+    private mouseCoords: [number, number] = [0, 0];
+    private pointerCoords: [number, number] = [0, 0];
     private nbrOfPointers = 0;
 
     private vertexSrc = `#version 300 es
@@ -69,15 +78,15 @@ void main(){gl_Position=position;}`;
     }
 
     updateMove(deltas: number[]) {
-      this.mouseMove = deltas;
+      this.mouseMove = [deltas[0] || 0, deltas[1] || 0];
     }
 
     updateMouse(coords: number[]) {
-      this.mouseCoords = coords;
+      this.mouseCoords = [coords[0] || 0, coords[1] || 0];
     }
 
     updatePointerCoords(coords: number[]) {
-      this.pointerCoords = coords;
+      this.pointerCoords = [coords[0] || 0, coords[1] || 0];
     }
 
     updatePointerCount(nbr: number) {
@@ -157,12 +166,13 @@ void main(){gl_Position=position;}`;
       gl.enableVertexAttribArray(position);
       gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
 
-      (program as any).resolution = gl.getUniformLocation(program, 'resolution');
-      (program as any).time = gl.getUniformLocation(program, 'time');
-      (program as any).move = gl.getUniformLocation(program, 'move');
-      (program as any).touch = gl.getUniformLocation(program, 'touch');
-      (program as any).pointerCount = gl.getUniformLocation(program, 'pointerCount');
-      (program as any).pointers = gl.getUniformLocation(program, 'pointers');
+      const programWithUniforms = program as WebGLProgramWithUniforms;
+      programWithUniforms.resolution = gl.getUniformLocation(program, 'resolution');
+      programWithUniforms.time = gl.getUniformLocation(program, 'time');
+      programWithUniforms.move = gl.getUniformLocation(program, 'move');
+      programWithUniforms.touch = gl.getUniformLocation(program, 'touch');
+      programWithUniforms.pointerCount = gl.getUniformLocation(program, 'pointerCount');
+      programWithUniforms.pointers = gl.getUniformLocation(program, 'pointers');
     }
 
     render(now = 0) {
@@ -176,12 +186,25 @@ void main(){gl_Position=position;}`;
       gl.useProgram(program);
       gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
       
-      gl.uniform2f((program as any).resolution, this.canvas.width, this.canvas.height);
-      gl.uniform1f((program as any).time, now * 1e-3);
-      gl.uniform2f((program as any).move, ...this.mouseMove);
-      gl.uniform2f((program as any).touch, ...this.mouseCoords);
-      gl.uniform1i((program as any).pointerCount, this.nbrOfPointers);
-      gl.uniform2fv((program as any).pointers, this.pointerCoords);
+      const programWithUniforms = program as WebGLProgramWithUniforms;
+      if (programWithUniforms.resolution) {
+        gl.uniform2f(programWithUniforms.resolution, this.canvas.width, this.canvas.height);
+      }
+      if (programWithUniforms.time) {
+        gl.uniform1f(programWithUniforms.time, now * 1e-3);
+      }
+      if (programWithUniforms.move) {
+        gl.uniform2f(programWithUniforms.move, this.mouseMove[0], this.mouseMove[1]);
+      }
+      if (programWithUniforms.touch) {
+        gl.uniform2f(programWithUniforms.touch, this.mouseCoords[0], this.mouseCoords[1]);
+      }
+      if (programWithUniforms.pointerCount) {
+        gl.uniform1i(programWithUniforms.pointerCount, this.nbrOfPointers);
+      }
+      if (programWithUniforms.pointers) {
+        gl.uniform2fv(programWithUniforms.pointers, this.pointerCoords);
+      }
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     }
   }
@@ -312,6 +335,7 @@ void main(){gl_Position=position;}`;
         rendererRef.current.reset();
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return canvasRef;

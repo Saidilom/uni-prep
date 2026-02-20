@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { adminFetchCollection, adminAddItem, adminDeleteItem } from "@/lib/admin-utils";
 import { Subject } from "@/lib/firestore-schema";
 import { getSubjectImage } from "@/lib/constants";
-import { Plus, Trash2, Edit2, Search } from "lucide-react";
+import { Plus, Trash2, Edit2 } from "lucide-react";
 
 export default function AdminSubjectsPage() {
     const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -14,7 +14,7 @@ export default function AdminSubjectsPage() {
     // Форма
     const [name, setName] = useState("");
     const [emoji, setEmoji] = useState("");
-    const [color, setColor] = useState("#000000");
+    const [color] = useState("#000000");
 
     useEffect(() => {
         adminFetchCollection("subjects", "order").then(data => {
@@ -64,7 +64,7 @@ export default function AdminSubjectsPage() {
             setName("");
             setEmoji("");
             setIsAdding(false);
-        } catch (error) {
+        } catch {
             alert("Ошибка при добавлении предмета");
         }
     };
@@ -74,7 +74,7 @@ export default function AdminSubjectsPage() {
         try {
             await adminDeleteItem("subjects", id);
             setSubjects(prev => prev.filter(s => s.id !== id));
-        } catch (error) {
+        } catch {
             alert("Ошибка при удалении");
         }
     };

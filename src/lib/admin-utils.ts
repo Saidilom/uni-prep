@@ -9,7 +9,6 @@ import {
     where,
     orderBy,
     serverTimestamp,
-    CountSnapshot,
     getCountFromServer
 } from "firebase/firestore";
 import { db } from "./firebase";
@@ -43,7 +42,7 @@ export const fetchAdminStats = async () => {
 /**
  * Универсальный CRUD: Добавление
  */
-export const adminAddItem = async (collectionName: string, data: any) => {
+export const adminAddItem = async (collectionName: string, data: Record<string, unknown>) => {
     try {
         const docRef = await addDoc(collection(db, collectionName), {
             ...data,
@@ -72,7 +71,7 @@ export const adminDeleteItem = async (collectionName: string, id: string) => {
 /**
  * Универсальный CRUD: Обновление
  */
-export const adminUpdateItem = async (collectionName: string, id: string, data: any) => {
+export const adminUpdateItem = async (collectionName: string, id: string, data: Record<string, unknown>) => {
     try {
         const docRef = doc(db, collectionName, id);
         await updateDoc(docRef, {

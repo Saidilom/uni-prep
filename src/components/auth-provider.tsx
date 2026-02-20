@@ -8,7 +8,7 @@ import { getUserProfile } from "../lib/auth-utils";
 import { useRouter, usePathname } from "next/navigation";
 
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
-    const { setUser, setLoading, user, isLoading } = useAuthStore();
+    const { setUser, setLoading } = useAuthStore();
     const router = useRouter();
     const pathname = usePathname();
 

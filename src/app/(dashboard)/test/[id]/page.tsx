@@ -10,7 +10,7 @@ import { doc, setDoc, updateDoc, increment, serverTimestamp, collection, addDoc,
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { CheckCircle2, XCircle, RefreshCw, Home, Award, Medal as MedalIcon, ShieldCheck, AlertCircle } from "lucide-react";
+import { CheckCircle2, XCircle, RefreshCw, Award, Medal as MedalIcon, ShieldCheck, AlertCircle } from "lucide-react";
 import { getMedalByErrors } from "@/lib/constants";
 import Plasma from "@/components/Plasma";
 
@@ -132,7 +132,7 @@ export default function TestPage() {
             const userProgressRef = collection(db, "users", user.id, "userProgress");
             const userProgressSnap = await getDocs(userProgressRef);
 
-            const progressMap: Record<string, any> = {};
+            const progressMap: Record<string, { medal?: string }> = {};
             userProgressSnap.forEach(doc => {
                 progressMap[doc.id] = doc.data();
             });

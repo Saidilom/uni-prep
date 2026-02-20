@@ -3,80 +3,120 @@
 import Link from "next/link";
 import { Subject } from "@/lib/firestore-schema";
 import { useState } from "react";
-import { BookOpen, Layers3 } from "lucide-react";
 import { getSubjectImage } from "@/lib/constants";
 
 interface SubjectCardProps {
     subject: Subject;
+    stars?: number;
+    medals?: {
+        green: number;
+        grey: number;
+        bronze: number;
+    };
+    progress?: number; // процент прогресса (0-100)
 }
 
-export default function SubjectCard({ subject }: SubjectCardProps) {
-    const [isHovered, setIsHovered] = useState(false);
+export default function SubjectCard({
+    subject,
+    stars = 0,
+    medals = { green: 0, grey: 0, bronze: 0 },
+    progress = 0
+}: SubjectCardProps) {
     const [imageError, setImageError] = useState(false);
-    
+
     // Автоматически подставляем изображение на основе ID и названия предмета
-    // Всегда используем функцию маппинга, игнорируя backgroundImage из базы (если он есть)
     const backgroundImage = getSubjectImage(subject.id, subject.name);
 
+    // Вычисляем общее количество медалей
+    const totalMedals = medals.green + medals.grey + medals.bronze;
+    const hasProgress = progress > 0 || stars > 0 || totalMedals > 0;
+
     return (
-        <div
-            className="group relative h-[400px] rounded-3xl overflow-hidden bg-white/5 border border-white/10 backdrop-blur-xl shadow-[0_0_40px_rgba(0,0,0,0.35)] transition-all duration-500 hover:bg-white/7 hover:-translate-y-1 flex flex-col"
-            onMouseEnter={() => setIsHovered(true)}
-            onMouseLeave={() => setIsHovered(false)}
+        <Link
+            href={`/subject/${subject.id}`}
+            className="group relative h-64 rounded-2xl overflow-hidden cursor-pointer block"
         >
-            {/* Top Section - Background Image */}
-            <div className="relative h-56 overflow-hidden">
-                <img
-                    src={backgroundImage}
-                    alt={subject.name}
-                    className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                    onError={() => setImageError(true)}
-                />
-                {/* Light gradient overlay for depth */}
-                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/15 z-10" />
+            {/* ФОТО ПРЕДМЕТА */}
+            <img
+                src={backgroundImage}
+                alt={subject.name}
+                className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                onError={() => setImageError(true)}
+            />
 
-                {/* Stats badges on image */}
-                <div className="absolute bottom-4 left-4 right-4 flex gap-2 z-20">
-                    <div className="px-3 py-1.5 bg-white/10 backdrop-blur rounded-lg border border-white/15">
-                        <span className="flex items-center gap-1.5 text-xs font-semibold text-white/85">
-                            <BookOpen className="w-3.5 h-3.5" />
-                            <span>{subject.topicCount || 0} учебников</span>
-                        </span>
-                    </div>
-                    <div className="px-3 py-1.5 bg-white/10 backdrop-blur rounded-lg border border-white/15">
-                        <span className="flex items-center gap-1.5 text-xs font-semibold text-white/85">
-                            <Layers3 className="w-3.5 h-3.5" />
-                            <span>{subject.questionCount || 0} тем</span>
-                        </span>
-                    </div>
-                </div>
-            </div>
+            {/* ГРАДИЕНТНЫЙ ОВЕРЛЕЙ (тёмный снизу) */}
+            <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/40 to-black/70" />
 
-            {/* Bottom Section - Content Area */}
-            <div className="flex-1 p-6 bg-transparent flex flex-col">
-                {/* Icon + Title */}
-                <div className="flex items-center gap-4 mb-6">
-                    <div className="w-12 h-12 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center text-xl">
-                        <span>{subject.emoji}</span>
+            {/* СОДЕРЖИМОЕ */}
+            <div className="absolute inset-0 flex flex-col justify-between p-6">
+
+                {/* ВЕРХ: ИКОНКА И НАЗВАНИЕ */}
+                <div>
+                    <div className="flex items-center gap-3 mb-2">
+                        <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center text-xl backdrop-blur-sm">
+                            {subject.emoji}
+                        </div>
                     </div>
                     <h3 className="text-2xl font-bold text-white tracking-tight">
                         {subject.name}
                     </h3>
                 </div>
 
-                {/* Start Button */}
-                <div className="mt-auto">
-                    <Link
-                        href={`/subject/${subject.id}`}
-                        className="w-full flex items-center justify-center gap-2 px-6 py-3.5 bg-white/10 text-white rounded-xl font-bold text-sm transition-all hover:bg-white/15 active:scale-95 border border-white/15 backdrop-blur"
-                    >
-                        Начать обучение
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                        </svg>
-                    </Link>
+                {/* НИЗ: ПРОГРЕСС И КНОПКА */}
+                <div className="space-y-4">
+
+                    {/* ЗВЁЗДЫ И МЕДАЛИ */}
+                    {hasProgress && (
+                        <div className="flex gap-4 text-sm text-white/90">
+                            {stars > 0 && (
+                                <span className="flex items-center gap-1">
+                                    <span className="text-base">⭐</span>
+                                    <span className="font-semibold">{stars}</span>
+                                </span>
+                            )}
+                            {medals.green > 0 && (
+                                <span className="flex items-center gap-1">
+                                    <span className="text-base">🟢</span>
+                                    <span className="font-semibold">{medals.green}</span>
+                                </span>
+                            )}
+                            {medals.grey > 0 && (
+                                <span className="flex items-center gap-1 text-white/80">
+                                    <span className="text-base">⚪</span>
+                                    <span className="font-semibold">{medals.grey}</span>
+                                </span>
+                            )}
+                            {medals.bronze > 0 && (
+                                <span className="flex items-center gap-1 text-white/80">
+                                    <span className="text-base">🥉</span>
+                                    <span className="font-semibold">{medals.bronze}</span>
+                                </span>
+                            )}
+                        </div>
+                    )}
+
+                    {/* ПОЛОСА ПРОГРЕССА */}
+                    {progress > 0 && (
+                        <div>
+                            <p className="text-xs text-white/70 mb-2">{progress}% прогресса</p>
+                            <div className="w-full h-2 bg-white/20 rounded-full overflow-hidden">
+                                <div
+                                    className="h-full bg-white rounded-full transition-all duration-300"
+                                    style={{ width: `${progress}%` }}
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    {/* КНОПКА */}
+                    <div className="w-full py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 group/btn">
+                        {hasProgress ? "Продолжить" : "Начать обучение"}
+                        <span className="group-hover/btn:translate-x-1 transition-transform">→</span>
+                    </div>
+
                 </div>
+
             </div>
-        </div>
+        </Link>
     );
 }

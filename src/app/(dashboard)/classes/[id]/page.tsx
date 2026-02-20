@@ -7,8 +7,9 @@ import { db } from "@/lib/firebase";
 import { Class, User } from "@/lib/firestore-schema";
 import { SUBJECTS } from "@/lib/constants";
 import { findStudentById, addStudentToClass, deleteStudentFromClass, deleteClass, fetchClassStudents } from "@/lib/class-utils";
-import { Search, UserPlus, Trash2, ArrowLeft, X, Eye } from "lucide-react";
+import { Search, UserPlus, Trash2, ChevronRight, X, Eye } from "lucide-react";
 import Link from "next/link";
+import Plasma from "@/components/Plasma";
 
 export default function ClassDetailPage() {
     const { id } = useParams();
@@ -103,101 +104,161 @@ export default function ClassDetailPage() {
 
     if (isLoading) {
         return (
-            <div className="flex items-center justify-center py-24">
-                <div className="w-8 h-1 bg-neutral-200 rounded-full overflow-hidden">
-                    <div className="h-full bg-neutral-900 animate-pulse"></div>
+            <div className="relative min-h-[60vh] flex items-center justify-center">
+                <div className="fixed inset-0 z-0">
+                    <Plasma
+                        color="#ffffff"
+                        speed={1.0}
+                        direction="forward"
+                        scale={1.2}
+                        opacity={0.9}
+                        mouseInteractive={true}
+                    />
+                </div>
+                <div className="relative z-10 w-72 h-12 rounded-3xl bg-white/5 border border-white/10 backdrop-blur-xl animate-pulse" />
+            </div>
+        );
+    }
+
+    if (!cls) {
+        return (
+            <div className="relative min-h-[60vh] flex items-center justify-center">
+                <div className="fixed inset-0 z-0">
+                    <Plasma
+                        color="#ffffff"
+                        speed={1.0}
+                        direction="forward"
+                        scale={1.2}
+                        opacity={0.9}
+                        mouseInteractive={true}
+                    />
+                </div>
+                <div className="relative z-10 px-6 py-10 rounded-3xl bg-white/5 border border-white/15 backdrop-blur-xl text-center shadow-[0_0_40px_rgba(0,0,0,0.35)]">
+                    <h2 className="text-2xl font-semibold text-white mb-2">Класс не найден</h2>
+                    <p className="text-white/60 text-sm">Проверьте ссылку и попробуйте снова.</p>
+                    <Link
+                        href="/classes"
+                        className="mt-6 inline-flex items-center justify-center px-6 py-3 rounded-2xl bg-white text-neutral-900 text-sm font-semibold hover:bg-neutral-100 active:scale-[0.97] transition-all"
+                    >
+                        К моим классам
+                    </Link>
                 </div>
             </div>
         );
     }
 
-    if (!cls) return <div className="py-24 text-center">Class not found.</div>;
-
     const subject = SUBJECTS.find((s) => s.id === cls.subjectId);
 
     return (
-        <div className="flex flex-col gap-12">
-            {/* Back Link */}
-            <Link
-                href="/classes"
-                className="flex items-center gap-2 text-sm font-medium text-neutral-500 hover:text-neutral-900 transition-colors"
-            >
-                <ArrowLeft size={16} />
-                Назад к моим классам
-            </Link>
+        <div className="relative flex flex-col gap-10 py-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            {/* Plasma background */}
+            <div className="fixed inset-0 z-0">
+                <Plasma
+                    color="#ffffff"
+                    speed={1.0}
+                    direction="forward"
+                    scale={1.2}
+                    opacity={0.9}
+                    mouseInteractive={true}
+                />
+            </div>
+
+            {/* Breadcrumbs */}
+            <nav className="relative z-10 flex items-center gap-2 text-xs sm:text-sm font-medium text-white/40">
+                <Link href="/classes" className="hover:text-white transition-colors">
+                    Классы
+                </Link>
+                <ChevronRight size={14} className="text-white/20" />
+                <span className="text-white/85">{cls.name}</span>
+            </nav>
 
             {/* Header */}
-            <section>
-                <div className="flex items-center gap-4 mb-4">
+            <section className="relative z-10">
+                <div className="flex items-center gap-4 mb-3">
                     <span className="text-5xl">{subject?.emoji || "📚"}</span>
-                    <h1 className="text-4xl font-semibold tracking-tight text-neutral-900">
-                        {cls.name}.
-                    </h1>
+                    <div className="flex flex-col">
+                        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-white leading-tight">
+                            {cls.name}
+                        </h1>
+                        <span className="text-xs sm:text-sm font-semibold text-white/60 uppercase tracking-[0.18em]">
+                            {subject?.name || "Предмет не указан"} • {students.length} учеников
+                        </span>
+                    </div>
                 </div>
-                <p className="text-neutral-500 leading-relaxed max-w-2xl">
-                    Управление учениками для вашего класса по предмету {subject?.name.toLowerCase()}. Добавляйте учеников по их короткому ID, чтобы отслеживать их прогресс.
-                </p>
             </section>
 
-            {/* Add Student Form */}
-            <section className="bg-neutral-50 border border-neutral-200 rounded-2xl p-8">
-                <h3 className="text-lg font-semibold text-neutral-900 mb-6 tracking-tight">Добавить ученика.</h3>
-                <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-4">
+            {/* Add Student */}
+            <section className="relative z-10 p-8 rounded-[2.5rem] bg-white/5 border border-white/10 backdrop-blur-xl shadow-[0_0_40px_rgba(0,0,0,0.35)] overflow-hidden">
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/10 to-transparent" />
+                <div className="relative flex items-center justify-between gap-4 mb-6">
+                    <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight">
+                        Добавить ученика
+                    </h2>
+                    <span className="text-[10px] uppercase tracking-[0.25em] text-white/45">
+                        по короткому ID
+                    </span>
+                </div>
+
+                <form onSubmit={handleSearch} className="relative flex flex-col sm:flex-row gap-4">
                     <div className="flex-1 relative">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" size={18} />
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/35" size={18} />
                         <input
                             type="text"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder="Введите короткий ID ученика (напр. A1B2C3)..."
-                            className="w-full pl-12 pr-4 py-3 bg-white border border-neutral-200 rounded-xl focus:border-neutral-900 focus:outline-none transition-colors"
+                            placeholder="Короткий ID ученика (например A1B2C3)"
+                            className="w-full pl-12 pr-4 py-3 rounded-2xl bg-white/5 border border-white/15 text-white placeholder:text-white/30 focus:bg-white/10 focus:border-white/35 focus:outline-none transition-all"
                             required
                         />
                     </div>
                     <button
                         type="submit"
                         disabled={isSearching}
-                        className="px-8 py-3 bg-neutral-900 text-white rounded-xl font-medium hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50"
+                        className="inline-flex items-center justify-center px-8 py-3 rounded-2xl bg-white text-neutral-900 text-sm font-semibold shadow-[0_18px_45px_rgba(0,0,0,0.45)] hover:bg-neutral-100 active:scale-[0.97] transition-all disabled:opacity-50"
                     >
-                        {isSearching ? "Поиск..." : "Найти ученика"}
+                        {isSearching ? "Поиск..." : "Найти"}
                     </button>
                 </form>
 
                 {error && (
-                    <p className="mt-4 text-sm text-red-600 font-medium italic animate-in fade-in slide-in-from-top-1">
+                    <div className="relative mt-4 text-sm text-red-300 font-medium animate-in fade-in slide-in-from-top-1">
                         {error}
-                    </p>
+                    </div>
                 )}
 
                 {searchResult && (
-                    <div className="mt-8 p-6 bg-white border border-neutral-200 rounded-xl flex items-center justify-between animate-in fade-in zoom-in duration-200">
+                    <div className="relative mt-6 p-5 rounded-3xl bg-white/5 border border-white/10 backdrop-blur flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in zoom-in duration-200">
                         <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 bg-neutral-900 rounded-2xl flex items-center justify-center text-xl font-bold text-white">
-                                {searchResult.name[0]}
+                            <div className="w-12 h-12 bg-white/10 border border-white/20 rounded-2xl flex items-center justify-center text-xl font-bold text-white">
+                                {searchResult.name?.[0] || "?"}
                             </div>
-                            <div>
-                                <p className="font-semibold text-neutral-900">
+                            <div className="flex flex-col">
+                                <p className="font-semibold text-white">
                                     {searchResult.name} {searchResult.surname || ""}
                                 </p>
-                                <p className="text-sm text-neutral-500">{searchResult.email}</p>
+                                <p className="text-sm text-white/50">{searchResult.email}</p>
                             </div>
                         </div>
                         <button
                             onClick={handleAddStudent}
-                            className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 active:scale-[0.95] transition-all"
+                            className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl bg-emerald-500/90 text-white text-sm font-semibold hover:bg-emerald-500 active:scale-[0.97] transition-all shadow-[0_12px_35px_rgba(0,0,0,0.45)]"
                         >
                             <UserPlus size={18} />
-                            <span>Добавить в класс</span>
+                            <span>Добавить</span>
                         </button>
                     </div>
                 )}
             </section>
 
-            {/* Students List */}
-            <section>
-                <div className="flex items-center justify-between mb-8">
-                    <h2 className="text-2xl font-bold text-neutral-900 tracking-tight">Ученики.</h2>
-                    <span className="text-sm font-medium text-neutral-400">{students.length} учеников</span>
+            {/* Students */}
+            <section className="relative z-10">
+                <div className="flex items-end justify-between gap-4 mb-6">
+                    <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+                        Ученики
+                    </h2>
+                    <span className="text-xs font-bold text-white/60 uppercase tracking-widest bg-white/5 px-3 py-1.5 rounded-xl border border-white/10 backdrop-blur">
+                        {students.length} учеников
+                    </span>
                 </div>
 
                 {students.length > 0 ? (
@@ -205,57 +266,53 @@ export default function ClassDetailPage() {
                         {students.map((student) => (
                             <div
                                 key={student.id}
-                                className="flex items-center justify-between p-6 bg-white border border-neutral-200 rounded-xl hover:border-neutral-300 transition-all group"
+                                className="group flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 rounded-3xl bg-white/5 border border-white/10 backdrop-blur-xl shadow-[0_0_40px_rgba(0,0,0,0.25)] hover:bg-white/8 transition-all"
                             >
-                                <div className="flex items-center gap-4">
-                                    <div className="w-10 h-10 bg-neutral-50 rounded-lg flex items-center justify-center font-bold text-neutral-400">
-                                        {student.name[0]}
+                                <div className="flex items-center gap-4 min-w-0">
+                                    <div className="w-10 h-10 bg-white/10 border border-white/15 rounded-2xl flex items-center justify-center font-bold text-white/80">
+                                        {student.name?.[0] || "?"}
                                     </div>
-                                    <div>
-                                        <p className="font-semibold text-neutral-900">
+                                    <div className="min-w-0">
+                                        <p className="font-semibold text-white truncate">
                                             {student.name} {student.surname || ""}
                                         </p>
-                                        <p className="text-xs text-neutral-500 mt-0.5">{student.email}</p>
+                                        <p className="text-xs text-white/50 mt-0.5 truncate">{student.email}</p>
                                     </div>
                                 </div>
 
-                                <div className="flex items-center gap-6">
-                                    <div className="text-right hidden sm:block">
-                                        <p className="text-xs text-neutral-400 uppercase font-bold tracking-widest leading-none">Роль</p>
-                                        <p className="text-sm text-neutral-600 mt-1 capitalize font-medium">Ученик</p>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <Link
-                                            href={`/student/${student.id}`}
-                                            className="p-2 text-neutral-300 hover:text-neutral-900 hover:bg-neutral-50 rounded-lg transition-all"
-                                            title="Просмотреть профиль"
-                                        >
-                                            <Eye size={20} />
-                                        </Link>
-                                        <button
-                                            onClick={() => handleDeleteStudent(student.id)}
-                                            className="p-2 text-neutral-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                                            title="Удалить из класса"
-                                        >
-                                            <X size={20} />
-                                        </button>
-                                    </div>
+                                <div className="flex items-center justify-between sm:justify-end gap-3">
+                                    <Link
+                                        href={`/student/${student.id}`}
+                                        className="inline-flex items-center justify-center px-4 py-2 rounded-2xl border border-white/15 bg-white/5 text-white/80 hover:bg-white/10 hover:text-white transition-all text-sm"
+                                        title="Просмотреть профиль"
+                                    >
+                                        <Eye size={18} className="mr-2" />
+                                        Профиль
+                                    </Link>
+                                    <button
+                                        onClick={() => handleDeleteStudent(student.id)}
+                                        className="inline-flex items-center justify-center px-4 py-2 rounded-2xl border border-red-400/30 bg-red-500/10 text-red-200 hover:bg-red-500/15 hover:text-red-100 transition-all text-sm"
+                                        title="Удалить из класса"
+                                    >
+                                        <X size={18} className="mr-2" />
+                                        Удалить
+                                    </button>
                                 </div>
                             </div>
                         ))}
                     </div>
                 ) : (
-                    <div className="py-24 text-center rounded-2xl border-2 border-dashed border-neutral-100">
-                        <p className="text-neutral-400 font-medium">В этом классе пока нет учеников.</p>
+                    <div className="py-16 px-6 text-center rounded-[2.5rem] border border-white/10 bg-white/5 backdrop-blur-xl shadow-[0_15px_45px_rgba(0,0,0,0.35)]">
+                        <p className="text-white/60 font-medium">В этом классе пока нет учеников.</p>
                     </div>
                 )}
             </section>
 
             {/* Danger Zone */}
-            <section className="mt-12 pt-12 border-t border-neutral-100 flex justify-center">
+            <section className="relative z-10 pt-2 flex justify-center">
                 <button
                     onClick={handleDeleteClass}
-                    className="flex items-center gap-2 px-6 py-3 text-sm font-medium text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                    className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl border border-red-400/30 bg-red-500/10 text-red-200 hover:bg-red-500/15 hover:text-red-100 active:scale-[0.97] transition-all text-sm font-semibold"
                 >
                     <Trash2 size={16} />
                     Удалить класс

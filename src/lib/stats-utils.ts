@@ -98,3 +98,40 @@ export const fetchUserBadges = async (userId: string) => {
         return [];
     }
 };
+
+/**
+ * Получение прогресса по предмету (медали и прогресс)
+ */
+export const fetchSubjectProgress = async (
+    userId: string, 
+    subjectId: string,
+    topicIds: string[]
+): Promise<{ medals: { green: number; grey: number; bronze: number }; progress: number }> => {
+    try {
+        const progressRef = collection(db, "users", userId, "userProgress");
+        const progressSnap = await getDocs(progressRef);
+        
+        const medals = { green: 0, grey: 0, bronze: 0 };
+        let completedTopics = 0;
+        
+        progressSnap.forEach((doc) => {
+            const data = doc.data() as UserProgress;
+            // Проверяем, относится ли прогресс к теме этого предмета
+            if (topicIds.includes(doc.id)) {
+                if (data.medal === "green") medals.green++;
+                if (data.medal === "grey") medals.grey++;
+                if (data.medal === "bronze") medals.bronze++;
+                if (data.medal !== "none") completedTopics++;
+            }
+        });
+        
+        const progress = topicIds.length > 0 
+            ? Math.round((completedTopics / topicIds.length) * 100) 
+            : 0;
+        
+        return { medals, progress };
+    } catch (error) {
+        console.error("Error fetching subject progress:", error);
+        return { medals: { green: 0, grey: 0, bronze: 0 }, progress: 0 };
+    }
+};

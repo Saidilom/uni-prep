@@ -4,26 +4,71 @@ import { useEffect, useState } from "react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { Subject } from "@/lib/firestore-schema";
 import SubjectCard from "@/components/subject-card";
-import { fetchUserGlobalStats, GlobalStats } from "@/lib/stats-utils";
-import { fetchSubjects } from "@/lib/data-fetching";
+import { fetchUserGlobalStats, GlobalStats, fetchUserSubjectRatings, fetchSubjectProgress } from "@/lib/stats-utils";
+import { fetchSubjects, fetchTextbooksBySubject, fetchTopicsByTextbook } from "@/lib/data-fetching";
 import Plasma from "@/components/Plasma";
+import Particles from "@/components/Particles";
 import { CheckCircle2, Target, Trophy } from "lucide-react";
+
+interface SubjectProgress {
+    stars: number;
+    medals: { green: number; grey: number; bronze: number };
+    progress: number;
+}
 
 export default function HomePage() {
     const { user } = useAuthStore();
     const [stats, setStats] = useState<GlobalStats | null>(null);
     const [subjects, setSubjects] = useState<Subject[]>([]);
+    const [subjectProgress, setSubjectProgress] = useState<Record<string, SubjectProgress>>({});
     const [isLoading, setIsLoading] = useState(true);
 
     // загрузка данных
     useEffect(() => {
-        if (user) {
-            fetchUserGlobalStats(user.id).then(setStats);
-        }
-        fetchSubjects().then((data) => {
-            setSubjects(data);
+        const loadData = async () => {
+            // 1. Всегда сначала грузим предметы и сразу показываем карточки
+            setIsLoading(true);
+            const subjectsData = await fetchSubjects();
+            setSubjects(subjectsData);
             setIsLoading(false);
-        });
+
+            // 2. Если пользователь не авторизован — на этом всё
+            if (!user) return;
+
+            // 3. Параллельно загружаем общую статистику и рейтинги
+            const [globalStats, ratings] = await Promise.all([
+                fetchUserGlobalStats(user.id),
+                fetchUserSubjectRatings(user.id)
+            ]);
+            setStats(globalStats);
+
+            // 4. Прогресс по предметам считаем в фоне, не блокируя отображение карточек
+            const progressEntries = await Promise.all(
+                subjectsData.map(async (subject) => {
+                    const textbooks = await fetchTextbooksBySubject(subject.id);
+
+                    const allTopicIds: string[] = [];
+                    for (const textbook of textbooks) {
+                        const topics = await fetchTopicsByTextbook(textbook.id);
+                        allTopicIds.push(...topics.map((t) => t.id));
+                    }
+
+                    const progress = await fetchSubjectProgress(user.id, subject.id, allTopicIds);
+
+                    const subjectProgress: SubjectProgress = {
+                        stars: ratings[subject.id] || 0,
+                        medals: progress.medals,
+                        progress: progress.progress
+                    };
+
+                    return [subject.id, subjectProgress] as const;
+                })
+            );
+
+            setSubjectProgress(Object.fromEntries(progressEntries));
+        };
+
+        loadData();
     }, [user]);
 
     const statsBlocks = [
@@ -68,8 +113,7 @@ export default function HomePage() {
                     speed={1.0}
                     direction="forward"
                     scale={1.2}
-                    opacity={0.9}
-                    mouseInteractive={true}
+                    opacity={0.9} mouseInteractive={true}
                 />
             </div>
 
@@ -131,14 +175,11 @@ export default function HomePage() {
             {/* Subjects Grid */}
             <div className="relative z-10 mt-6 md:mt-8">
                 <section>
-                    <div className="flex items-center justify-between mb-16 px-2">
-                        <div className="flex items-center gap-4">
-                            <h2 className="text-2xl font-bold text-white tracking-tight">Доступные предметы</h2>
-                            <div className="px-3 py-1 bg-white/10 text-white rounded-full text-[10px] font-bold uppercase tracking-widest border border-white/15">
-                                New
-                            </div>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-10 sm:mb-16 px-2">
+                        <div className="flex items-center gap-3">
+                            <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Доступные предметы</h2>
                         </div>
-                        <span className="text-sm font-bold text-white/60 uppercase tracking-widest bg-white/5 px-4 py-2 rounded-xl border border-white/10 backdrop-blur">
+                        <span className="text-xs sm:text-sm font-bold text-white/60 uppercase tracking-widest bg-white/5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl border border-white/10 backdrop-blur self-start sm:self-auto">
                             {subjects.length} предметов
                         </span>
                     </div>
@@ -151,24 +192,58 @@ export default function HomePage() {
                         </div>
                     ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-                            {subjects.map((subject) => (
-                                <SubjectCard key={subject.id} subject={subject} />
-                            ))}
+                            {subjects.map((subject) => {
+                                const progress = subjectProgress[subject.id] || {
+                                    stars: 0,
+                                    medals: { green: 0, grey: 0, bronze: 0 },
+                                    progress: 0
+                                };
+                                return (
+                                    <SubjectCard
+                                        key={subject.id}
+                                        subject={subject}
+                                        stars={progress.stars}
+                                        medals={progress.medals}
+                                        progress={progress.progress}
+                                    />
+                                );
+                            })}
                         </div>
                     )}
                 </section>
             </div>
 
             {/* Footer Support */}
-            <div className="relative z-10">
-                <section className="py-24 mt-12 bg-neutral-900 rounded-[3rem] text-center relative overflow-hidden">
-                    <h2 className="text-4xl font-bold text-white mb-6">Нужна помощь?</h2>
-                    <p className="text-white/40 max-w-md mx-auto mb-10 font-medium">
-                        Наша команда всегда на связи, чтобы помочь вам с любыми вопросами по обучению.
-                    </p>
-                    <button className="px-10 py-4 bg-white text-neutral-900 rounded-2xl font-bold active:scale-95 transition-all">
-                        Написать в поддержку
-                    </button>
+            <div className="relative z-10 px-4">
+                <section className="py-24 mt-12 bg-white/[0.03] border border-white/10 rounded-[3rem] text-center relative overflow-hidden group backdrop-blur-2xl shadow-[0_20px_50px_rgba(0,0,0,0.3)]">
+                    <div className="absolute inset-0 z-0">
+                        <Particles
+                            className=""
+                            particleCount={200}
+                            particleSpread={6}
+                            speed={0.2}
+                            particleColors={['#ffffff', '#888888', '#ffffff']}
+                            moveParticlesOnHover={false}
+                            particleHoverFactor={0}
+                            alphaParticles={true}
+                            particleBaseSize={80}
+                            sizeRandomness={0.5}
+                            cameraDistance={15}
+                            disableRotation={false}
+                        />
+                    </div>
+                    {/* Reflective glow overlay */}
+                    <div className="absolute inset-0 bg-gradient-to-b from-white/10 to-transparent pointer-events-none" />
+
+                    <div className="relative z-10 px-8">
+                        <h2 className="text-4xl font-bold text-white mb-6">Нужна помощь?</h2>
+                        <p className="text-white/60 max-w-md mx-auto mb-10 font-medium">
+                            Наша команда всегда на связи, чтобы помочь вам с любыми вопросами по обучению.
+                        </p>
+                        <button className="px-10 py-4 bg-white text-black rounded-2xl font-bold active:scale-95 transition-all hover:scale-105 hover:bg-neutral-100 shadow-[0_0_30px_rgba(255,255,255,0.2)]">
+                            Написать в поддержку
+                        </button>
+                    </div>
                 </section>
             </div>
         </div>

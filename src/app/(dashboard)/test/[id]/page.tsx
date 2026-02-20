@@ -10,8 +10,9 @@ import { doc, setDoc, updateDoc, increment, serverTimestamp, collection, addDoc,
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { CheckCircle2, XCircle, ArrowRight, RefreshCw, Home } from "lucide-react";
+import { CheckCircle2, XCircle, RefreshCw, Home, Award, Medal as MedalIcon, ShieldCheck, AlertCircle } from "lucide-react";
 import { getMedalByErrors } from "@/lib/constants";
+import Plasma from "@/components/Plasma";
 
 export default function TestPage() {
     const { id } = useParams();
@@ -39,6 +40,14 @@ export default function TestPage() {
             });
         }
     }, [id]);
+
+    const resetTest = () => {
+        setCurrentIdx(0);
+        setSelectedAnswer(null);
+        setIsAnswered(false);
+        setResults({ correct: 0, errors: 0 });
+        setIsFinished(false);
+    };
 
     const handleAnswer = (option: string) => {
         if (isAnswered) return;
@@ -152,51 +161,144 @@ export default function TestPage() {
         }
     };
 
-    if (isLoading) return <div className="flex items-center justify-center h-screen">Загрузка теста...</div>;
-    if (!topic || questions.length === 0) return <div className="py-24 text-center">Вопросы не найдены</div>;
+    if (isLoading) {
+        return (
+            <div className="relative min-h-screen">
+                <div className="fixed inset-0 z-0">
+                    <Plasma
+                        color="#ffffff"
+                        speed={1.0}
+                        direction="forward"
+                        scale={1.2}
+                        opacity={0.9}
+                        mouseInteractive={true}
+                    />
+                </div>
+                <div className="relative z-10 flex items-center justify-center h-screen text-white/70 text-sm">
+                    Загрузка теста...
+                </div>
+            </div>
+        );
+    }
+
+    if (!topic || questions.length === 0) {
+        return (
+            <div className="relative min-h-screen">
+                <div className="fixed inset-0 z-0">
+                    <Plasma
+                        color="#ffffff"
+                        speed={1.0}
+                        direction="forward"
+                        scale={1.2}
+                        opacity={0.9}
+                        mouseInteractive={true}
+                    />
+                </div>
+                <div className="relative z-10 py-24 text-center text-white/70">
+                    Вопросы не найдены
+                </div>
+            </div>
+        );
+    }
 
     if (isFinished) {
         const medal = getMedalByErrors(results.errors, 1);
-        const medalIcons: Record<string, string> = { green: "🟢", grey: "⚪", bronze: "🥉", none: "⬜" };
+
+        const renderMedalIcon = (type: Medal) => {
+            const baseClasses =
+                "inline-flex items-center justify-center rounded-full shadow-[0_0_80px_rgba(0,0,0,0.6)]";
+
+            switch (type) {
+                case "green":
+                    return (
+                        <div className={`${baseClasses} w-28 h-28 bg-emerald-500/90 border border-emerald-200/80`}>
+                            <ShieldCheck className="w-14 h-14 text-white" />
+                        </div>
+                    );
+                case "grey":
+                    return (
+                        <div className={`${baseClasses} w-28 h-28 bg-neutral-400/80 border border-white/70`}>
+                            <Award className="w-14 h-14 text-white" />
+                        </div>
+                    );
+                case "bronze":
+                    return (
+                        <div className={`${baseClasses} w-28 h-28 bg-orange-500/90 border border-orange-200`}>
+                            <MedalIcon className="w-14 h-14 text-white" />
+                        </div>
+                    );
+                default:
+                    return (
+                        <div className={`${baseClasses} w-28 h-28 bg-neutral-700/90 border border-white/40`}>
+                            <AlertCircle className="w-14 h-14 text-white" />
+                        </div>
+                    );
+            }
+        };
 
         const accuracyPercent = Math.round((results.correct / questions.length) * 100);
-        let resultMessage = "Попробуйте еще раз.";
+        let resultMessage = "Попробуйте ещё раз.";
 
-        if (accuracyPercent >= 87) resultMessage = "Отлично! 🎉";
-        else if (accuracyPercent >= 70) resultMessage = "Хорошо! 👍";
+        if (accuracyPercent >= 87) resultMessage = "Отличный результат";
+        else if (accuracyPercent >= 70) resultMessage = "Хорошо, так держать";
         else if (accuracyPercent >= 50) resultMessage = "Неплохо. Попробуй ещё раз.";
 
         return (
-            <div className="max-w-2xl mx-auto py-16 text-center animate-in fade-in zoom-in duration-500">
-                <div className="text-8xl mb-8">{medalIcons[medal]}</div>
-                <h1 className="text-3xl font-bold mb-4">{resultMessage}</h1>
-
-                <Card className="p-8 bg-neutral-50 border-neutral-200 mb-8">
-                    <div className="grid grid-cols-1 gap-6">
-                        <div className="flex items-center justify-between">
-                            <span className="text-neutral-500">Точность</span>
-                            <span className="text-2xl font-bold text-blue-600">
-                                {Math.round((results.correct / questions.length) * 100)}%
-                            </span>
-                        </div>
-                        <div className="flex items-center justify-between border-t pt-4">
-                            <span className="text-neutral-500">Правильно</span>
-                            <span className="font-semibold">{results.correct} / {questions.length}</span>
-                        </div>
-                        <div className="flex items-center justify-between border-t pt-4">
-                            <span className="text-neutral-500">Ошибки</span>
-                            <span className="font-semibold">{results.errors}</span>
-                        </div>
+            <div className="relative min-h-screen">
+                <div className="fixed inset-0 z-0">
+                    <Plasma
+                        color="#ffffff"
+                        speed={1.0}
+                        direction="forward"
+                        scale={1.2}
+                        opacity={0.9}
+                        mouseInteractive={true}
+                    />
+                </div>
+                <div className="relative z-10 max-w-2xl mx-auto py-16 text-center animate-in fade-in zoom-in duration-500 text-white">
+                    <div className="mb-8 flex justify-center">
+                        {renderMedalIcon(medal)}
                     </div>
-                </Card>
+                    <h1 className="text-3xl font-bold mb-4">{resultMessage}</h1>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <Button onClick={() => router.push(`/textbook/${topic.textbookId}`)} className="h-12 text-lg">
-                        Вернуться к темам
-                    </Button>
-                    <Button variant="outline" onClick={() => window.location.reload()} className="h-12 text-lg">
-                        <RefreshCw className="mr-2" size={20} /> Переделать тест
-                    </Button>
+                    <Card className="p-8 mb-8 bg-white/5 border border-white/15 backdrop-blur-xl shadow-[0_0_40px_rgba(0,0,0,0.45)]">
+                        <div className="grid grid-cols-1 gap-6">
+                            <div className="flex items-center justify-between">
+                                <span className="text-white/60">Точность</span>
+                                <span className="text-2xl font-bold text-white">
+                                    {Math.round((results.correct / questions.length) * 100)}%
+                                </span>
+                            </div>
+                            <div className="flex items-center justify-between border-t border-white/10 pt-4">
+                                <span className="text-white/60">Правильно</span>
+                                <span className="font-semibold text-white">
+                                    {results.correct} / {questions.length}
+                                </span>
+                            </div>
+                            <div className="flex items-center justify-between border-t border-white/10 pt-4">
+                                <span className="text-white/60">Ошибки</span>
+                                <span className="font-semibold text-white">
+                                    {results.errors}
+                                </span>
+                            </div>
+                        </div>
+                    </Card>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <Button
+                            onClick={() => router.push(`/textbook/${topic.textbookId}`)}
+                            className="h-12 text-lg bg-white text-neutral-900 hover:bg-neutral-100"
+                        >
+                            Вернуться к темам
+                        </Button>
+                        <Button
+                            variant="outline"
+                            onClick={resetTest}
+                            className="h-12 text-lg border-white/40 bg-transparent text-white hover:border-white hover:bg-white/10 hover:text-white"
+                        >
+                            <RefreshCw className="mr-2" size={20} /> Пройти ещё раз
+                        </Button>
+                    </div>
                 </div>
             </div>
         );
@@ -206,57 +308,86 @@ export default function TestPage() {
     const progress = ((currentIdx + 1) / questions.length) * 100;
 
     return (
-        <div className="max-w-3xl mx-auto py-8">
-            {/* Progress Header */}
-            <div className="sticky top-0 bg-white z-10 py-4 border-b border-neutral-100 mb-12">
-                <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-neutral-500">
-                        Вопрос {currentIdx + 1} из {questions.length}
-                    </span>
-                    <span className="text-sm font-medium text-neutral-500">
-                        {Math.round(progress)}%
-                    </span>
-                </div>
-                <Progress value={progress} className="h-1.5" />
+        <div className="relative min-h-screen">
+            <div className="fixed inset-0 z-0">
+                <Plasma
+                    color="#ffffff"
+                    speed={1.0}
+                    direction="forward"
+                    scale={1.2}
+                    opacity={0.9}
+                    mouseInteractive={true}
+                />
             </div>
 
-            {/* Question Section */}
-            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <h2 className="text-2xl font-semibold text-neutral-900 mb-12 leading-relaxed">
-                    {currentQuestion.text}
-                </h2>
+            <div className="relative z-10 max-w-3xl mx-auto py-10">
+                {/* Progress Header */}
+                <div className="sticky top-0 z-20 mb-10 py-4 bg-black/20 border-b border-white/10 backdrop-blur">
+                    <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-white/70">
+                            Вопрос {currentIdx + 1} из {questions.length}
+                        </span>
+                        <span className="text-sm font-medium text-white/70">
+                            {Math.round(progress)}%
+                        </span>
+                    </div>
+                    <Progress value={progress} className="h-1.5 bg-white/10" />
+                </div>
 
-                <div className="grid grid-cols-1 gap-4">
-                    {Object.entries(currentQuestion.options).map(([key, value]) => {
-                        const isSelected = selectedAnswer === key;
-                        const isCorrect = key === currentQuestion.correctAnswer;
+                {/* Question Section */}
+                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <h2 className="text-2xl font-semibold text-white mb-10 leading-relaxed">
+                        {currentQuestion.text}
+                    </h2>
 
-                        let variantStyle = "border-neutral-200 hover:border-blue-500 hover:bg-blue-50";
-                        if (isAnswered) {
-                            if (isCorrect) variantStyle = "border-green-500 bg-green-50";
-                            else if (isSelected) variantStyle = "border-red-500 bg-red-50";
-                            else variantStyle = "border-neutral-100 opacity-50";
-                        }
+                    <div className="grid grid-cols-1 gap-4">
+                        {Object.entries(currentQuestion.options).map(([key, value]) => {
+                            const isSelected = selectedAnswer === key;
+                            const isCorrect = key === currentQuestion.correctAnswer;
 
-                        return (
-                            <button
-                                key={key}
-                                onClick={() => handleAnswer(key)}
-                                disabled={isAnswered}
-                                className={`flex items-center gap-4 w-full p-5 border-2 rounded-xl text-left transition-all duration-200 ${variantStyle}`}
-                            >
-                                <span className={`w-8 h-8 rounded-full flex items-center justify-center font-bold border-2 ${isAnswered && isCorrect ? "bg-green-500 border-green-500 text-white" :
-                                    isAnswered && isSelected && !isCorrect ? "bg-red-500 border-red-500 text-white" :
-                                        "border-neutral-200 text-neutral-400"
-                                    }`}>
-                                    {key.toUpperCase()}
-                                </span>
-                                <span className="text-lg text-neutral-800 font-medium">{value}</span>
-                                {isAnswered && isCorrect && <CheckCircle2 className="ml-auto text-green-500" />}
-                                {isAnswered && isSelected && !isCorrect && <XCircle className="ml-auto text-red-500" />}
-                            </button>
-                        );
-                    })}
+                            let variantStyle =
+                                "border-white/15 bg-black/30 hover:border-white/40 hover:bg-white/5 text-white";
+                            if (isAnswered) {
+                                if (isCorrect)
+                                    variantStyle = "border-emerald-400 bg-emerald-500/15 text-white";
+                                else if (isSelected)
+                                    variantStyle = "border-red-400 bg-red-500/15 text-white";
+                                else
+                                    variantStyle =
+                                        "border-white/10 bg-black/40 text-white/50";
+                            }
+
+                            return (
+                                <button
+                                    key={key}
+                                    onClick={() => handleAnswer(key)}
+                                    disabled={isAnswered}
+                                    className={`flex items-center gap-4 w-full p-5 border-2 rounded-2xl text-left transition-all duration-200 backdrop-blur ${variantStyle}`}
+                                >
+                                    <span
+                                        className={`w-8 h-8 rounded-full flex items-center justify-center font-bold border-2 ${
+                                            isAnswered && isCorrect
+                                                ? "bg-emerald-500 border-emerald-400 text-white"
+                                                : isAnswered && isSelected && !isCorrect
+                                                ? "bg-red-500 border-red-400 text-white"
+                                                : "border-white/30 text-white/80"
+                                        }`}
+                                    >
+                                        {key.toUpperCase()}
+                                    </span>
+                                    <span className="text-lg font-medium">
+                                        {value}
+                                    </span>
+                                    {isAnswered && isCorrect && (
+                                        <CheckCircle2 className="ml-auto text-emerald-400" />
+                                    )}
+                                    {isAnswered && isSelected && !isCorrect && (
+                                        <XCircle className="ml-auto text-red-400" />
+                                    )}
+                                </button>
+                            );
+                        })}
+                    </div>
                 </div>
             </div>
         </div>

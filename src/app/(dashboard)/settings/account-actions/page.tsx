@@ -2,10 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { auth, db } from "@/lib/firebase";
 import { logOut } from "@/lib/auth-utils";
-import { deleteUser } from "firebase/auth";
-import { deleteDoc, doc } from "firebase/firestore";
+import supabase from "@/lib/supabase/client";
+import { useAuthStore } from "@/store/useAuthStore";
 
 export default function SettingsAccountActionsPage() {
     const router = useRouter();
@@ -21,16 +20,16 @@ export default function SettingsAccountActionsPage() {
         }
     };
 
+    const { user: currentUser, setUser } = useAuthStore();
+
     const doDelete = async () => {
         if (!confirm("Удалить аккаунт? Это действие необратимо.")) return;
         try {
             setBusy("delete");
-            const u = auth.currentUser;
-            if (!u) return;
-
-            // best-effort cleanup of profile doc
-            await deleteDoc(doc(db, "users", u.uid)).catch(() => {});
-            await deleteUser(u);
+            if (!currentUser) return;
+            await supabase.from("users").delete().eq("id", currentUser.id).catch(() => {});
+            await logOut();
+            setUser(null);
             router.push("/login");
         } catch {
             alert("Не удалось удалить аккаунт. Возможно, нужно заново войти в аккаунт и повторить.");

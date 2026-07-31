@@ -6,9 +6,8 @@ import { useRouter } from "next/navigation";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useAuthStore } from "@/store/useAuthStore";
 import { updateUserProfile, logOut } from "@/lib/auth-utils";
-import { auth, db } from "@/lib/firebase";
-import { deleteUser } from "firebase/auth";
-import { deleteDoc, doc } from "firebase/firestore";
+import supabase from "@/lib/supabase/client";
+import { useAuthStore } from "@/store/useAuthStore";
 import { Check, Copy, Pencil, X, User2, Palette, Trophy, ShieldAlert, Settings } from "lucide-react";
 
 type SectionId = "profile" | "appearance" | "achievements" | "account-actions";
@@ -117,14 +116,17 @@ export default function SettingsPage() {
         }
     };
 
+    const { user: currentUser, setUser: setUserStore } = useAuthStore();
+
     const doDelete = async () => {
         if (!confirm("Удалить аккаунт? Это действие необратимо.")) return;
         try {
             setBusy("delete");
-            const u = auth.currentUser;
-            if (!u) return;
-            await deleteDoc(doc(db, "users", u.uid)).catch(() => {});
-            await deleteUser(u);
+            if (!currentUser) return;
+            // best-effort: delete profile row and sign out
+            await supabase.from("users").delete().eq("id", currentUser.id).catch(() => {});
+            await logOut();
+            setUserStore(null);
             router.push("/login");
         } catch {
             alert("Не удалось удалить аккаунт. Возможно, нужно заново войти в аккаунт и повторить.");

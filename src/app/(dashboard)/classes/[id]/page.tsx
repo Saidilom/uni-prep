@@ -2,9 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import { Class, User } from "@/lib/firestore-schema";
+import supabase from "@/lib/supabase/client";
 import { SUBJECTS } from "@/lib/constants";
 import { findStudentById, addStudentToClass, deleteStudentFromClass, deleteClass, fetchClassStudents } from "@/lib/class-utils";
 import { Search, UserPlus, Trash2, ChevronRight, X, Eye } from "lucide-react";
@@ -25,12 +24,10 @@ export default function ClassDetailPage() {
         const fetchData = async () => {
             if (!id) return;
             try {
-                const classRef = doc(db, "classes", id as string);
-                const classSnap = await getDoc(classRef);
-                if (classSnap.exists()) {
-                    const classData = { id: classSnap.id, ...classSnap.data() } as Class;
+                const { data: classData } = await supabase.from<Class>("classes").select("*").eq("id", id as string).single();
+                if (classData) {
                     setCls(classData);
-                    const studentData = await fetchClassStudents(classData.students);
+                    const studentData = await fetchClassStudents(classData.students || []);
                     setStudents(studentData);
                 }
             } catch (err) {

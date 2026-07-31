@@ -1,5 +1,4 @@
-import { collection, query, where, getDocs, orderBy, doc, getDoc } from "firebase/firestore";
-import { db } from "./firebase";
+import supabase from "./supabase/client";
 import { Textbook, Topic, Subject, Question } from "./firestore-schema";
 import { pageCache } from "./page-cache";
 
@@ -8,59 +7,51 @@ const TTL_QUESTIONS = 2 * 60 * 1000; // 2 min
 
 export const fetchSubjects = (): Promise<Subject[]> =>
     pageCache.fetch("subjects", async () => {
-        const q = query(collection(db, "subjects"), orderBy("order", "asc"));
-        const snap = await getDocs(q);
-        return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Subject);
+        const { data, error } = await supabase.from<Subject>("subjects").select("*").order("order", { ascending: true });
+        return (data || []) as Subject[];
     }, TTL_STATIC);
 
 export const fetchSubjectById = (id: string): Promise<Subject | null> =>
     pageCache.fetch(`subject:${id}`, async () => {
-        const snap = await getDoc(doc(db, "subjects", id));
-        return snap.exists() ? ({ id: snap.id, ...snap.data() } as Subject) : null;
+        const { data, error } = await supabase.from<Subject>("subjects").select("*").eq("id", id).single();
+        return data || null;
     }, TTL_STATIC);
 
 export const fetchTextbookById = (id: string): Promise<Textbook | null> =>
     pageCache.fetch(`textbook:${id}`, async () => {
-        const snap = await getDoc(doc(db, "textbooks", id));
-        return snap.exists() ? ({ id: snap.id, ...snap.data() } as Textbook) : null;
+        const { data } = await supabase.from<Textbook>("textbooks").select("*").eq("id", id).single();
+        return data || null;
     }, TTL_STATIC);
 
 export const fetchTextbooksBySubject = (subjectId: string): Promise<Textbook[]> =>
     pageCache.fetch(`textbooks:${subjectId}`, async () => {
-        const q = query(collection(db, "textbooks"), where("subjectId", "==", subjectId));
-        const snap = await getDocs(q);
-        const textbooks = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Textbook);
+        const { data } = await supabase.from<Textbook>("textbooks").select("*").eq("subjectId", subjectId);
+        const textbooks = (data || []) as Textbook[];
         return textbooks.sort((a, b) => (parseInt(String(a.grade)) || 0) - (parseInt(String(b.grade)) || 0));
     }, TTL_STATIC);
 
 export const fetchTopicById = (id: string): Promise<Topic | null> =>
     pageCache.fetch(`topic:${id}`, async () => {
-        const snap = await getDoc(doc(db, "topics", id));
-        return snap.exists() ? ({ id: snap.id, ...snap.data() } as Topic) : null;
+        const { data } = await supabase.from<Topic>("topics").select("*").eq("id", id).single();
+        return data || null;
     }, TTL_STATIC);
 
 export const fetchTopicsByTextbook = (textbookId: string): Promise<Topic[]> =>
     pageCache.fetch(`topics:${textbookId}`, async () => {
-        const q = query(collection(db, "topics"), where("textbookId", "==", textbookId));
-        const snap = await getDocs(q);
-        const topics = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Topic);
+        const { data } = await supabase.from<Topic>("topics").select("*").eq("textbookId", textbookId);
+        const topics = (data || []) as Topic[];
         return topics.sort((a, b) => a.order - b.order);
     }, TTL_STATIC);
 
 export const fetchTopicsBySubject = (subjectId: string): Promise<Topic[]> =>
     pageCache.fetch(`topics-direct:${subjectId}`, async () => {
-        const q = query(collection(db, "topics"), where("subjectId", "==", subjectId));
-        const snap = await getDocs(q);
-        return snap.docs
-            .map((d) => ({ id: d.id, ...d.data() }) as Topic)
-            .sort((a, b) => a.order - b.order);
+        const { data } = await supabase.from<Topic>("topics").select("*").eq("subjectId", subjectId);
+        return ((data || []) as Topic[]).sort((a, b) => a.order - b.order);
     }, TTL_STATIC);
 
 export const fetchQuestionsByTopic = (topicId: string): Promise<Question[]> =>
     pageCache.fetch(`questions:${topicId}`, async () => {
-        const q = query(collection(db, "questions"), where("topicId", "==", topicId));
-        const snap = await getDocs(q);
-        const questions = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Question);
-        // Shuffle once and cache — consistent order within the session
+        const { data } = await supabase.from<Question>("questions").select("*").eq("topicId", topicId);
+        const questions = (data || []) as Question[];
         return questions.sort(() => Math.random() - 0.5);
     }, TTL_QUESTIONS);

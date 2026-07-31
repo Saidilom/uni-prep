@@ -1,5 +1,4 @@
-import { collection, getDocs } from "firebase/firestore";
-import { db } from "./firebase";
+import supabase from "./supabase/client";
 import { UserProgress, SubjectRating } from "./firestore-schema";
 import { pageCache } from "./page-cache";
 
@@ -15,20 +14,18 @@ export interface GlobalStats {
 
 function fetchRawRatings(userId: string): Promise<Record<string, number>> {
     return pageCache.fetch(`ratings:${userId}`, async () => {
-        const snap = await getDocs(collection(db, "users", userId, "ratings"));
+        const { data } = await supabase.from<SubjectRating>("ratings").select("*").eq("user_id", userId);
         const result: Record<string, number> = {};
-        snap.forEach((d) => {
-            result[d.id] = (d.data() as SubjectRating).stars || 0;
-        });
+        (data || []).forEach((d: any) => { result[d.subjectId] = d.stars || 0; });
         return result;
     }, TTL_USER);
 }
 
 function fetchRawProgress(userId: string): Promise<Map<string, UserProgress>> {
     return pageCache.fetch(`progress:${userId}`, async () => {
-        const snap = await getDocs(collection(db, "users", userId, "userProgress"));
+        const { data } = await supabase.from<UserProgress>("user_progress").select("*").eq("user_id", userId);
         const result = new Map<string, UserProgress>();
-        snap.forEach((d) => result.set(d.id, d.data() as UserProgress));
+        (data || []).forEach((d: any) => result.set(d.topicId, d as UserProgress));
         return result;
     }, TTL_USER);
 }
@@ -103,16 +100,13 @@ export const fetchSubjectProgress = async (
 /** Badges — cached */
 export const fetchUserBadges = (userId: string) =>
     pageCache.fetch(`badges:${userId}`, async () => {
-        const snap = await getDocs(collection(db, "users", userId, "badges"));
-        return snap.docs.map((d) => ({
-            id: d.id,
-            ...d.data(),
-        })) as Array<{
+        const { data } = await supabase.from("badges").select("*").eq("user_id", userId);
+        return (data || []) as Array<{
             id: string;
             name: string;
             description?: string;
             icon?: string;
-            unlockedAt?: Date | { toDate: () => Date } | string | { seconds: number };
+            unlockedAt?: Date | string;
         }>;
     }, TTL_USER);
 

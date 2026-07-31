@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "../lib/firebase";
+import supabase from "@/lib/supabase/client";
 import { useAuthStore } from "../store/useAuthStore";
 import { getUserProfile } from "../lib/auth-utils";
 import { useRouter, usePathname } from "next/navigation";
@@ -13,36 +12,63 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     const pathname = usePathname();
 
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+        const initializeAuth = async () => {
             setLoading(true);
-            if (firebaseUser) {
-                const profile = await getUserProfile(firebaseUser.uid);
+            const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+            if (sessionError) {
+                console.error("Error fetching Supabase session:", sessionError);
+                setUser(null);
+                if (pathname !== "/login" && pathname !== "/") router.push("/login");
+                setLoading(false);
+                return;
+            }
+
+            const currentUser = sessionData?.session?.user ?? null;
+            if (currentUser) {
+                const profile = await getUserProfile(currentUser.id);
                 if (profile) {
                     setUser(profile);
-                    // Если профиль есть и роль выбрана, но мы на логине или онбординге - в дашборд
                     if (profile.role && (pathname === "/login" || pathname === "/onboarding")) {
                         router.push("/");
                     } else if (!profile.role && pathname !== "/onboarding") {
-                        // Если роль не выбрана - на онбординг
                         router.push("/onboarding");
                     }
                 } else {
-                    // Если профиля в БД нет - на онбординг для создания
                     setUser(null);
-                    if (pathname !== "/onboarding") {
-                        router.push("/onboarding");
-                    }
+                    if (pathname !== "/onboarding") router.push("/onboarding");
                 }
             } else {
                 setUser(null);
-                if (pathname !== "/login" && pathname !== "/") {
-                    router.push("/login");
+                if (pathname !== "/login" && pathname !== "/") router.push("/login");
+            }
+            setLoading(false);
+        };
+
+        initializeAuth();
+
+        const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
+            const user = session?.user ?? null;
+            if (user) {
+                const profile = await getUserProfile(user.id);
+                if (profile) {
+                    setUser(profile);
+                    if (profile.role && (pathname === "/login" || pathname === "/onboarding")) {
+                        router.push("/");
+                    } else if (!profile.role && pathname !== "/onboarding") {
+                        router.push("/onboarding");
+                    }
+                } else {
+                    setUser(null);
+                    if (pathname !== "/onboarding") router.push("/onboarding");
                 }
+            } else {
+                setUser(null);
+                if (pathname !== "/login" && pathname !== "/") router.push("/login");
             }
             setLoading(false);
         });
 
-        return () => unsubscribe();
+        return () => listener?.subscription.unsubscribe();
     }, [setUser, setLoading, router, pathname]);
 
     return <>{children}</>;

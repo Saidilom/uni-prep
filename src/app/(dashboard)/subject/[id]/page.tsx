@@ -5,8 +5,6 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Subject, Topic, UserProgress } from "@/lib/firestore-schema";
 import { fetchTextbooksBySubject, fetchSubjectById, fetchTopicsByTextbook, fetchTopicsBySubject } from "@/lib/data-fetching";
-import { db } from "@/lib/firebase";
-import { collection, getDocs, query, where } from "firebase/firestore";
 import { useAuthStore } from "@/store/useAuthStore";
 import {
     ChevronRight,

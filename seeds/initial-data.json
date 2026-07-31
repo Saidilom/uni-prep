@@ -1,0 +1,15 @@
+{
+  "subjects": [
+    { "id": "math", "name": "Mathematics", "emoji": "🧮", "color": "#FFB86B", "order": 1, "backgroundImage": "" },
+    { "id": "physics", "name": "Physics", "emoji": "🧲", "color": "#7DC3FF", "order": 2, "backgroundImage": "" }
+  ],
+  "textbooks": [
+    { "id": "tb-math-9", "subjectId": "math", "title": "Mathematics Grade 9", "grade": "9", "coverImage": "", "createdAt": "2026-01-01T00:00:00.000Z" }
+  ],
+  "topics": [
+    { "id": "t-algebra", "textbookId": "tb-math-9", "subjectId": "math", "title": "Algebra", "order": 1, "totalQuestions": 10 }
+  ],
+  "questions": [
+    { "id": "q1", "topicId": "t-algebra", "text": "2+2=?", "options": { "a": "3", "b": "4", "c": "5", "d": "6" }, "correctAnswer": "b", "difficulty": "easy", "type": "mc" }
+  ]
+}

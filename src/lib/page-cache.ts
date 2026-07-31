@@ -63,4 +63,9 @@ export const pageCache = {
             if (key.startsWith(prefix)) cache.delete(key);
         });
     },
+
+    clear(): void {
+        cache.clear();
+        inflight.clear();
+    },
 };

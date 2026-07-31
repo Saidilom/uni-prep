@@ -1,120 +1,140 @@
-import {
-    GoogleAuthProvider,
-    signInWithPopup,
-    signOut,
-    User as FirebaseUser
-} from "firebase/auth";
-import { doc, getDoc, setDoc } from "firebase/firestore";
-import { auth, db } from "./firebase";
-import { User, UserRole } from "./firestore-schema";
+import supabase from "./supabase/client";
+import { User, UserRole, RegisteredVia } from "./firestore-schema";
 import { pageCache } from "./page-cache";
+import { normalizePhone } from "./phone-utils";
 
-const googleProvider = new GoogleAuthProvider();
+export interface CreateUserProfileInput {
+    role?: UserRole;
+    subjects?: string[];
+    name?: string;
+    surname?: string;
+    phone?: string;
+    registeredVia?: RegisteredVia;
+    isRegistanStudent?: boolean;
+}
 
-/**
- * Вход через Google
- */
 export const signInWithGoogle = async () => {
     try {
-        const result = await signInWithPopup(auth, googleProvider);
-        return result.user;
+        const redirectTo = typeof window !== "undefined" ? window.location.origin : undefined;
+        return supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo } });
     } catch (error) {
         console.error("Error signing in with Google:", error);
         throw error;
     }
 };
 
-/**
- * Выход из системы
- */
 export const logOut = async () => {
     try {
-        await signOut(auth);
+        await supabase.auth.signOut();
+        pageCache.clear();
     } catch (error) {
         console.error("Error signing out:", error);
         throw error;
     }
 };
 
-/**
- * Получение профиля пользователя из Firestore
- */
-export const getUserProfile = (uid: string): Promise<User | null> =>
-    pageCache.fetch(`userProfile:${uid}`, async () => {
-        const snap = await getDoc(doc(db, "users", uid));
-        return snap.exists() ? (snap.data() as User) : null;
-    }, 5 * 60 * 1000);
-
-/**
- * Генерация короткого ID (только англ буквы и цифры)
- */
-const generateShortId = () => {
-    return Math.random().toString(36).substring(2, 8).toUpperCase();
+const normalizeUserRow = (data: any): Partial<User> => {
+    if (!data) return {};
+    return {
+        ...data,
+        subjects: data.subjects ?? [],
+        phone: data.phone ?? "",
+        isRegistanStudent: data.isRegistanStudent ?? data.isregistanstudent ?? false,
+        registeredVia: data.registeredVia ?? data.registeredvia ?? "google",
+        createdAt: data.createdAt ?? data.createdat ?? "",
+        updatedAt: data.updatedAt ?? data.updatedat ?? "",
+        shortId: data.shortId ?? data.shortid ?? "",
+    } as Partial<User>;
 };
 
-/**
- * Создание или обновление профиля пользователя
- */
-export const createUserProfile = async (
-    firebaseUser: FirebaseUser,
-    role?: UserRole,
-    subjects: string[] = [],
-    name?: string,
-    surname?: string
-) => {
-    try {
-        const userRef = doc(db, "users", firebaseUser.uid);
-        const docSnap = await getDoc(userRef);
-
-        // Если профиль уже есть, проверяем shortId
-        let shortId = docSnap.exists() ? (docSnap.data() as User).shortId : "";
-        if (!shortId) {
-            shortId = generateShortId();
+export const getUserProfile = (uid: string): Promise<User | null> =>
+    pageCache.fetch(`userProfile:${uid}`, async () => {
+        const { data, error } = await supabase.from("users").select("*").eq("id", uid).single();
+        if (error) {
+            if (error.code === "PGRST205") {
+                throw new Error("Supabase table public.users не найдена. Создайте таблицу users в Supabase.");
+            }
+            return null;
         }
+        const d = normalizeUserRow(data);
+        return {
+            subjects: [],
+            phone: "",
+            isRegistanStudent: false,
+            registeredVia: "google",
+            ...d,
+            id: uid,
+        } as User;
+    }, 5 * 60 * 1000);
 
-        const userData: Partial<User> = {
-            id: firebaseUser.uid,
-            shortId,
-            email: firebaseUser.email || "",
-            name: name || firebaseUser.displayName || "Ученик",
+const generateShortId = () => Math.random().toString(36).substring(2, 8).toUpperCase();
+
+export const createUserProfile = async (supabaseUser: any, input: CreateUserProfileInput = {}) => {
+    const {
+        role = "student",
+        subjects = [],
+        name,
+        surname,
+        phone,
+        registeredVia = "google",
+        isRegistanStudent = false,
+    } = input;
+
+    const uid = supabaseUser.id;
+    try {
+        const shortId = generateShortId();
+        const resolvedPhone = phone || "";
+
+        const userData = {
+            id: uid,
+            shortid: shortId,
+            email: supabaseUser.email || "",
+            phone: resolvedPhone,
+            name: name || supabaseUser.user_metadata?.full_name || "Ученик",
             surname: surname || "",
-            avatar: firebaseUser.photoURL || "",
-            createdAt: docSnap.exists() ? undefined : new Date().toISOString(),
-            updatedAt: new Date().toISOString()
+            avatar: supabaseUser.user_metadata?.avatar_url || "",
+            role,
+            subjects,
+            isregistanstudent: isRegistanStudent,
+            registeredvia: registeredVia,
+            createdat: new Date().toISOString(),
+            updatedat: new Date().toISOString(),
         };
 
-        if (role) {
-            userData.role = role;
-            userData.subjects = subjects;
+        const { error: upsertError } = await supabase.from("users").upsert(userData);
+        if (upsertError) {
+            console.error("Error upserting user profile:", upsertError);
+            throw upsertError;
         }
 
-        await setDoc(userRef, userData, { merge: true });
-
-        // Get full updated data
-        const finalSnap = await getDoc(userRef);
-        return { id: firebaseUser.uid, ...finalSnap.data() } as User;
+        pageCache.invalidate(`userProfile:${uid}`);
+        return userData as User;
     } catch (error) {
         console.error("Error creating user profile:", error);
         throw error;
     }
 };
 
-/**
- * Редактирование профиля пользователя
- */
-export const updateUserProfile = async (uid: string, data: { name: string; surname?: string }) => {
+export const updateUserProfile = async (uid: string, data: { name: string; surname?: string; phone?: string }) => {
     try {
-        const userRef = doc(db, "users", uid);
-        const updateData = {
-            ...data,
-            updatedAt: new Date().toISOString()
-        };
-        await setDoc(userRef, updateData, { merge: true });
+        const updateData: any = { name: data.name, updatedAt: new Date().toISOString() };
+        if (data.surname !== undefined) updateData.surname = data.surname;
+        if (data.phone) updateData.phone = normalizePhone(data.phone);
 
-        const finalSnap = await getDoc(userRef);
-        return { id: uid, ...finalSnap.data() } as User;
+        await supabase.from("users").update(updateData).eq("id", uid);
+        pageCache.invalidate(`userProfile:${uid}`);
+
+        const { data: final } = await supabase.from("users").select("*").eq("id", uid).single();
+        return final as User;
     } catch (error) {
         console.error("Error updating user profile:", error);
         throw error;
     }
+};
+
+export const setRegistanStudentStatus = async (uid: string, isRegistanStudent: boolean) => {
+    await supabase.from("users").update({ isRegistanStudent, updatedAt: new Date().toISOString() }).eq("id", uid);
+    pageCache.invalidate(`userProfile:${uid}`);
+    const { data: snap } = await supabase.from("users").select("*").eq("id", uid).single();
+    return snap as User;
 };

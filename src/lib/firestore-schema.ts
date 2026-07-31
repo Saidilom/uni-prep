@@ -1,19 +1,26 @@
 /**
- * Firestore logical schema and TypeScript types for the application.
+ * Firestore logical schema and TypeScript types for Registan platform.
  */
 
+// Schema types — decouple from Firebase Timestamp. Use ISO strings or Date where needed.
+
 export type UserRole = "student" | "teacher" | "admin";
+
+export type RegisteredVia = "qr" | "google" | "phone" | "admin";
 
 export interface User {
   id: string; // Firebase UID
   shortId: string; // Короткий ID (только буквы и цифры)
   email: string;
+  phone: string; // Номер телефона (+998...)
   name: string; // Имя
   surname?: string; // Фамилия (опционально)
   role: UserRole;
-  subjects: string[]; // массив ID предметов
-  createdAt: string;
-  updatedAt?: string; // Дата последнего обновления
+  subjects: string[]; // массив ID предметов (legacy, для учителей)
+  isRegistanStudent: boolean; // Статус «Ученик Registan»
+  registeredVia: RegisteredVia;
+  createdAt: string | Date;
+  updatedAt?: string | Date; // Дата последнего обновления
   avatar: string; // URL аватара
 }
 
@@ -34,7 +41,7 @@ export interface Textbook {
   title: string;
   grade: string | number;
   coverImage: string;
-  createdAt: string;
+  createdAt: string | Date;
 }
 
 export interface Topic {
@@ -78,14 +85,14 @@ export interface UserProgress {
   markedQuestions?: number;
   medal: Medal;
   accuracy: number; // процент точности
-  completedAt: string;
+  completedAt: string | Timestamp;
 }
 
 export interface SubjectRating {
   userId: string;
   subjectId: string;
   stars: number;
-  lastUpdated: string;
+  lastUpdated: string | Timestamp;
 }
 
 export interface Class {
@@ -94,7 +101,7 @@ export interface Class {
   name: string;
   subjectId: string;
   students: string[]; // массив ID студентов
-  createdAt: string;
+  createdAt: string | Timestamp;
 }
 
 export interface Badge {
@@ -103,7 +110,7 @@ export interface Badge {
   name: string;
   description: string;
   textbookId: string;
-  unlockedAt: string;
+  unlockedAt: string | Timestamp;
 }
 
 export interface TestResult {
@@ -115,6 +122,137 @@ export interface TestResult {
   correctAnswers: number;
   errors: number;
   timeSpentSeconds: number;
-  completedAt: string;
+  completedAt: string | Timestamp;
+}
+
+/* ─── Placement Test ─────────────────────────────────── */
+
+export interface PlacementQuestion {
+  id: string;
+  text: string;
+  options: { a: string; b: string; c: string; d: string };
+  correctAnswer: string;
+  points?: number;
+  order: number;
+}
+
+export interface PlacementTest {
+  id: string;
+  title: string;
+  description?: string;
+  durationMinutes?: number;
+  passingScore?: number;
+  questionIds: string[];
+  createdAt: string | Timestamp;
+  updatedAt?: string | Timestamp;
+}
+
+export type PlacementAssignmentStatus = "assigned" | "in_progress" | "completed";
+
+export interface PlacementAssignment {
+  id: string;
+  userId: string;
+  testId: string;
+  testTitle: string;
+  status: PlacementAssignmentStatus;
+  assignedBy: string; // admin uid
+  assignedAt: string | Timestamp;
+  startedAt?: string | Timestamp;
+  completedAt?: string | Timestamp;
+}
+
+export interface PlacementAnswerDetail {
+  questionId: string;
+  questionText: string;
+  selectedAnswer: string;
+  correctAnswer: string;
+  isCorrect: boolean;
+  pointsEarned: number;
+}
+
+export interface PlacementResult {
+  id: string;
+  assignmentId: string;
+  userId: string;
+  testId: string;
+  testTitle: string;
+  userName: string;
+  userSurname?: string;
+  userPhone: string;
+  score: number;
+  totalQuestions: number;
+  correctAnswers: number;
+  accuracy: number; // процент 0–100
+  timeSpentSeconds: number;
+  answers: PlacementAnswerDetail[];
+  completedAt: string | Timestamp;
+}
+
+/* ─── Mock Test ──────────────────────────────────────── */
+
+export type MockTestType = "free" | "paid";
+
+export interface MockSection {
+  id: string;
+  title: string;
+  questionIds: string[];
+  order: number;
+}
+
+export interface MockTest {
+  id: string;
+  title: string;
+  description?: string;
+  type: MockTestType;
+  price: number; // сум в UZS, 0 для бесплатных
+  durationMinutes: number;
+  sections: MockSection[];
+  createdAt: string | Timestamp;
+  updatedAt?: string | Timestamp;
+}
+
+export type MockAccessSource = "registan" | "payment" | "admin";
+
+export interface MockAccess {
+  id: string;
+  userId: string;
+  mockTestId: string;
+  source: MockAccessSource;
+  grantedAt: string | Timestamp;
+  paymentId?: string;
+}
+
+export interface MockResult {
+  id: string;
+  userId: string;
+  mockTestId: string;
+  mockTestTitle: string;
+  score: number;
+  totalQuestions: number;
+  correctAnswers: number;
+  accuracy: number;
+  sectionScores: Record<string, number>;
+  timeSpentSeconds: number;
+  completedAt: string | Timestamp;
+}
+
+/* ─── Payments ───────────────────────────────────────── */
+
+export type PaymentStatus = "pending" | "success" | "failed" | "cancelled";
+
+export interface Payment {
+  id: string;
+  userId: string;
+  userName: string;
+  userPhone: string;
+  mockTestId: string;
+  mockTestTitle: string;
+  amount: number;
+  currency: string; // "UZS"
+  status: PaymentStatus;
+  provider: string; // "payme" | "click" | ...
+  providerTransactionId?: string;
+  paidAt?: string | Timestamp;
+  createdAt: string | Timestamp;
 }
 

@@ -1,18 +1,4 @@
-import {
-    collection,
-    doc,
-    addDoc,
-    getDoc,
-    getDocs,
-    query,
-    where,
-    updateDoc,
-    arrayUnion,
-    arrayRemove,
-    deleteDoc,
-    serverTimestamp
-} from "firebase/firestore";
-import { db } from "./firebase";
+import supabase from "./supabase/client";
 import { Class, User } from "./firestore-schema";
 import { pageCache } from "./page-cache";
 
@@ -26,11 +12,11 @@ export const createClass = async (teacherId: string, name: string, subjectId: st
             name,
             subjectId,
             students: [],
-            createdAt: serverTimestamp(),
+            createdAt: new Date().toISOString(),
         };
-        const docRef = await addDoc(collection(db, "classes"), classData);
+        const { data, error } = await supabase.from("classes").insert(classData).select("id").single();
         pageCache.invalidatePrefix(`teacherClasses:${teacherId}`);
-        return { id: docRef.id, ...classData };
+        return { id: data?.id, ...classData } as any;
     } catch (error) {
         console.error("Error creating class:", error);
         throw error;
@@ -42,9 +28,8 @@ export const createClass = async (teacherId: string, name: string, subjectId: st
  */
 export const fetchTeacherClasses = (teacherId: string): Promise<Class[]> =>
     pageCache.fetch(`teacherClasses:${teacherId}`, async () => {
-        const q = query(collection(db, "classes"), where("teacherId", "==", teacherId));
-        const snap = await getDocs(q);
-        return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Class);
+        const { data } = await supabase.from<Class>("classes").select("*").eq("teacherId", teacherId);
+        return (data || []) as Class[];
     }, 2 * 60 * 1000);
 
 /**
@@ -52,17 +37,8 @@ export const fetchTeacherClasses = (teacherId: string): Promise<Class[]> =>
  */
 export const findStudentById = async (shortId: string): Promise<User | null> => {
     try {
-        const q = query(
-            collection(db, "users"),
-            where("shortId", "==", shortId.toUpperCase()),
-            where("role", "==", "student")
-        );
-        const querySnapshot = await getDocs(q);
-
-        if (!querySnapshot.empty) {
-            const doc = querySnapshot.docs[0];
-            return { id: doc.id, ...doc.data() } as User;
-        }
+        const { data } = await supabase.from<User>("users").select("*").eq("shortId", shortId.toUpperCase()).eq("role", "student").limit(1);
+        if (data && data.length > 0) return data[0] as User;
         return null;
     } catch (error) {
         console.error("Error finding student by shortID:", error);
@@ -75,10 +51,10 @@ export const findStudentById = async (shortId: string): Promise<User | null> => 
  */
 export const addStudentToClass = async (classId: string, studentId: string) => {
     try {
-        const classRef = doc(db, "classes", classId);
-        await updateDoc(classRef, {
-            students: arrayUnion(studentId),
-        });
+        const { data } = await supabase.from<Class>("classes").select("students").eq("id", classId).single();
+        const students = (data?.students || []) as string[];
+        if (!students.includes(studentId)) students.push(studentId);
+        await supabase.from("classes").update({ students }).eq("id", classId);
     } catch (error) {
         console.error("Error adding student to class:", error);
         throw error;
@@ -91,17 +67,8 @@ export const addStudentToClass = async (classId: string, studentId: string) => {
 export const fetchClassStudents = async (studentIds: string[]): Promise<User[]> => {
     if (studentIds.length === 0) return [];
     try {
-        const students: User[] = [];
-        // Firestore 'in' query has a limit of 10 IDs. For simplicity, we fetch individually if small.
-        // In production, you'd chunk this.
-        for (const id of studentIds) {
-            const userRef = doc(db, "users", id);
-            const userSnap = await getDoc(userRef);
-            if (userSnap.exists()) {
-                students.push({ id: userSnap.id, ...userSnap.data() } as User);
-            }
-        }
-        return students;
+        const { data } = await supabase.from<User>("users").select("*").in("id", studentIds);
+        return (data || []) as User[];
     } catch (error) {
         console.error("Error fetching class students:", error);
         return [];
@@ -113,10 +80,10 @@ export const fetchClassStudents = async (studentIds: string[]): Promise<User[]> 
  */
 export const deleteStudentFromClass = async (classId: string, studentId: string) => {
     try {
-        const classRef = doc(db, "classes", classId);
-        await updateDoc(classRef, {
-            students: arrayRemove(studentId),
-        });
+        const { data } = await supabase.from<Class>("classes").select("students").eq("id", classId).single();
+        const students = (data?.students || []) as string[];
+        const filtered = students.filter((s) => s !== studentId);
+        await supabase.from("classes").update({ students: filtered }).eq("id", classId);
     } catch (error) {
         console.error("Error deleting student from class:", error);
         throw error;
@@ -128,7 +95,7 @@ export const deleteStudentFromClass = async (classId: string, studentId: string)
  */
 export const deleteClass = async (classId: string) => {
     try {
-        await deleteDoc(doc(db, "classes", classId));
+        await supabase.from("classes").delete().eq("id", classId);
     } catch (error) {
         console.error("Error deleting class:", error);
         throw error;

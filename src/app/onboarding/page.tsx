@@ -6,7 +6,7 @@ import Image from "next/image";
 import { Check, ArrowRight, User, GraduationCap } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { createUserProfile } from "@/lib/auth-utils";
-import { auth } from "@/lib/firebase";
+import supabase from "@/lib/supabase/client";
 import { UserRole } from "@/lib/firestore-schema";
 import { SUBJECTS } from "@/lib/constants";
 
@@ -21,6 +21,54 @@ export default function OnboardingPage() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const router = useRouter();
     const { setUser } = useAuthStore();
+
+    useEffect(() => {
+        // Ensure only users who signed in with Google can access onboarding.
+        // If there's no session or provider isn't Google, send to /login.
+        let mounted = true;
+        (async () => {
+            try {
+                let { data, error } = await supabase.auth.getUser();
+
+                // If there's no user yet, try to parse an OAuth redirect URL
+                // (supabase sets session from URL after provider redirect).
+                if ((!data?.user || error) && typeof window !== "undefined") {
+                    try {
+                        const fromUrl = await supabase.auth.getSessionFromUrl({ storeSession: true });
+                        if (fromUrl?.data?.session) {
+                            // Refresh user after storing session
+                            const refreshed = await supabase.auth.getUser();
+                            data = refreshed.data;
+                            error = refreshed.error;
+                        }
+                    } catch (e) {
+                        // ignore — we'll redirect below if no session
+                    }
+                }
+
+                if (error || !data?.user) {
+                    if (!mounted) return;
+                    router.replace("/login");
+                    return;
+                }
+
+                const user = data.user as any;
+                const identities = user?.identities || [];
+                const signedWithGoogle = identities.some((id: any) => id.provider === "google");
+
+                if (!signedWithGoogle) {
+                    if (!mounted) return;
+                    router.replace("/login");
+                }
+            } catch (err) {
+                console.error("Error checking onboarding access:", err);
+                if (mounted) router.replace("/login");
+            }
+        })();
+        return () => {
+            mounted = false;
+        };
+    }, [router]);
 
     useEffect(() => {
         const root = document.documentElement;
@@ -53,13 +101,17 @@ export default function OnboardingPage() {
 
         try {
             setIsSubmitting(true);
-            const updatedProfile = await createUserProfile(
-                auth.currentUser!,
+            const { data: userData, error: getUserError } = await supabase.auth.getUser();
+            if (getUserError || !userData?.user) {
+                throw new Error("Supabase user not found");
+            }
+            const supabaseUser = userData.user;
+            const updatedProfile = await createUserProfile(supabaseUser, {
                 role,
-                role === "teacher" ? selectedSubjects : [],
+                subjects: role === "teacher" ? selectedSubjects : [],
                 name,
-                surname
-            );
+                surname,
+            });
             setUser(updatedProfile);
             router.push("/");
         } catch (error) {

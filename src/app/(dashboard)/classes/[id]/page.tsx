@@ -24,10 +24,11 @@ export default function ClassDetailPage() {
         const fetchData = async () => {
             if (!id) return;
             try {
-                const { data: classData } = await supabase.from<Class>("classes").select("*").eq("id", id as string).single();
+                const { data: classData } = await supabase.from("classes").select("*").eq("id", id as string).single();
                 if (classData) {
-                    setCls(classData);
-                    const studentData = await fetchClassStudents(classData.students || []);
+                    const nextClass = classData as Class;
+                    setCls(nextClass);
+                    const studentData = await fetchClassStudents(nextClass.students || []);
                     setStudents(studentData);
                 }
             } catch (err) {

@@ -33,17 +33,27 @@ export const logOut = async () => {
     }
 };
 
-const normalizeUserRow = (data: any): Partial<User> => {
+type SupabaseUserProfile = {
+    id: string;
+    email?: string | null;
+    user_metadata?: {
+        full_name?: string | null;
+        avatar_url?: string | null;
+    } | null;
+};
+
+const normalizeUserRow = (data: Record<string, unknown> | null): Partial<User> => {
     if (!data) return {};
+    const row = data as Partial<User> & Record<string, unknown>;
     return {
-        ...data,
-        subjects: data.subjects ?? [],
-        phone: data.phone ?? "",
-        isRegistanStudent: data.isRegistanStudent ?? data.isregistanstudent ?? false,
-        registeredVia: data.registeredVia ?? data.registeredvia ?? "google",
-        createdAt: data.createdAt ?? data.createdat ?? "",
-        updatedAt: data.updatedAt ?? data.updatedat ?? "",
-        shortId: data.shortId ?? data.shortid ?? "",
+        ...row,
+        subjects: (row.subjects as string[] | undefined) ?? [],
+        phone: (row.phone as string | undefined) ?? "",
+        isRegistanStudent: Boolean(row.isRegistanStudent ?? row.isregistanstudent ?? false),
+        registeredVia: (row.registeredVia as RegisteredVia | undefined) ?? (row.registeredvia as RegisteredVia | undefined) ?? "google",
+        createdAt: (row.createdAt as string | undefined) ?? (row.createdat as string | undefined) ?? "",
+        updatedAt: (row.updatedAt as string | undefined) ?? (row.updatedat as string | undefined) ?? "",
+        shortId: (row.shortId as string | undefined) ?? (row.shortid as string | undefined) ?? "",
     } as Partial<User>;
 };
 
@@ -69,7 +79,7 @@ export const getUserProfile = (uid: string): Promise<User | null> =>
 
 const generateShortId = () => Math.random().toString(36).substring(2, 8).toUpperCase();
 
-export const createUserProfile = async (supabaseUser: any, input: CreateUserProfileInput = {}) => {
+export const createUserProfile = async (supabaseUser: SupabaseUserProfile, input: CreateUserProfileInput = {}) => {
     const {
         role = "student",
         subjects = [],
@@ -117,7 +127,7 @@ export const createUserProfile = async (supabaseUser: any, input: CreateUserProf
 
 export const updateUserProfile = async (uid: string, data: { name: string; surname?: string; phone?: string }) => {
     try {
-        const updateData: any = { name: data.name, updatedAt: new Date().toISOString() };
+        const updateData: Record<string, unknown> = { name: data.name, updatedAt: new Date().toISOString() };
         if (data.surname !== undefined) updateData.surname = data.surname;
         if (data.phone) updateData.phone = normalizePhone(data.phone);
 

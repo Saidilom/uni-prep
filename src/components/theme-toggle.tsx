@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { Moon, Sun } from "lucide-react";
+import { APP_THEME_KEY } from "@/lib/app-config";
 
 type ThemeMode = "light" | "dark";
 
-const STORAGE_KEY = "uni-prep-theme";
+const STORAGE_KEY = APP_THEME_KEY;
 
 function applyTheme(mode: ThemeMode) {
     const root = document.documentElement;

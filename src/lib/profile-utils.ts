@@ -15,7 +15,10 @@ export const fetchUserRatings = (userId: string): Promise<Record<string, number>
     pageCache.fetch(`ratings:${userId}`, async () => {
         const { data } = await supabase.from<SubjectRating>("ratings").select("*").eq("user_id", userId);
         const result: Record<string, number> = {};
-        (data || []).forEach((r: any) => { result[r.subjectId] = r.stars || 0; });
+        (data || []).forEach((entry) => {
+            const rating = entry as SubjectRating & { subjectId?: string; stars?: number };
+            if (rating.subjectId) result[rating.subjectId] = rating.stars || 0;
+        });
         return result;
     }, TTL);
 

@@ -5,71 +5,32 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/useAuthStore";
-import { useSubjectsStore } from "@/store/useSubjectsStore";
 import { useSidebarStore } from "@/store/useSidebarStore";
-import { fetchSubjects } from "@/lib/data-fetching";
+import { APP_NAME } from "@/lib/app-config";
 import {
     LayoutDashboard,
-    Award,
     CircleUserRound,
     GraduationCap,
-    BarChart3,
-    Calculator,
-    Atom,
-    FlaskConical,
-    Leaf,
-    Landmark,
-    Globe,
-    BookOpen,
-    Languages,
-    Monitor,
-    Users,
-    Dumbbell,
-    Music,
-    Palette,
-    BookMarked,
+    ClipboardCheck,
+    FileText,
     Settings,
     X,
     PanelLeftClose,
     PanelLeft,
-    type LucideIcon,
 } from "lucide-react";
-
-function getSubjectIcon(name: string): LucideIcon {
-    const n = name.toLowerCase();
-    if (n.includes("матем")) return Calculator;
-    if (n.includes("физик")) return Atom;
-    if (n.includes("хими")) return FlaskConical;
-    if (n.includes("биол")) return Leaf;
-    if (n.includes("истор")) return Landmark;
-    if (n.includes("географ")) return Globe;
-    if (n.includes("литерат")) return BookMarked;
-    if (n.includes("англ") || n.includes("русск") || n.includes("язык")) return Languages;
-    if (n.includes("информ")) return Monitor;
-    if (n.includes("общест")) return Users;
-    if (n.includes("физкульт") || n.includes("спорт")) return Dumbbell;
-    if (n.includes("музык")) return Music;
-    if (n.includes("рисов") || n.includes("изо") || n.includes("черчен")) return Palette;
-    return BookOpen;
-}
 
 const mainLinks = (isTeacher: boolean) => [
     { name: "Главная", href: "/", icon: LayoutDashboard },
     ...(isTeacher ? [{ name: "Мои классы", href: "/classes", icon: GraduationCap }] : []),
-    { name: "Статистика", href: "/statistics", icon: BarChart3 },
-    { name: "Мои достижения", href: "/achievements", icon: Award },
+    { name: "Вступительный тест", href: "/placement", icon: ClipboardCheck },
+    { name: "Mock-тесты", href: "/mock", icon: FileText },
     { name: "Мой профиль", href: "/profile", icon: CircleUserRound },
 ];
 
 function Sidebar() {
     const { user } = useAuthStore();
-    const { subjects, loaded, setSubjects } = useSubjectsStore();
     const { isOpen, isCollapsed, close, toggleCollapsed } = useSidebarStore();
     const pathname = usePathname();
-
-    useEffect(() => {
-        if (!loaded) fetchSubjects().then(setSubjects);
-    }, [loaded, setSubjects]);
 
     useEffect(() => { close(); }, [pathname, close]);
 
@@ -99,16 +60,16 @@ function Sidebar() {
                     {/* Full logo — hidden when collapsed on desktop */}
                     <Link href="/" className={`flex items-center gap-3 ${isCollapsed ? "md:hidden" : ""}`} onClick={close}>
                         <div className="relative w-10 h-10 flex-shrink-0">
-                            <Image src="/gogg.png" alt="UniPrep" fill className="object-contain" priority />
+                            <Image src="/gogg.png" alt={APP_NAME} fill className="object-contain" priority />
                         </div>
-                        <span className="text-lg font-extrabold tracking-tight text-foreground">UniPrep</span>
+                        <span className="text-lg font-extrabold tracking-tight text-foreground">{APP_NAME}</span>
                     </Link>
 
                     {/* Collapsed: just the logo icon */}
                     {isCollapsed && (
-                        <Link href="/" className="hidden md:flex items-center justify-center" onClick={close} title="UniPrep">
+                        <Link href="/" className="hidden md:flex items-center justify-center" onClick={close} title={APP_NAME}>
                             <div className="relative w-8 h-8 flex-shrink-0">
-                                <Image src="/gogg.png" alt="UniPrep" fill className="object-contain" priority />
+                                <Image src="/gogg.png" alt={APP_NAME} fill className="object-contain" priority />
                             </div>
                         </Link>
                     )}
@@ -158,52 +119,8 @@ function Sidebar() {
                     </ul>
                 </nav>
 
-                {/* ── Divider ── */}
-                <div className="mx-3 my-1 border-t border-border" />
-
-                {/* ── Subjects ── */}
-                <div className={`pt-2 pb-3 flex-1 ${isCollapsed ? "md:px-2 px-3" : "px-3"}`}>
-                    <p className={`text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-1.5 ${isCollapsed ? "md:hidden px-3" : "px-3"}`}>
-                        Предметы
-                    </p>
-                    {subjects.length > 0 ? (
-                        <ul className="flex flex-col gap-0.5">
-                            {subjects.map((subject) => {
-                                const active = pathname === `/subject/${subject.id}`;
-                                const Icon = getSubjectIcon(subject.name);
-                                return (
-                                    <li key={subject.id}>
-                                        <Link
-                                            href={`/subject/${subject.id}`}
-                                            title={isCollapsed ? subject.name : undefined}
-                                            className={`flex items-center rounded-lg text-[13px] font-medium transition-colors duration-100
-                                                ${isCollapsed ? "md:justify-center md:px-0 md:py-2 gap-3 px-3 py-2" : "gap-3 px-3 py-2"}
-                                                ${active ? "bg-muted text-foreground font-semibold" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
-                                        >
-                                            <Icon
-                                                size={16}
-                                                className={`flex-shrink-0 transition-colors duration-100 ${active ? "text-foreground" : "text-muted-foreground"}`}
-                                            />
-                                            <span className={`truncate ${isCollapsed ? "md:hidden" : ""}`}>{subject.name}</span>
-                                        </Link>
-                                    </li>
-                                );
-                            })}
-                        </ul>
-                    ) : (
-                        <ul className="flex flex-col gap-0.5">
-                            {[...Array(5)].map((_, i) => (
-                                <li key={i} className={`py-2.5 ${isCollapsed ? "md:px-2 px-3" : "px-3"}`}>
-                                    <div className={`h-3.5 bg-muted rounded animate-pulse ${isCollapsed ? "md:w-6 md:mx-auto" : ""}`}
-                                        style={{ width: isCollapsed ? undefined : `${55 + i * 9}%`, animationDelay: `${i * 60}ms` }} />
-                                </li>
-                            ))}
-                        </ul>
-                    )}
-                </div>
-
                 {/* ── User ── */}
-                <div className={`pt-2 pb-4 border-t border-border mt-auto ${isCollapsed ? "md:px-2 px-3" : "px-3"}`}>
+                <div className={`pt-2 pb-4 border-t border-border mt-auto flex-1 flex flex-col justify-end ${isCollapsed ? "md:px-2 px-3" : "px-3"}`}>
                     <div className={`flex items-center rounded-lg py-2 ${isCollapsed ? "md:justify-center md:px-0 px-3 gap-3" : "px-3 gap-3"}`}>
                         <div
                             className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-[11px] font-bold flex-shrink-0"

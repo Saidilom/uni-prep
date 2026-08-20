@@ -32,8 +32,16 @@ export default function AdminTopicsPage() {
     const [editOrder, setEditOrder] = useState("");
 
     useEffect(() => {
-        adminFetchCollection("subjects", "name").then(data => {
-            setSubjects(data as Subject[]);
+        adminFetchCollection("subjects", "name").then((data) => {
+            const nextSubjects = (data as Array<Record<string, unknown>>).map((item) => ({
+                id: String(item.id ?? ""),
+                name: String(item.name ?? ""),
+                emoji: String(item.emoji ?? ""),
+                color: String(item.color ?? ""),
+                order: Number(item.order ?? 0),
+                backgroundImage: item.backgroundImage ? String(item.backgroundImage) : undefined,
+            })) as Subject[];
+            setSubjects(nextSubjects);
             setIsLoading(false);
         });
     }, []);
@@ -89,7 +97,15 @@ export default function AdminTopicsPage() {
             const created = await adminAddItem("topics", newTopic);
             pageCache.invalidatePrefix("topics");
             useStatsStore.getState().reset();
-            setTopics(prev => [...prev, created as Topic].sort((a, b) => a.order - b.order));
+            const nextTopic = {
+                id: String(created.id ?? ""),
+                title: String(created.title ?? title),
+                order: Number(created.order ?? 0),
+                totalQuestions: Number(created.totalQuestions ?? 0),
+                textbookId: created.textbookId ? String(created.textbookId) : undefined,
+                subjectId: created.subjectId ? String(created.subjectId) : undefined,
+            } as Topic;
+            setTopics(prev => [...prev, nextTopic].sort((a, b) => a.order - b.order));
             setTitle("");
             setOrder("");
             setIsAdding(false);

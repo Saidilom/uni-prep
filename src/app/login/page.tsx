@@ -2,9 +2,12 @@
 
 import { useState, useEffect } from "react";
 import Image from "next/image";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Library, ClipboardCheck, LineChart, type LucideIcon } from "lucide-react";
 import { signInWithGoogle } from "@/lib/auth-utils";
 import { useAuthStore } from "@/store/useAuthStore";
+import supabase from "@/lib/supabase/client";
+import { APP_NAME, APP_THEME_KEY } from "@/lib/app-config";
 
 const features: { icon: LucideIcon; text: string }[] = [
     {
@@ -21,18 +24,18 @@ const features: { icon: LucideIcon; text: string }[] = [
     },
 ];
 
-const THEME_KEY = "uni-prep-theme";
-
 export default function LoginPage() {
     const [error, setError] = useState<string | null>(null);
     const { isLoading } = useAuthStore();
+    const router = useRouter();
+    const searchParams = useSearchParams();
 
     useEffect(() => {
         const root = document.documentElement;
         root.classList.remove("dark");
         return () => {
             try {
-                const saved = localStorage.getItem(THEME_KEY);
+                const saved = localStorage.getItem(APP_THEME_KEY);
                 if (saved === "dark") root.classList.add("dark");
                 else root.classList.remove("dark");
             } catch {
@@ -40,6 +43,42 @@ export default function LoginPage() {
             }
         };
     }, []);
+
+    useEffect(() => {
+        const redirectTarget = searchParams.get("redirectTo");
+        const target = redirectTarget ? decodeURIComponent(redirectTarget) : "/";
+
+        const goToTarget = () => {
+            if (target && target !== "/login") {
+                router.replace(target);
+            } else {
+                router.replace("/");
+            }
+        };
+
+        let active = true;
+        const initialize = async () => {
+            const { data } = await supabase.auth.getSession();
+            if (!active) return;
+            if (data.session) {
+                goToTarget();
+            }
+        };
+
+        void initialize();
+
+        const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+            if (!active) return;
+            if (session?.user) {
+                goToTarget();
+            }
+        });
+
+        return () => {
+            active = false;
+            authListener.subscription.unsubscribe();
+        };
+    }, [router, searchParams]);
 
     const handleLogin = async () => {
         try {
@@ -67,7 +106,7 @@ export default function LoginPage() {
                                 />
                             </div>
                             <span className="text-2xl font-extrabold tracking-tight text-neutral-900 sm:text-[1.75rem]">
-                                UniPrep
+                                {APP_NAME}
                             </span>
                         </div>
                     </div>

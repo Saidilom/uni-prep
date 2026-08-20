@@ -14,9 +14,9 @@ export const createClass = async (teacherId: string, name: string, subjectId: st
             students: [],
             createdAt: new Date().toISOString(),
         };
-        const { data, error } = await supabase.from("classes").insert(classData).select("id").single();
+        const { data } = await supabase.from("classes").insert(classData).select("id").single();
         pageCache.invalidatePrefix(`teacherClasses:${teacherId}`);
-        return { id: data?.id, ...classData } as any;
+        return { id: data?.id, ...classData };
     } catch (error) {
         console.error("Error creating class:", error);
         throw error;

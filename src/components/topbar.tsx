@@ -9,6 +9,7 @@ import { useSubjectsStore } from "@/store/useSubjectsStore";
 import { useSidebarStore } from "@/store/useSidebarStore";
 import { logOut } from "@/lib/auth-utils";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { APP_NAME } from "@/lib/app-config";
 
 type MenuItem = {
     label: string;
@@ -180,7 +181,7 @@ export default function Topbar() {
                     </button>
 
                     {/* App name — mobile only */}
-                    <span className="md:hidden font-extrabold text-base text-foreground tracking-tight">UniPrep</span>
+                    <span className="md:hidden font-extrabold text-base text-foreground tracking-tight">{APP_NAME}</span>
 
                     {/* Desktop search trigger */}
                     <button

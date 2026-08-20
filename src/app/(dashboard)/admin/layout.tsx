@@ -5,7 +5,21 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, BookOpen, Library, ListTree, HelpCircle, ArrowLeft } from "lucide-react";
+import {
+    LayoutDashboard,
+    BookOpen,
+    Library,
+    ListTree,
+    HelpCircle,
+    ArrowLeft,
+    Users,
+    ClipboardCheck,
+    ListChecks,
+    GraduationCap,
+    FileText,
+    CreditCard,
+    QrCode,
+} from "lucide-react";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
     const { user, isLoading } = useAuthStore();
@@ -30,6 +44,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
     const menuItems = [
         { name: "Панель", href: "/admin", icon: LayoutDashboard },
+        { name: "Пользователи", href: "/admin/users", icon: Users },
+        { name: "Placement", href: "/admin/placement", icon: ClipboardCheck },
+        { name: "Результаты Placement", href: "/admin/placement/results", icon: ListChecks },
+        { name: "Ученики Registan", href: "/admin/registan", icon: GraduationCap },
+        { name: "Mock-тесты", href: "/admin/mock-tests", icon: FileText },
+        { name: "Оплаты", href: "/admin/payments", icon: CreditCard },
+        { name: "QR для ресепшена", href: "/admin/qr", icon: QrCode },
+    ];
+
+    const legacyMenuItems = [
         { name: "Предметы", href: "/admin/subjects", icon: BookOpen },
         { name: "Учебники", href: "/admin/textbooks", icon: Library },
         { name: "Темы", href: "/admin/topics", icon: ListTree },
@@ -47,7 +71,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     <span className="font-semibold tracking-tight text-foreground">Админка</span>
                 </div>
 
-                <nav className="mt-4 flex-1 space-y-1 p-4">
+                <nav className="mt-4 flex-1 space-y-1 overflow-y-auto p-4">
                     {menuItems.map((item) => {
                         const isActive = pathname === item.href;
                         return (
@@ -58,6 +82,27 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                                     isActive
                                         ? "bg-foreground text-background"
                                         : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                                }`}
+                            >
+                                <item.icon size={18} />
+                                {item.name}
+                            </Link>
+                        );
+                    })}
+
+                    <p className="px-4 pb-1 pt-5 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/70">
+                        Устаревшее
+                    </p>
+                    {legacyMenuItems.map((item) => {
+                        const isActive = pathname === item.href;
+                        return (
+                            <Link
+                                key={item.href}
+                                href={item.href}
+                                className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-all ${
+                                    isActive
+                                        ? "bg-foreground text-background"
+                                        : "text-muted-foreground/70 hover:bg-muted hover:text-foreground"
                                 }`}
                             >
                                 <item.icon size={18} />
@@ -92,6 +137,24 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                                         isActive
                                             ? "bg-foreground text-background"
                                             : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                                    }`}
+                                >
+                                    <item.icon size={14} />
+                                    {item.name}
+                                </Link>
+                            );
+                        })}
+                        <div className="mx-1 h-5 w-px shrink-0 bg-border" />
+                        {legacyMenuItems.map((item) => {
+                            const isActive = pathname === item.href;
+                            return (
+                                <Link
+                                    key={item.href}
+                                    href={item.href}
+                                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-all shrink-0 ${
+                                        isActive
+                                            ? "bg-foreground text-background"
+                                            : "text-muted-foreground/70 hover:bg-muted hover:text-foreground"
                                     }`}
                                 >
                                     <item.icon size={14} />

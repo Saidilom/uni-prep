@@ -35,8 +35,16 @@ export default function AdminSubjectsPage() {
     const [editBackgroundImage, setEditBackgroundImage] = useState("");
 
     useEffect(() => {
-        adminFetchCollection("subjects", "order").then(data => {
-            setSubjects(data as Subject[]);
+        adminFetchCollection("subjects", "order").then((data) => {
+            const nextSubjects = (data as Array<Record<string, unknown>>).map((item) => ({
+                id: String(item.id ?? ""),
+                name: String(item.name ?? ""),
+                emoji: String(item.emoji ?? ""),
+                color: String(item.color ?? ""),
+                order: Number(item.order ?? 0),
+                backgroundImage: item.backgroundImage ? String(item.backgroundImage) : undefined,
+            })) as Subject[];
+            setSubjects(nextSubjects);
             setIsLoading(false);
         });
     }, []);
@@ -81,7 +89,15 @@ export default function AdminSubjectsPage() {
             const created = await adminAddItem("subjects", newSubject);
             pageCache.invalidatePrefix("subject");
             useStatsStore.getState().reset();
-            setSubjects((prev) => [...prev, created as Subject]);
+            const nextSubject = {
+                id: String(created.id ?? subjectId),
+                name: String(created.name ?? name),
+                emoji: String(created.emoji ?? ""),
+                color: String(created.color ?? color),
+                order: Number(created.order ?? subjects.length),
+                backgroundImage: created.backgroundImage ? String(created.backgroundImage) : undefined,
+            } as Subject;
+            setSubjects((prev) => [...prev, nextSubject]);
             setName("");
             setColor("#6366f1");
             setIsAdding(false);

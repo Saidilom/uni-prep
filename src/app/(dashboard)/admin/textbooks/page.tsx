@@ -23,8 +23,23 @@ export default function AdminTextbooksPage() {
             adminFetchCollection("textbooks"),
             adminFetchCollection("subjects", "name")
         ]).then(([textData, subData]) => {
-            setTextbooks(textData as Textbook[]);
-            setSubjects(subData as Subject[]);
+            const nextTextbooks = (textData as Array<Record<string, unknown>>).map((item) => ({
+                id: String(item.id ?? ""),
+                subjectId: String(item.subjectId ?? ""),
+                title: String(item.title ?? ""),
+                grade: String(item.grade ?? ""),
+                coverImage: item.coverImage ? String(item.coverImage) : undefined,
+            })) as Textbook[];
+            const nextSubjects = (subData as Array<Record<string, unknown>>).map((item) => ({
+                id: String(item.id ?? ""),
+                name: String(item.name ?? ""),
+                emoji: String(item.emoji ?? ""),
+                color: String(item.color ?? ""),
+                order: Number(item.order ?? 0),
+                backgroundImage: item.backgroundImage ? String(item.backgroundImage) : undefined,
+            })) as Subject[];
+            setTextbooks(nextTextbooks);
+            setSubjects(nextSubjects);
             setIsLoading(false);
         });
     }, []);
@@ -37,7 +52,14 @@ export default function AdminTextbooksPage() {
             const created = await adminAddItem("textbooks", newTextbook);
             pageCache.invalidatePrefix("textbooks");
             useStatsStore.getState().reset();
-            setTextbooks(prev => [created as Textbook, ...prev]);
+            const nextTextbook = {
+                id: String(created.id ?? ""),
+                subjectId: String(created.subjectId ?? subjectId),
+                title: String(created.title ?? title),
+                grade: String(created.grade ?? grade),
+                coverImage: created.coverImage ? String(created.coverImage) : undefined,
+            } as Textbook;
+            setTextbooks(prev => [nextTextbook, ...prev]);
             setTitle("");
             setGrade("");
             setIsAdding(false);

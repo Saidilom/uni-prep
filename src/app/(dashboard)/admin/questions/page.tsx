@@ -40,8 +40,15 @@ export default function AdminQuestionsPage() {
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
-        adminFetchCollection("subjects", "name").then(data => {
-            setSubjects(data as Subject[]);
+        adminFetchCollection("subjects", "name").then((data) => {
+            const nextSubjects = (data as Array<Record<string, unknown>>).map((item) => ({
+                id: String(item.id ?? ""),
+                name: String(item.name ?? ""),
+                emoji: String(item.emoji ?? ""),
+                color: String(item.color ?? ""),
+                order: Number(item.order ?? 0),
+            })) as Subject[];
+            setSubjects(nextSubjects);
         });
     }, []);
 
@@ -118,7 +125,16 @@ export default function AdminQuestionsPage() {
             };
             if (uploadedUrl) newQuestion.imageUrl = uploadedUrl;
             const created = await adminAddItem("questions", newQuestion);
-            setQuestions(prev => [created as Question, ...prev]);
+            const nextQuestion = {
+                id: String(created.id ?? ""),
+                topicId: String(created.topicId ?? selectedTopic),
+                text: String(created.text ?? ""),
+                options: (created.options as Record<string, string>) ?? { a: "", b: "", c: "", d: "" },
+                correctAnswer: (created.correctAnswer as "a" | "b" | "c" | "d") ?? "a",
+                difficulty: (created.difficulty as "easy" | "medium" | "hard") ?? "easy",
+                imageUrl: created.imageUrl ? String(created.imageUrl) : undefined,
+            } as Question;
+            setQuestions(prev => [nextQuestion, ...prev]);
             await adminIncrementField("topics", selectedTopic, "totalQuestions", 1);
 
             // Clear form

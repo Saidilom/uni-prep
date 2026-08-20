@@ -1,7 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 
 if (!supabaseUrl || !serviceRoleKey) {
   console.warn("Supabase server client: NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not set");
@@ -9,5 +12,25 @@ if (!supabaseUrl || !serviceRoleKey) {
 
 // Use only in server-side code. Do NOT import this file in client bundles.
 export const supabaseServer = createClient(supabaseUrl, serviceRoleKey);
+
+// Cookie-based client for Route Handlers — identifies the calling user from
+// their session cookie via `auth.getUser()`. Respects RLS (uses the anon key),
+// unlike `supabaseServer` above which bypasses it.
+export function createRouteHandlerClient() {
+  const cookieStore = cookies();
+  return createServerClient(supabaseUrl, anonKey, {
+    cookies: {
+      get(name: string) {
+        return cookieStore.get(name)?.value;
+      },
+      set(name: string, value: string, options: Record<string, unknown>) {
+        cookieStore.set({ name, value, ...options });
+      },
+      remove(name: string, options: Record<string, unknown>) {
+        cookieStore.set({ name, value: "", ...options });
+      },
+    },
+  });
+}
 
 export default supabaseServer;

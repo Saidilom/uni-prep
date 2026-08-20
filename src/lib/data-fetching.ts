@@ -7,13 +7,13 @@ const TTL_QUESTIONS = 2 * 60 * 1000; // 2 min
 
 export const fetchSubjects = (): Promise<Subject[]> =>
     pageCache.fetch("subjects", async () => {
-        const { data, error } = await supabase.from<Subject>("subjects").select("*").order("order", { ascending: true });
+        const { data } = await supabase.from<Subject>("subjects").select("*").order("order", { ascending: true });
         return (data || []) as Subject[];
     }, TTL_STATIC);
 
 export const fetchSubjectById = (id: string): Promise<Subject | null> =>
     pageCache.fetch(`subject:${id}`, async () => {
-        const { data, error } = await supabase.from<Subject>("subjects").select("*").eq("id", id).single();
+        const { data } = await supabase.from<Subject>("subjects").select("*").eq("id", id).single();
         return data || null;
     }, TTL_STATIC);
 

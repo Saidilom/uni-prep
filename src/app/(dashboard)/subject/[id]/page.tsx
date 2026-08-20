@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Subject, Topic, UserProgress } from "@/lib/firestore-schema";
 import { fetchTextbooksBySubject, fetchSubjectById, fetchTopicsByTextbook, fetchTopicsBySubject } from "@/lib/data-fetching";
 import { useAuthStore } from "@/store/useAuthStore";
+import { db, collection, getDocs, query, where } from "@/lib/firebase";
 import {
     ChevronRight,
     Filter,
@@ -287,8 +288,8 @@ export default function SubjectPage() {
                 const map: Record<string, UserProgress> = {};
                 snap.forEach((d) => {
                     if (!idSet.has(d.id)) return;
-                    const raw = d.data() as UserProgress;
-                    map[d.id] = { ...raw, topicId: raw.topicId ?? d.id };
+                    const raw = d.data() as unknown as Partial<UserProgress>;
+                    map[d.id] = { ...raw, topicId: raw.topicId ?? d.id } as UserProgress;
                 });
                 setProgressMap(map);
             } catch (e) {

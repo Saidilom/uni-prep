@@ -16,7 +16,10 @@ function fetchRawRatings(userId: string): Promise<Record<string, number>> {
     return pageCache.fetch(`ratings:${userId}`, async () => {
         const { data } = await supabase.from<SubjectRating>("ratings").select("*").eq("user_id", userId);
         const result: Record<string, number> = {};
-        (data || []).forEach((d: any) => { result[d.subjectId] = d.stars || 0; });
+        (data || []).forEach((entry) => {
+            const rating = entry as SubjectRating & { subjectId?: string; stars?: number };
+            if (rating.subjectId) result[rating.subjectId] = rating.stars || 0;
+        });
         return result;
     }, TTL_USER);
 }
@@ -25,7 +28,10 @@ function fetchRawProgress(userId: string): Promise<Map<string, UserProgress>> {
     return pageCache.fetch(`progress:${userId}`, async () => {
         const { data } = await supabase.from<UserProgress>("user_progress").select("*").eq("user_id", userId);
         const result = new Map<string, UserProgress>();
-        (data || []).forEach((d: any) => result.set(d.topicId, d as UserProgress));
+        (data || []).forEach((entry) => {
+            const progress = entry as UserProgress & { topicId?: string };
+            if (progress.topicId) result.set(progress.topicId, progress as UserProgress);
+        });
         return result;
     }, TTL_USER);
 }

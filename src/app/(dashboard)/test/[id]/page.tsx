@@ -8,11 +8,7 @@ import { fetchTopicById, fetchQuestionsByTopic, fetchTopicsByTextbook } from "@/
 import { useAuthStore } from "@/store/useAuthStore";
 import { invalidateUserCache } from "@/lib/stats-utils";
 import { useStatsStore } from "@/store/useStatsStore";
-import { db } from "@/lib/firebase";
-import {
-    doc, setDoc, updateDoc, increment, serverTimestamp,
-    collection, addDoc, getDoc, getDocs,
-} from "firebase/firestore";
+import { db, doc, setDoc, updateDoc, increment, serverTimestamp, collection, addDoc, getDoc, getDocs } from "@/lib/firebase";
 import {
     CheckCircle2, XCircle, Check,
     Bookmark, BookmarkCheck, ChevronLeft, ChevronRight, Pause, Play, Eye, EyeOff,

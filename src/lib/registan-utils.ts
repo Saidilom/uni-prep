@@ -2,8 +2,10 @@ import supabase from "./supabase/client";
 import { User, PlacementAssignment, MockTest, MockAccess } from "./firestore-schema";
 import { pageCache } from "./page-cache";
 
+export type { MockTest, MockAccess, PlacementAssignment, User } from "./firestore-schema";
+
 export async function fetchAllUsers(): Promise<User[]> {
-  const { data } = await supabase.from<User>("users").select("*").order("createdAt", { ascending: false });
+  const { data } = await supabase.from<User>("users").select("*").order("createdat", { ascending: false });
   return (data || []) as User[];
 }
 
@@ -13,7 +15,7 @@ export async function fetchUserPlacementAssignments(
   return pageCache.fetch(
     `placementAssignments:${userId}`,
     async () => {
-      const { data } = await supabase.from<PlacementAssignment>("placement_assignments").select("*").eq("user_id", userId).order("assignedAt", { ascending: false });
+      const { data } = await supabase.from<PlacementAssignment>("placement_assignments").select("*").eq("user_id", userId).order("assigned_at", { ascending: false });
       return (data || []) as PlacementAssignment[];
     },
     60 * 1000
@@ -21,7 +23,7 @@ export async function fetchUserPlacementAssignments(
 }
 
 export async function fetchAvailableMockTests(): Promise<MockTest[]> {
-  const { data } = await supabase.from<MockTest>("mock_tests").select("*").order("createdAt", { ascending: false });
+  const { data } = await supabase.from<MockTest>("mock_tests").select("*").order("created_at", { ascending: false });
   return (data || []) as MockTest[];
 }
 

@@ -28,52 +28,8 @@ export default function DashboardLayout({
 
     if (isLoading) {
         return (
-            <div className="h-dvh max-h-dvh min-h-0 overflow-hidden bg-muted/50 dark:bg-black">
-                {/* Skeleton sidebar — hidden on mobile */}
-                <aside className="hidden md:flex fixed left-0 top-0 h-screen w-64 bg-white border-r border-gray-100 flex-col z-50 px-3 py-6 gap-2">
-                    <div className="h-10 w-40 bg-gray-100 rounded-xl animate-pulse mx-3 mb-4" />
-                    {[...Array(4)].map((_, i) => (
-                        <div key={i} className="h-10 bg-gray-100 rounded-xl animate-pulse" style={{ animationDelay: `${i * 80}ms` }} />
-                    ))}
-                    <div className="mt-4 mx-3">
-                        <div className="h-3 w-20 bg-gray-100 rounded animate-pulse mb-3" />
-                    </div>
-                    {[...Array(5)].map((_, i) => (
-                        <div key={i} className="h-9 bg-gray-100 rounded-xl animate-pulse" style={{ animationDelay: `${i * 60}ms` }} />
-                    ))}
-                </aside>
-                {/* Skeleton content */}
-                <main className="md:ml-64 flex h-dvh max-h-dvh min-h-0 flex-col overflow-hidden bg-muted/50 dark:bg-black">
-                    <div className="h-16 shrink-0 bg-background/80" />
-                    <div className="mx-4 mb-4 mt-3 flex min-h-0 flex-1 flex-col sm:mx-5 sm:mb-5 sm:mt-4">
-                        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-t-3xl rounded-b-2xl border border-border/45 bg-background shadow-md">
-                            <div className="h-12 shrink-0 border-b border-[hsl(var(--brand-blue))]/18 bg-[hsl(var(--brand-blue-soft))]" />
-                            <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-4 sm:p-8 flex flex-col gap-6">
-                                <div className="h-10 w-64 bg-gray-100 rounded-2xl animate-pulse" />
-                                <div className="h-4 w-full max-w-xs sm:w-96 bg-gray-100 rounded-xl animate-pulse" />
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mt-2">
-                                    {[...Array(3)].map((_, i) => (
-                                        <div
-                                            key={i}
-                                            className="h-32 bg-gray-100 rounded-2xl animate-pulse"
-                                            style={{ animationDelay: `${i * 100}ms` }}
-                                        />
-                                    ))}
-                                </div>
-                                <div className="h-6 w-48 bg-gray-100 rounded-xl animate-pulse mt-4" />
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                                    {[...Array(6)].map((_, i) => (
-                                        <div
-                                            key={i}
-                                            className="h-44 bg-gray-100 rounded-2xl animate-pulse"
-                                            style={{ animationDelay: `${i * 80}ms` }}
-                                        />
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </main>
+            <div className="flex h-dvh items-center justify-center bg-neutral-50">
+                <div className="h-9 w-9 animate-spin rounded-full border-[3px] border-blue-100 border-t-blue-600" />
             </div>
         );
     }

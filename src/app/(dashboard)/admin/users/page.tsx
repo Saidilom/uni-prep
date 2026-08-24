@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Phone, Mail, Shield, Calendar, UserCheck } from "lucide-react";
+import { Phone, Mail, Shield, Calendar, UserCheck, IdCard } from "lucide-react";
 import { User as UserType } from "@/lib/firestore-schema";
 import supabase from "@/lib/supabase/client";
 
-type AdminUser = UserType & { registeredVia?: string };
+type AdminUser = UserType & { registeredVia?: string; shortid?: string };
+
+const studentId = (u: AdminUser) => u.shortId || u.shortid || "";
 
 export default function AdminUsersPage() {
     const [users, setUsers] = useState<AdminUser[]>([]);
@@ -36,7 +38,9 @@ export default function AdminUsersPage() {
     };
 
     const filtered = users.filter((u) =>
-        (u.name + " " + (u.surname || "") + " " + (u.email || "") + " " + (u.phone || "")).toLowerCase().includes(search.toLowerCase())
+        (u.name + " " + (u.surname || "") + " " + (u.email || "") + " " + (u.phone || "") + " " + studentId(u))
+            .toLowerCase()
+            .includes(search.toLowerCase())
     );
 
     return (
@@ -44,14 +48,14 @@ export default function AdminUsersPage() {
             <section>
                 <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Пользователи</h1>
                 <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-                    Все зарегистрированные пользователи. Поиск по имени, email или телефону.
+                    Все зарегистрированные пользователи. Поиск по имени, email, телефону или Student ID.
                 </p>
                 <div className="mt-6">
                     <input
                         type="text"
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        placeholder="Поиск по ФИО, email, телефону…"
+                        placeholder="Поиск по ФИО, email, телефону, Student ID…"
                         className="w-full rounded-2xl border border-border bg-background py-3 pl-4 pr-4 text-foreground placeholder:text-muted-foreground transition-colors focus:border-border focus:outline-none focus:ring-2 focus:ring-ring/25"
                     />
                 </div>
@@ -84,6 +88,7 @@ export default function AdminUsersPage() {
                                             {u.name} {u.surname || ""}
                                         </p>
                                         <div className="mt-0.5 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                                            {studentId(u) && <span className="flex items-center gap-1 font-mono font-semibold"><IdCard size={12} />{studentId(u)}</span>}
                                             {u.email && <span className="flex items-center gap-1"><Mail size={12} />{u.email}</span>}
                                             {u.phone && <span className="flex items-center gap-1"><Phone size={12} />{u.phone}</span>}
                                             <span className="flex items-center gap-1"><Calendar size={12} />{new Date(u.createdAt).toLocaleDateString()}</span>

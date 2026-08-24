@@ -1,7 +1,12 @@
 -- Initial Supabase schema for uni-prep
 
+-- NOTE (added 2026-08-25, see migration 005): public.users.id is TEXT on the
+-- real production project (verified via `supabase db query --linked`), not
+-- uuid. This migration already ran on prod with the text type; the line below
+-- is corrected here only so a fresh `supabase db reset` / local dev DB matches
+-- production. Do not reinterpret this as a change to already-applied history.
 create table if not exists public.users (
-  id uuid primary key,
+  id text primary key,
   shortId text not null,
   email text not null,
   phone text,

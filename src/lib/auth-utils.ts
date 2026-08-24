@@ -77,7 +77,10 @@ export const getUserProfile = (uid: string): Promise<User | null> =>
         } as User;
     }, 5 * 60 * 1000);
 
-const generateShortId = () => Math.random().toString(36).substring(2, 8).toUpperCase();
+const generateShortId = () => `STU-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+
+const UNIQUE_VIOLATION = "23505";
+const MAX_SHORT_ID_ATTEMPTS = 5;
 
 export const createUserProfile = async (supabaseUser: SupabaseUserProfile, input: CreateUserProfileInput = {}) => {
     const {
@@ -92,12 +95,10 @@ export const createUserProfile = async (supabaseUser: SupabaseUserProfile, input
 
     const uid = supabaseUser.id;
     try {
-        const shortId = generateShortId();
         const resolvedPhone = phone || "";
-
-        const userData = {
+        const now = new Date().toISOString();
+        const baseUserData = {
             id: uid,
-            shortid: shortId,
             email: supabaseUser.email || "",
             phone: resolvedPhone,
             name: name || supabaseUser.user_metadata?.full_name || "Ученик",
@@ -107,18 +108,24 @@ export const createUserProfile = async (supabaseUser: SupabaseUserProfile, input
             subjects,
             isregistanstudent: isRegistanStudent,
             registeredvia: registeredVia,
-            createdat: new Date().toISOString(),
-            updatedat: new Date().toISOString(),
+            createdAt: now,
+            updatedAt: now,
         };
 
-        const { error: upsertError } = await supabase.from("users").upsert(userData);
-        if (upsertError) {
-            console.error("Error upserting user profile:", upsertError);
-            throw upsertError;
+        let userData: typeof baseUserData & { shortid: string } = { ...baseUserData, shortid: generateShortId() };
+        for (let attempt = 1; attempt <= MAX_SHORT_ID_ATTEMPTS; attempt++) {
+            const { error: upsertError } = await supabase.from("users").upsert(userData);
+            if (!upsertError) break;
+            const isShortIdConflict = upsertError.code === UNIQUE_VIOLATION && upsertError.message.includes("shortid");
+            if (!isShortIdConflict || attempt === MAX_SHORT_ID_ATTEMPTS) {
+                console.error("Error upserting user profile:", upsertError);
+                throw upsertError;
+            }
+            userData = { ...userData, shortid: generateShortId() };
         }
 
         pageCache.invalidate(`userProfile:${uid}`);
-        return userData as User;
+        return { ...userData, shortId: userData.shortid } as User;
     } catch (error) {
         console.error("Error creating user profile:", error);
         throw error;

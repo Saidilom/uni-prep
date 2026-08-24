@@ -2,12 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Check, Copy } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { createUserProfile } from "@/lib/auth-utils";
 import supabase from "@/lib/supabase/client";
 import { APP_NAME, APP_THEME_KEY, REGISTERED_VIA_KEY } from "@/lib/app-config";
+import RegistanLogo from "@/components/registan-logo";
 import { isValidUzPhone, formatPhoneDisplay, normalizePhone } from "@/lib/phone-utils";
 import type { RegisteredVia } from "@/lib/firestore-schema";
 
@@ -17,6 +17,8 @@ export default function OnboardingPage() {
     const [phone, setPhone] = useState("");
     const [error, setError] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [studentId, setStudentId] = useState<string | null>(null);
+    const [copied, setCopied] = useState(false);
     const router = useRouter();
     const { setUser } = useAuthStore();
 
@@ -117,13 +119,20 @@ export default function OnboardingPage() {
             });
             sessionStorage.removeItem(REGISTERED_VIA_KEY);
             setUser(updatedProfile);
-            router.push("/");
+            setStudentId(updatedProfile.shortId);
         } catch (err) {
             console.error("Error saving profile:", err);
             setError("Ошибка при сохранении профиля.");
         } finally {
             setIsSubmitting(false);
         }
+    };
+
+    const copyStudentId = () => {
+        if (!studentId) return;
+        navigator.clipboard.writeText(studentId);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
     };
 
     const isNameValid = name.length >= 2 && /^[a-zA-Zа-яА-ЯёЁ\s-]+$/.test(name);
@@ -138,15 +147,7 @@ export default function OnboardingPage() {
                 <div className="w-full max-w-md">
                     <div className="mb-8 flex justify-center">
                         <div className="flex items-center gap-3">
-                            <div className="relative h-14 w-14 shrink-0 sm:h-16 sm:w-16">
-                                <Image
-                                    src="/gogg.png"
-                                    alt=""
-                                    fill
-                                    className="object-contain"
-                                    priority
-                                />
-                            </div>
+                            <RegistanLogo className="h-14 w-14 sm:h-16 sm:w-16" />
                             <span className="text-2xl font-extrabold tracking-tight text-neutral-900 sm:text-[1.75rem]">
                                 {APP_NAME}
                             </span>
@@ -154,78 +155,109 @@ export default function OnboardingPage() {
                     </div>
 
                     <div className="overflow-hidden rounded-3xl border border-neutral-200/90 bg-white shadow-md">
-                        <div className="px-6 py-8 sm:px-8 sm:py-9">
-                            <div className="mb-8 text-center">
+                        {studentId ? (
+                            <div className="px-6 py-8 text-center sm:px-8 sm:py-9">
                                 <h1 className="text-2xl font-bold tracking-tight text-neutral-900 sm:text-3xl">
-                                    Ваш профиль
+                                    Готово!
                                 </h1>
                                 <p className="mt-2 text-sm text-neutral-500">
-                                    Администратор увидит вас в панели и назначит тест
+                                    Это ваш ID ученика — сохраните его, он понадобится учителю
                                 </p>
-                            </div>
-                            <div className="mb-8 space-y-4">
-                                <div className="space-y-1.5">
-                                    <label className="ml-0.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                                        Имя
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={name}
-                                        onChange={(e) => setName(e.target.value)}
-                                        placeholder="Ваше имя"
-                                        className="w-full rounded-2xl border border-neutral-200 bg-white p-4 text-neutral-900 placeholder:text-neutral-400 transition-colors focus:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900/10"
-                                        required
-                                    />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <label className="ml-0.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                                        Фамилия
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={surname}
-                                        onChange={(e) => setSurname(e.target.value)}
-                                        placeholder="По желанию"
-                                        className="w-full rounded-2xl border border-neutral-200 bg-white p-4 text-neutral-900 placeholder:text-neutral-400 transition-colors focus:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900/10"
-                                    />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <label className="ml-0.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                                        Номер телефона
-                                    </label>
-                                    <input
-                                        type="tel"
-                                        value={phone}
-                                        onChange={(e) => setPhone(e.target.value)}
-                                        placeholder="+998 90 123 45 67"
-                                        className="w-full rounded-2xl border border-neutral-200 bg-white p-4 text-neutral-900 placeholder:text-neutral-400 transition-colors focus:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900/10"
-                                    />
-                                    {phone && isPhoneValid ? (
-                                        <p className="ml-0.5 text-xs text-neutral-500">
-                                            {formatPhoneDisplay(normalizePhone(phone))}
-                                        </p>
-                                    ) : null}
-                                </div>
-                            </div>
-
-                            {error ? (
-                                <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                                    {error}
-                                </div>
-                            ) : null}
-
-                            <button
-                                type="button"
-                                onClick={() => void handleFinish()}
-                                disabled={!isNameValid || !isPhoneValid || isSubmitting}
-                                className={primaryBtnClass}
-                            >
-                                <span>{isSubmitting ? "Сохранение…" : "Начать работу"}</span>
-                                {!isSubmitting ? (
+                                <button
+                                    type="button"
+                                    onClick={copyStudentId}
+                                    className="mx-auto mt-6 flex items-center gap-3 rounded-2xl border border-neutral-200 bg-neutral-50 px-6 py-4 font-mono text-xl font-bold tracking-widest text-neutral-900 transition-colors hover:bg-neutral-100"
+                                >
+                                    {studentId}
+                                    {copied ? (
+                                        <Check className="h-5 w-5 text-emerald-600" strokeWidth={2.5} />
+                                    ) : (
+                                        <Copy className="h-5 w-5 text-neutral-400" strokeWidth={2} />
+                                    )}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => router.push("/")}
+                                    className={`${primaryBtnClass} mt-8`}
+                                >
+                                    <span>Продолжить</span>
                                     <ArrowRight className="h-4 w-4" strokeWidth={2} />
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="px-6 py-8 sm:px-8 sm:py-9">
+                                <div className="mb-8 text-center">
+                                    <h1 className="text-2xl font-bold tracking-tight text-neutral-900 sm:text-3xl">
+                                        Ваш профиль
+                                    </h1>
+                                    <p className="mt-2 text-sm text-neutral-500">
+                                        Администратор увидит вас в панели и назначит тест
+                                    </p>
+                                </div>
+                                <div className="mb-8 space-y-4">
+                                    <div className="space-y-1.5">
+                                        <label className="ml-0.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                                            Имя
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={name}
+                                            onChange={(e) => setName(e.target.value)}
+                                            placeholder="Ваше имя"
+                                            className="w-full rounded-2xl border border-neutral-200 bg-white p-4 text-neutral-900 placeholder:text-neutral-400 transition-colors focus:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900/10"
+                                            required
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="ml-0.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                                            Фамилия
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={surname}
+                                            onChange={(e) => setSurname(e.target.value)}
+                                            placeholder="По желанию"
+                                            className="w-full rounded-2xl border border-neutral-200 bg-white p-4 text-neutral-900 placeholder:text-neutral-400 transition-colors focus:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900/10"
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="ml-0.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                                            Номер телефона
+                                        </label>
+                                        <input
+                                            type="tel"
+                                            value={phone}
+                                            onChange={(e) => setPhone(e.target.value)}
+                                            placeholder="+998 90 123 45 67"
+                                            className="w-full rounded-2xl border border-neutral-200 bg-white p-4 text-neutral-900 placeholder:text-neutral-400 transition-colors focus:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900/10"
+                                        />
+                                        {phone && isPhoneValid ? (
+                                            <p className="ml-0.5 text-xs text-neutral-500">
+                                                {formatPhoneDisplay(normalizePhone(phone))}
+                                            </p>
+                                        ) : null}
+                                    </div>
+                                </div>
+
+                                {error ? (
+                                    <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                                        {error}
+                                    </div>
                                 ) : null}
-                            </button>
-                        </div>
+
+                                <button
+                                    type="button"
+                                    onClick={() => void handleFinish()}
+                                    disabled={!isNameValid || !isPhoneValid || isSubmitting}
+                                    className={primaryBtnClass}
+                                >
+                                    <span>{isSubmitting ? "Сохранение…" : "Начать работу"}</span>
+                                    {!isSubmitting ? (
+                                        <ArrowRight className="h-4 w-4" strokeWidth={2} />
+                                    ) : null}
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

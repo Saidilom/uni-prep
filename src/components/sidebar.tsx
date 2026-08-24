@@ -2,11 +2,11 @@
 
 import { memo, useEffect } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useSidebarStore } from "@/store/useSidebarStore";
 import { APP_NAME } from "@/lib/app-config";
+import RegistanLogo from "@/components/registan-logo";
 import {
     LayoutDashboard,
     CircleUserRound,
@@ -59,18 +59,14 @@ function Sidebar() {
                 <div className={`shrink-0 pt-4 pb-3 flex items-center border-b border-border ${isCollapsed ? "md:justify-center md:px-0 px-5 justify-between" : "px-5 justify-between"}`}>
                     {/* Full logo — hidden when collapsed on desktop */}
                     <Link href="/" className={`flex items-center gap-3 ${isCollapsed ? "md:hidden" : ""}`} onClick={close}>
-                        <div className="relative w-10 h-10 flex-shrink-0">
-                            <Image src="/gogg.png" alt={APP_NAME} fill className="object-contain" priority />
-                        </div>
+                        <RegistanLogo className="h-10 w-10" />
                         <span className="text-lg font-extrabold tracking-tight text-foreground">{APP_NAME}</span>
                     </Link>
 
                     {/* Collapsed: just the logo icon */}
                     {isCollapsed && (
                         <Link href="/" className="hidden md:flex items-center justify-center" onClick={close} title={APP_NAME}>
-                            <div className="relative w-8 h-8 flex-shrink-0">
-                                <Image src="/gogg.png" alt={APP_NAME} fill className="object-contain" priority />
-                            </div>
+                            <RegistanLogo className="h-8 w-8" />
                         </Link>
                     )}
 

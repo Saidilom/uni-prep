@@ -9,7 +9,8 @@ export default function AdminQRPage() {
     const [dataUrl, setDataUrl] = useState("");
 
     useEffect(() => {
-        const url = typeof window !== "undefined" ? `${window.location.origin}/join?source=reception` : "https://registan.uz/join?source=reception";
+        const base = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== "undefined" ? window.location.origin : "https://registan.uz");
+        const url = `${base}/join?source=reception`;
         setQrUrl(url);
         QRCode.toDataURL(url, { width: 240, margin: 2 }).then(setDataUrl);
     }, []);

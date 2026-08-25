@@ -2,17 +2,18 @@
 
 import { memo, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useSidebarStore } from "@/store/useSidebarStore";
 import { APP_NAME } from "@/lib/app-config";
-import RegistanLogo from "@/components/registan-logo";
 import {
     LayoutDashboard,
     CircleUserRound,
     GraduationCap,
-    ClipboardCheck,
     FileText,
+    IdCard,
+    BarChart3,
     Settings,
     X,
     PanelLeftClose,
@@ -22,9 +23,10 @@ import {
 const mainLinks = (isTeacher: boolean) => [
     { name: "Главная", href: "/", icon: LayoutDashboard },
     ...(isTeacher ? [{ name: "Мои классы", href: "/classes", icon: GraduationCap }] : []),
-    { name: "Вступительный тест", href: "/placement", icon: ClipboardCheck },
     { name: "Mock-тесты", href: "/mock", icon: FileText },
-    { name: "Мой профиль", href: "/profile", icon: CircleUserRound },
+    { name: "Мой ID", href: "/id", icon: IdCard },
+    { name: "Результаты", href: "/results", icon: BarChart3 },
+    { name: "Профиль", href: "/profile", icon: CircleUserRound },
 ];
 
 function Sidebar() {
@@ -56,17 +58,20 @@ function Sidebar() {
                 `}
             >
                 {/* ── Logo ── */}
-                <div className={`shrink-0 pt-4 pb-3 flex items-center border-b border-border ${isCollapsed ? "md:justify-center md:px-0 px-5 justify-between" : "px-5 justify-between"}`}>
+                <div className={`shrink-0 pt-5 pb-4 flex items-center border-b border-border ${isCollapsed ? "md:justify-center md:px-0 px-5 justify-between" : "px-5 justify-between"}`}>
                     {/* Full logo — hidden when collapsed on desktop */}
-                    <Link href="/" className={`flex items-center gap-3 ${isCollapsed ? "md:hidden" : ""}`} onClick={close}>
-                        <RegistanLogo className="h-10 w-10" />
-                        <span className="text-lg font-extrabold tracking-tight text-foreground">{APP_NAME}</span>
+                    <Link href="/" className={`flex flex-1 items-center justify-center ${isCollapsed ? "md:hidden" : ""}`} onClick={close}>
+                        <div className="relative h-14 w-44">
+                            <Image src="/registan-logo.png" alt={APP_NAME} fill className="object-contain" priority />
+                        </div>
                     </Link>
 
                     {/* Collapsed: just the logo icon */}
                     {isCollapsed && (
                         <Link href="/" className="hidden md:flex items-center justify-center" onClick={close} title={APP_NAME}>
-                            <RegistanLogo className="h-8 w-8" />
+                            <div className="relative h-10 w-10">
+                                <Image src="/registan-logo.png" alt={APP_NAME} fill className="object-contain" priority />
+                            </div>
                         </Link>
                     )}
 

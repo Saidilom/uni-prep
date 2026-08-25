@@ -40,7 +40,7 @@ export function usePlacementNotifications() {
             if (seen.has(a.id)) return;
             markSeen(a.id);
             toast.success("Новый Placement-тест назначен", {
-                description: `${a.testTitle ?? a.test_title ?? "Placement-тест"} — нажмите «Placement» в меню, чтобы начать.`,
+                description: `${a.testTitle ?? "Placement-тест"} — нажмите «Placement» в меню, чтобы начать.`,
             });
             incrementUnread();
         };

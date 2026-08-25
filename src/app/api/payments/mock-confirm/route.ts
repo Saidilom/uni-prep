@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerClient, supabaseServer } from "@/lib/supabase/server";
+import { evaluatePaymentConfirmation } from "@/lib/payment-rules";
 
 // Stand-in for a real provider webhook. Triggered directly by the mock
 // checkout UI (src/app/mock/pay/[paymentId]/page.tsx) since there is no
@@ -31,14 +32,21 @@ export async function POST(req: NextRequest) {
     if (paymentError || !payment) {
         return NextResponse.json({ error: "Платёж не найден" }, { status: 404 });
     }
-    if (payment.user_id !== user.id) {
-        return NextResponse.json({ error: "Не авторизован" }, { status: 403 });
-    }
-    if (payment.status !== "pending") {
-        return NextResponse.json({ status: payment.status });
-    }
 
-    if (outcome === "cancelled") {
+    const decision = evaluatePaymentConfirmation({
+        paymentOwnerId: payment.user_id,
+        paymentStatus: payment.status,
+        requestingUserId: user.id,
+        outcome,
+    });
+
+    if (decision.action === "reject") {
+        return NextResponse.json({ error: decision.reason }, { status: decision.httpStatus });
+    }
+    if (decision.action === "already_resolved") {
+        return NextResponse.json({ status: decision.status });
+    }
+    if (decision.action === "cancel") {
         await supabaseServer.from("payments").update({ status: "cancelled" }).eq("id", paymentId);
         return NextResponse.json({ status: "cancelled" });
     }

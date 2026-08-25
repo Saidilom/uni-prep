@@ -2,24 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { useAuthStore } from "@/store/useAuthStore";
-import { useSubjectsStore } from "@/store/useSubjectsStore";
-import { useStatsStore } from "@/store/useStatsStore";
-import { Class, Topic } from "@/lib/firestore-schema";
-import { SUBJECTS } from "@/lib/constants";
+import { Class } from "@/lib/firestore-schema";
 import { fetchStudentClasses } from "@/lib/profile-utils";
-import { fetchSubjects, fetchTextbooksBySubject, fetchTopicsByTextbook } from "@/lib/data-fetching";
-import { fetchUserSubjectRatings, fetchSubjectProgress } from "@/lib/stats-utils";
 import { updateUserProfile } from "@/lib/auth-utils";
-import { Star, ShieldCheck, Copy, Check, Settings2, X } from "lucide-react";
-import { getSubjectMeta, ACCENT_ICON_BG, ACCENT_ICON_COLORS } from "@/lib/subject-icons";
+import { ShieldCheck, Copy, Check, Settings2, X } from "lucide-react";
 
 export default function ProfilePage() {
     const { user, setUser } = useAuthStore();
-    const { subjects, loaded: subjectsLoaded, setSubjects } = useSubjectsStore();
-    const { subjectProgress, loadedForUser, setSubjectProgress, setRatings, setLoadedForUser } = useStatsStore();
 
     const [classes, setClasses] = useState<Class[]>([]);
-    const [ratings, setLocalRatings] = useState<Record<string, number>>({});
     const [isLoading, setIsLoading] = useState(true);
     const [copied, setCopied] = useState(false);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -33,38 +24,9 @@ export default function ProfilePage() {
         setNewSurname(user.surname || "");
 
         const load = async () => {
-            // Subjects — global store
-            const subjectsData = subjectsLoaded ? subjects : await fetchSubjects().then((s) => { setSubjects(s); return s; });
-
-            // Classes — always need for this user (short TTL cached)
-            const [classesData, ratingsData] = await Promise.all([
-                user.role === "student" ? fetchStudentClasses(user.id) : Promise.resolve([]),
-                fetchUserSubjectRatings(user.id),
-            ]);
+            const classesData = user.role === "student" ? await fetchStudentClasses(user.id) : [];
             setClasses(classesData);
-            setLocalRatings(ratingsData);
             setIsLoading(false);
-
-            // Progress — skip if already loaded for this user in store
-            if (loadedForUser === user.id) return;
-
-            setRatings(ratingsData);
-            setLoadedForUser(user.id);
-
-            await Promise.all(
-                subjectsData.map(async (subject) => {
-                    const textbooks = await fetchTextbooksBySubject(subject.id);
-                    const allTopicIds: string[] = (
-                        await Promise.all(textbooks.map((tb) => fetchTopicsByTextbook(tb.id)))
-                    ).flat().map((t: Topic) => t.id);
-                    const progress = await fetchSubjectProgress(user.id, subject.id, allTopicIds);
-                    setSubjectProgress(subject.id, {
-                        stars: ratingsData[subject.id] || 0,
-                        medals: progress.medals,
-                        progress: progress.progress,
-                    });
-                })
-            );
         };
 
         load();
@@ -94,8 +56,6 @@ export default function ProfilePage() {
     };
 
     if (!user) return null;
-
-    const displaySubjects = subjectsLoaded ? subjects : [];
 
     return (
         <div className="flex flex-col gap-12 py-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -179,18 +139,12 @@ export default function ProfilePage() {
                         </div>
                     ) : classes.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {classes.map((cls) => {
-                                const subject = SUBJECTS.find(s => s.id === cls.subjectId);
-                                return (
-                                    <div key={cls.id} className="p-5 bg-muted/50 border border-border rounded-2xl flex items-center gap-4">
-                                        <span className="text-3xl">{subject?.emoji || "📚"}</span>
-                                        <div>
-                                            <h3 className="font-semibold text-foreground">{cls.name}</h3>
-                                            <p className="text-sm text-muted-foreground">{subject?.name}</p>
-                                        </div>
-                                    </div>
-                                );
-                            })}
+                            {classes.map((cls) => (
+                                <div key={cls.id} className="p-5 bg-muted/50 border border-border rounded-2xl flex items-center gap-4">
+                                    <span className="text-3xl">👥</span>
+                                    <h3 className="font-semibold text-foreground">{cls.name}</h3>
+                                </div>
+                            ))}
                         </div>
                     ) : (
                         <div className="p-12 text-center rounded-2xl border border-border bg-muted/50 text-muted-foreground font-medium">
@@ -199,53 +153,6 @@ export default function ProfilePage() {
                     )}
                 </section>
             )}
-
-            <section>
-                <div className="flex items-center justify-between mb-5">
-                    <h2 className="text-xl font-bold text-foreground tracking-tight">Прогресс по предметам</h2>
-                    <p className="text-sm text-muted-foreground">% пройденных тем</p>
-                </div>
-                {isLoading ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {[1, 2, 3, 4, 5, 6].map(n => <div key={n} className="h-28 bg-muted rounded-2xl animate-pulse border border-border" />)}
-                    </div>
-                ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {displaySubjects.map((subject) => {
-                            const prog = subjectProgress[subject.id];
-                            const pct = prog?.progress ?? 0;
-                            const medals = prog?.medals ?? { green: 0, grey: 0, bronze: 0 };
-                            const stars = ratings[subject.id] || 0;
-                            const { icon: Icon, accent } = getSubjectMeta(subject.name, subject.id);
-                            return (
-                                <div key={subject.id} className="p-5 bg-muted/50 border border-border rounded-2xl flex flex-col gap-3 hover:bg-muted transition-all">
-                                    <div className="flex items-center gap-3">
-                                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${ACCENT_ICON_BG[accent]}`}>
-                                            <Icon size={17} className={ACCENT_ICON_COLORS[accent]} />
-                                        </div>
-                                        <span className="text-sm font-bold text-foreground tracking-tight flex-1 truncate">{subject.name}</span>
-                                        <span className="text-xs font-bold text-muted-foreground">{pct}%</span>
-                                    </div>
-                                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-border">
-                                        <div className="h-full bg-foreground rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
-                                    </div>
-                                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                                        {medals.green > 0 && <span>🟢 {medals.green}</span>}
-                                        {medals.grey > 0 && <span>⚪ {medals.grey}</span>}
-                                        {medals.bronze > 0 && <span>🥉 {medals.bronze}</span>}
-                                        {stars > 0 && (
-                                            <span className="ml-auto flex items-center gap-1">
-                                                <Star size={11} className="fill-yellow-400 text-yellow-400" />
-                                                {stars}
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
-            </section>
         </div>
     );
 }

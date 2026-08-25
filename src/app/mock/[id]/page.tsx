@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Image from "next/image";
 import { Clock, ArrowLeft, CheckCircle2, Trophy, X, Calendar, Timer } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import supabase from "@/lib/supabase/client";
@@ -17,6 +18,7 @@ type Question = {
     text: string;
     options: Record<string, string>;
     points: number;
+    image_url?: string | null;
 };
 
 type AnswerState = Record<string, string>;
@@ -61,8 +63,26 @@ export default function MockTestPage() {
     const load = useCallback(async () => {
         if (!id || !user) return;
         setLoading(true);
-        const { data: accessData } = await supabase.from("mock_access").select("*").eq("user_id", user.id).eq("mock_test_id", id as string).single();
-        if (!accessData) {
+        const { data: accessData } = await supabase.from("mock_access").select("*").eq("user_id", user.id).eq("mock_test_id", id as string).maybeSingle();
+        let hasAccess = !!accessData;
+        if (!hasAccess) {
+            const { data: testMeta } = await supabase.from("mock_tests").select("type").eq("id", id as string).single();
+            if (testMeta?.type === "class_only") {
+                const { data: memberships } = await supabase.from("class_members").select("class_id").eq("student_id", user.id);
+                const classIds = (memberships || []).map((m) => m.class_id as string);
+                if (classIds.length > 0) {
+                    const { data: assignment } = await supabase
+                        .from("mock_class_assignments")
+                        .select("id")
+                        .eq("mock_test_id", id as string)
+                        .in("class_id", classIds)
+                        .limit(1)
+                        .maybeSingle();
+                    hasAccess = !!assignment;
+                }
+            }
+        }
+        if (!hasAccess) {
             router.push("/mock");
             return;
         }
@@ -119,6 +139,14 @@ export default function MockTestPage() {
                 if (user && typeof window !== "undefined") {
                     window.localStorage.removeItem(`mock_start_${id}_${user.id}`);
                 }
+                // Fire-and-forget: recalibrates Rasch item difficulty/person
+                // ability for the whole test using every attempt on record,
+                // not just this one. Never blocks showing the result.
+                fetch("/api/rasch/recalculate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ mockTestId: id }),
+                }).catch(() => {});
             }
         } finally {
             setSubmitting(false);
@@ -287,6 +315,9 @@ export default function MockTestPage() {
 
             {q && (
                 <div className="rounded-3xl border border-border bg-card p-8 shadow-sm space-y-6">
+                    {q.image_url && (
+                        <Image src={q.image_url} alt="" width={600} height={320} className="max-h-72 w-auto rounded-2xl border border-border object-contain" />
+                    )}
                     <p className="text-lg font-semibold text-foreground">{q.text}</p>
                     <div className="grid grid-cols-1 gap-3">
                         {["a", "b", "c", "d"].map((key) => (

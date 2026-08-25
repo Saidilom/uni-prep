@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Clock, ArrowLeft, CheckCircle2, Trophy, X, Calendar, Timer } from "lucide-react";
+import Image from "next/image";
+import { Clock, ArrowLeft, CheckCircle2, Trophy, Calendar, Timer } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useToast } from "@/hooks/useToast";
 import supabase from "@/lib/supabase/client";
@@ -13,6 +14,7 @@ type Question = {
     text: string;
     options: Record<string, string>;
     points: number;
+    image_url?: string | null;
 };
 
 type Assignment = {
@@ -26,20 +28,11 @@ type Assignment = {
     completed_at?: string | null;
 };
 
-type AnswerDetail = {
-    questionId: string;
-    questionText: string;
-    selectedAnswer: string;
-    isCorrect: boolean;
-    pointsEarned: number;
-};
-
 type PlacementResult = {
     resultId: string;
     score: number;
     total: number;
     percentage: number;
-    answers: AnswerDetail[];
     completedAt: string;
     timeSpentSeconds: number;
     testTitle: string;
@@ -63,7 +56,6 @@ export default function PlacementTestPage() {
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [result, setResult] = useState<PlacementResult | null>(null);
-    const [showAnswers, setShowAnswers] = useState(false);
     const [timeLeft, setTimeLeft] = useState<number | null>(null);
     const [timeLimitSeconds, setTimeLimitSeconds] = useState<number | null>(null);
     const [currentQ, setCurrentQ] = useState(0);
@@ -91,22 +83,18 @@ export default function PlacementTestPage() {
 
             if (data) {
                 pageCache.invalidatePrefix("placementAssignments:");
-                const correctAnswers = (data.answers || []).filter(
-                    (a: AnswerDetail) => a.isCorrect
-                ).length;
                 setResult({
                     resultId: data.resultId,
                     score: data.score,
                     total: data.total,
                     percentage: data.percentage,
-                    answers: (data.answers || []) as AnswerDetail[],
                     completedAt: new Date().toISOString(),
                     timeSpentSeconds: Math.max(0, timeSpent),
                     testTitle: assignment.test_title,
                     userName: user?.name || "",
                     userSurname: user?.surname || "",
                     userPhone: user?.phone || "",
-                    correctAnswers,
+                    correctAnswers: data.correctAnswers,
                 });
                 setAssignment((prev) => prev ? { ...prev, status: "completed" } : prev);
             }
@@ -165,7 +153,6 @@ export default function PlacementTestPage() {
                     score: resultData.score,
                     total: resultData.total_questions,
                     percentage: resultData.accuracy,
-                    answers: (resultData.answers || []) as AnswerDetail[],
                     completedAt: resultData.completed_at,
                     timeSpentSeconds: resultData.time_spent_seconds,
                     testTitle: resultData.test_title,
@@ -321,45 +308,13 @@ export default function PlacementTestPage() {
                         </div>
                     </div>
 
-                    {result.answers && result.answers.length > 0 && (
-                        <button
-                            onClick={() => setShowAnswers(true)}
-                            className="mt-6 inline-flex items-center gap-2 rounded-2xl border border-border px-6 py-3 text-sm font-semibold hover:bg-muted transition-colors"
-                        >
-                            Подробности ответов
-                        </button>
-                    )}
-
                     <button
                         onClick={() => router.push("/placement")}
-                        className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-foreground px-6 py-3 text-sm font-semibold text-background shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
+                        className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-foreground px-6 py-3 text-sm font-semibold text-background shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
                     >
                         <ArrowLeft size={18} /> К списку тестов
                     </button>
                 </div>
-
-                {showAnswers && result.answers && (
-                    <div className="fixed inset-0 z-[500] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowAnswers(false)}>
-                        <div className="w-full max-w-2xl rounded-3xl border border-border bg-card shadow-xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
-                            <div className="p-6 border-b border-border flex items-center justify-between">
-                                <h2 className="text-xl font-bold text-foreground">Детализация ответов</h2>
-                                <button onClick={() => setShowAnswers(false)} className="h-9 w-9 rounded-2xl border border-border bg-card hover:bg-muted transition-colors flex items-center justify-center">
-                                    <X size={16} className="text-muted-foreground" />
-                                </button>
-                            </div>
-                            <div className="p-6 space-y-3 max-h-[60vh] overflow-y-auto">
-                                {result.answers.map((a, i) => (
-                                    <div key={i} className={`rounded-xl border p-4 ${a.isCorrect ? "border-emerald-200 bg-emerald-50 dark:bg-emerald-950/30" : "border-red-200 bg-red-50 dark:bg-red-950/30"}`}>
-                                        <p className="text-sm font-medium text-foreground">{i + 1}. {a.questionText}</p>
-                                        <p className="mt-1 text-xs text-muted-foreground">
-                                            Ваш ответ: {a.selectedAnswer ? a.selectedAnswer.toUpperCase() : "—"} {a.isCorrect ? "✓" : "✗"}
-                                        </p>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                )}
             </div>
         );
     }
@@ -405,6 +360,9 @@ export default function PlacementTestPage() {
 
             {q && (
                 <div className="rounded-3xl border border-border bg-card p-8 shadow-sm space-y-6">
+                    {q.image_url && (
+                        <Image src={q.image_url} alt="" width={600} height={320} className="max-h-72 w-auto rounded-2xl border border-border object-contain" />
+                    )}
                     <p className="text-lg font-semibold text-foreground">{q.text}</p>
                     <div className="grid grid-cols-1 gap-3">
                         {["a", "b", "c", "d"].map((key) => (

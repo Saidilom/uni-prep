@@ -6,7 +6,7 @@ import PageWrapper from "@/components/page-wrapper";
 import Topbar from "@/components/topbar";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useSidebarStore } from "@/store/useSidebarStore";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 export default function DashboardLayout({
@@ -17,8 +17,6 @@ export default function DashboardLayout({
     const { user, isLoading } = useAuthStore();
     const { isCollapsed } = useSidebarStore();
     const router = useRouter();
-    const pathname = usePathname();
-    const isTestPage = pathname?.startsWith("/test/");
 
     useEffect(() => {
         if (!isLoading && !user) {
@@ -35,16 +33,6 @@ export default function DashboardLayout({
     }
 
     if (!user) return null;
-
-    /* ── Test page: full screen, no sidebar/topbar ── */
-    if (isTestPage) {
-        return (
-            <div className="h-dvh max-h-dvh min-h-0 overflow-hidden bg-background">
-                <NavProgressBar />
-                {children}
-            </div>
-        );
-    }
 
     return (
         <div className="h-dvh max-h-dvh min-h-0 overflow-hidden bg-muted/50 dark:bg-black">

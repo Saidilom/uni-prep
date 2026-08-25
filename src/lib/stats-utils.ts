@@ -14,7 +14,7 @@ export interface GlobalStats {
 
 function fetchRawRatings(userId: string): Promise<Record<string, number>> {
     return pageCache.fetch(`ratings:${userId}`, async () => {
-        const { data } = await supabase.from<SubjectRating>("ratings").select("*").eq("user_id", userId);
+        const { data } = await supabase.from("ratings").select("*").eq("user_id", userId);
         const result: Record<string, number> = {};
         (data || []).forEach((entry) => {
             const rating = entry as SubjectRating & { subjectId?: string; stars?: number };
@@ -26,7 +26,7 @@ function fetchRawRatings(userId: string): Promise<Record<string, number>> {
 
 function fetchRawProgress(userId: string): Promise<Map<string, UserProgress>> {
     return pageCache.fetch(`progress:${userId}`, async () => {
-        const { data } = await supabase.from<UserProgress>("user_progress").select("*").eq("user_id", userId);
+        const { data } = await supabase.from("user_progress").select("*").eq("user_id", userId);
         const result = new Map<string, UserProgress>();
         (data || []).forEach((entry) => {
             const progress = entry as UserProgress & { topicId?: string };
@@ -70,36 +70,6 @@ export const fetchUserGlobalStats = async (userId: string): Promise<GlobalStats>
         return { totalSolved, accuracy, medals };
     } catch {
         return { totalSolved: 0, accuracy: 0, medals: { green: 0, grey: 0, bronze: 0 } };
-    }
-};
-
-/**
- * Progress for one subject — uses CACHED userProgress collection.
- * Previously this made 1 Firestore read per subject (n subjects = n reads of the same data).
- * Now it's 0 extra reads after the first call.
- */
-export const fetchSubjectProgress = async (
-    userId: string,
-    subjectId: string,
-    topicIds: string[]
-): Promise<{ medals: { green: number; grey: number; bronze: number }; progress: number }> => {
-    try {
-        const progress = await fetchRawProgress(userId);
-        const medals = { green: 0, grey: 0, bronze: 0 };
-        let completed = 0;
-
-        for (const topicId of topicIds) {
-            const data = progress.get(topicId);
-            if (!data) continue;
-            if (data.medal === "green") { medals.green++; completed++; }
-            else if (data.medal === "grey") { medals.grey++; completed++; }
-            else if (data.medal === "bronze") { medals.bronze++; completed++; }
-        }
-
-        const pct = topicIds.length > 0 ? Math.round((completed / topicIds.length) * 100) : 0;
-        return { medals, progress: pct };
-    } catch {
-        return { medals: { green: 0, grey: 0, bronze: 0 }, progress: 0 };
     }
 };
 

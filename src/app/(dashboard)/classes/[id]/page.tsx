@@ -2,283 +2,393 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Class, User } from "@/lib/firestore-schema";
-import supabase from "@/lib/supabase/client";
-import { SUBJECTS } from "@/lib/constants";
-import { findStudentById, addStudentToClass, deleteStudentFromClass, deleteClass, fetchClassStudents } from "@/lib/class-utils";
-import { Search, UserPlus, Trash2, ChevronRight, X, Eye } from "lucide-react";
 import Link from "next/link";
+import { ArrowLeft, Search, UserPlus, UserMinus, Trash2, Plus, ClipboardList, ClipboardCheck, X } from "lucide-react";
+import { useAuthStore } from "@/store/useAuthStore";
+import { useToast } from "@/hooks/useToast";
+import {
+    fetchClassById,
+    fetchClassMembers,
+    findStudentByShortId,
+    addStudentToClass,
+    removeStudentFromClass,
+    deleteClass,
+    fetchClassMockAssignments,
+    fetchAssignableMockTests,
+    assignMockToClass,
+    unassignMockFromClass,
+    fetchAssignablePlacementTests,
+    fetchStudentActivePlacementTestIds,
+    assignPlacementToStudent,
+    ClassMockAssignment,
+    AssignablePlacementTest,
+} from "@/lib/class-utils";
+import { Class, User, MockTest } from "@/lib/firestore-schema";
 
 export default function ClassDetailPage() {
     const { id } = useParams();
+    const classId = id as string;
     const router = useRouter();
+    const { user } = useAuthStore();
+    const toast = useToast();
+
     const [cls, setCls] = useState<Class | null>(null);
-    const [students, setStudents] = useState<User[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [searchQuery, setSearchQuery] = useState("");
-    const [searchResult, setSearchResult] = useState<User | null>(null);
-    const [isSearching, setIsSearching] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [members, setMembers] = useState<User[]>([]);
+    const [assignments, setAssignments] = useState<ClassMockAssignment[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    const [searchId, setSearchId] = useState("");
+    const [searching, setSearching] = useState(false);
+    const [searchResult, setSearchResult] = useState<User | null | "not_found">(null);
+
+    const [assigning, setAssigning] = useState(false);
+    const [assignable, setAssignable] = useState<MockTest[]>([]);
+
+    const [placementTarget, setPlacementTarget] = useState<User | null>(null);
+    const [placementTests, setPlacementTests] = useState<AssignablePlacementTest[]>([]);
+    const [activePlacementIds, setActivePlacementIds] = useState<Set<string>>(new Set());
+    const [assigningPlacement, setAssigningPlacement] = useState(false);
+
+    const load = async () => {
+        setLoading(true);
+        const [c, m, a] = await Promise.all([
+            fetchClassById(classId),
+            fetchClassMembers(classId),
+            fetchClassMockAssignments(classId),
+        ]);
+        setCls(c);
+        setMembers(m);
+        setAssignments(a);
+        setLoading(false);
+    };
 
     useEffect(() => {
-        const fetchData = async () => {
-            if (!id) return;
-            try {
-                const { data: classData } = await supabase.from("classes").select("*").eq("id", id as string).single();
-                if (classData) {
-                    const nextClass = classData as Class;
-                    setCls(nextClass);
-                    const studentData = await fetchClassStudents(nextClass.students || []);
-                    setStudents(studentData);
-                }
-            } catch (err) {
-                console.error(err);
-                setError("Ошибка при загрузке данных класса.");
-            } finally {
-                setIsLoading(false);
-            }
-        };
-        fetchData();
-    }, [id]);
+        load();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [classId]);
 
-    const handleSearch = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!searchQuery) return;
-        setIsSearching(true);
+    const handleSearch = async () => {
+        if (searchId.trim().length < 3) return;
+        setSearching(true);
         setSearchResult(null);
-        setError(null);
         try {
-            const student = await findStudentById(searchQuery);
-            if (student) {
-                setSearchResult(student);
-            } else {
-                setError("Ученик не найден. Проверьте правильность ID.");
-            }
-        } catch {
-            setError("Ошибка при поиске ученика.");
+            const student = await findStudentByShortId(searchId);
+            setSearchResult(student || "not_found");
         } finally {
-            setIsSearching(false);
+            setSearching(false);
         }
     };
 
-    const handleAddStudent = async () => {
-        if (!searchResult || !cls) return;
-        if (cls.students.includes(searchResult.id)) {
-            setError("Этот ученик уже добавлен в класс.");
-            return;
-        }
+    const handleAdd = async (student: User) => {
         try {
-            await addStudentToClass(cls.id, searchResult.id);
-            setStudents((prev) => [...prev, searchResult]);
-            setCls((prev) => prev ? { ...prev, students: [...prev.students, searchResult.id] } : null);
+            await addStudentToClass(classId, student.id);
+            setSearchId("");
             setSearchResult(null);
-            setSearchQuery("");
-        } catch {
-            setError("Ошибка при добавлении ученика.");
+            toast.success(`${student.name} добавлен(а) в класс`);
+            load();
+        } catch (err) {
+            toast.error("Не удалось добавить ученика", { description: String(err) });
         }
     };
 
-    const handleDeleteStudent = async (studentId: string) => {
-        if (!cls || !confirm("Вы уверены, что хотите удалить ученика из класса?")) return;
+    const handleRemove = async (student: User) => {
+        if (!confirm(`Удалить ${student.name} ${student.surname || ""} из класса?`)) return;
         try {
-            await deleteStudentFromClass(cls.id, studentId);
-            setStudents((prev) => prev.filter(s => s.id !== studentId));
-            setCls((prev) => prev ? { ...prev, students: prev.students.filter(id => id !== studentId) } : null);
-        } catch {
-            alert("Ошибка при удалении ученика.");
+            await removeStudentFromClass(classId, student.id);
+            toast.success("Ученик удалён из класса");
+            load();
+        } catch (err) {
+            toast.error("Не удалось удалить ученика", { description: String(err) });
         }
     };
 
     const handleDeleteClass = async () => {
-        if (!cls || !confirm("ВНИМАНИЕ: Вы уверены, что хотите полностью удалить этот класс? Это действие необратимо.")) return;
+        if (!confirm(`Удалить класс «${cls?.name}»? Это действие необратимо.`)) return;
         try {
-            await deleteClass(cls.id);
+            await deleteClass(classId);
+            toast.success("Класс удалён");
             router.push("/classes");
-        } catch {
-            alert("Ошибка при удалении класса.");
+        } catch (err) {
+            toast.error("Не удалось удалить класс", { description: String(err) });
         }
     };
 
-    if (isLoading) {
+    const openAssignPicker = async () => {
+        setAssigning(true);
+        const all = await fetchAssignableMockTests();
+        setAssignable(all.filter((t) => !assignments.some((a) => a.mockTestId === t.id)));
+    };
+
+    const handleAssign = async (test: MockTest) => {
+        try {
+            await assignMockToClass(test.id, classId);
+            setAssigning(false);
+            toast.success(`«${test.title}» назначен классу`);
+            load();
+        } catch (err) {
+            toast.error("Не удалось назначить тест", { description: String(err) });
+        }
+    };
+
+    const handleUnassign = async (assignment: ClassMockAssignment) => {
+        if (!confirm(`Снять назначение «${assignment.title}»?`)) return;
+        try {
+            await unassignMockFromClass(assignment.id);
+            toast.success("Назначение снято");
+            load();
+        } catch (err) {
+            toast.error("Не удалось снять назначение", { description: String(err) });
+        }
+    };
+
+    const openPlacementPicker = async (student: User) => {
+        setPlacementTarget(student);
+        const [tests, activeIds] = await Promise.all([
+            fetchAssignablePlacementTests(),
+            fetchStudentActivePlacementTestIds(student.id),
+        ]);
+        setPlacementTests(tests);
+        setActivePlacementIds(activeIds);
+    };
+
+    const handleAssignPlacement = async (test: AssignablePlacementTest) => {
+        if (!placementTarget || !user) return;
+        setAssigningPlacement(true);
+        try {
+            await assignPlacementToStudent(test, placementTarget.id, user.id);
+            toast.success(`«${test.title}» назначен ${placementTarget.name}`);
+            setPlacementTarget(null);
+        } catch (err) {
+            toast.error("Не удалось назначить Placement", { description: String(err) });
+        } finally {
+            setAssigningPlacement(false);
+        }
+    };
+
+    if (!user) return null;
+
+    if (loading) {
         return (
-            <div className="flex min-h-[50vh] items-center justify-center">
-                <div className="h-10 w-72 animate-pulse rounded-2xl bg-muted" />
+            <div className="flex flex-col gap-6">
+                <div className="h-9 w-64 animate-pulse rounded-2xl bg-muted" />
+                <div className="h-40 animate-pulse rounded-2xl border border-border bg-muted" />
             </div>
         );
     }
 
     if (!cls) {
         return (
-            <div className="flex min-h-[50vh] items-center justify-center">
-                <div className="max-w-sm rounded-2xl border border-border bg-card px-8 py-10 text-center">
-                    <h2 className="mb-2 text-xl font-semibold text-foreground">Класс не найден</h2>
-                    <p className="text-sm text-muted-foreground">Проверьте ссылку и попробуйте снова.</p>
-                    <Link
-                        href="/classes"
-                        className="mt-5 inline-flex items-center justify-center rounded-2xl bg-foreground px-6 py-3 text-sm font-semibold text-background transition-all hover:opacity-90 active:scale-[0.97]"
-                    >
-                        К моим классам
-                    </Link>
-                </div>
+            <div className="rounded-2xl border border-border bg-muted/50 py-14 text-center dark:bg-muted/30">
+                <p className="font-medium text-muted-foreground">Класс не найден.</p>
             </div>
         );
     }
 
-    const subject = SUBJECTS.find((s) => s.id === cls.subjectId);
-
     return (
         <div className="flex flex-col gap-10 py-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
-
-            {/* Breadcrumbs */}
-            <nav className="flex items-center gap-2 text-xs font-medium text-muted-foreground sm:text-sm">
-                <Link href="/classes" className="transition-colors hover:text-foreground">
-                    Классы
-                </Link>
-                <ChevronRight size={14} className="text-muted-foreground/70" />
-                <span className="text-foreground">{cls.name}</span>
-            </nav>
-
-            {/* Header */}
-            <section>
-                <div className="flex items-center gap-4 mb-3">
-                    <span className="text-5xl">{subject?.emoji || "📚"}</span>
-                    <div className="flex flex-col">
-                        <h1 className="text-3xl font-bold leading-tight tracking-tight text-foreground sm:text-4xl">
-                            {cls.name}
-                        </h1>
-                        <span className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground sm:text-sm">
-                            {subject?.name || "Предмет не указан"} • {students.length} учеников
-                        </span>
-                    </div>
-                </div>
-            </section>
-
-            {/* Add Student */}
-            <section className="rounded-2xl border border-border bg-muted/50 p-7 dark:bg-muted/30">
-                <div className="mb-5 flex items-center justify-between gap-4">
-                    <h2 className="text-lg font-bold tracking-tight text-foreground">Добавить ученика</h2>
-                    <span className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground">
-                        по короткому ID
-                    </span>
-                </div>
-
-                <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3">
-                    <div className="flex-1 relative">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
-                        <input
-                            type="text"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder="Короткий ID ученика (например A1B2C3)"
-                            className="w-full rounded-xl border border-border bg-background py-3 pl-12 pr-4 text-foreground placeholder:text-muted-foreground transition-colors focus:border-border focus:outline-none focus:ring-2 focus:ring-ring/25"
-                            required
-                        />
-                    </div>
-                    <button
-                        type="submit"
-                        disabled={isSearching}
-                        className="inline-flex items-center justify-center rounded-xl bg-foreground px-7 py-3 text-sm font-semibold text-background transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-50"
-                    >
-                        {isSearching ? "Поиск..." : "Найти"}
+            <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <button onClick={() => router.push("/classes")} className="mb-2 inline-flex items-center gap-1.5 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground">
+                        <ArrowLeft size={14} /> Мои классы
                     </button>
-                </form>
-
-                {error && (
-                    <div className="mt-3 animate-in fade-in slide-in-from-top-1 text-sm font-medium text-destructive">
-                        {error}
-                    </div>
-                )}
-
-                {searchResult && (
-                    <div className="mt-5 flex animate-in fade-in zoom-in flex-col items-start justify-between gap-4 rounded-xl border border-border bg-card p-5 duration-200 sm:flex-row sm:items-center">
-                        <div className="flex items-center gap-4">
-                            <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-muted font-bold text-foreground">
-                                {searchResult.name?.[0] || "?"}
-                            </div>
-                            <div className="flex flex-col">
-                                <p className="font-semibold text-foreground">
-                                    {searchResult.name} {searchResult.surname || ""}
-                                </p>
-                                <p className="text-sm text-muted-foreground">{searchResult.email}</p>
-                            </div>
-                        </div>
-                        <button
-                            onClick={handleAddStudent}
-                            className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition-all hover:bg-emerald-700 active:scale-[0.97] dark:bg-emerald-700 dark:hover:bg-emerald-600"
-                        >
-                            <UserPlus size={16} />
-                            <span>Добавить</span>
-                        </button>
-                    </div>
-                )}
+                    <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{cls.name}</h1>
+                    <p className="mt-2 text-sm text-muted-foreground">{members.length} {members.length === 1 ? "ученик" : "учеников"}</p>
+                </div>
+                <button
+                    onClick={handleDeleteClass}
+                    className="inline-flex shrink-0 items-center gap-2 self-start rounded-2xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-600 transition-colors hover:bg-red-100 dark:bg-red-950/30"
+                >
+                    <Trash2 size={16} /> Удалить класс
+                </button>
             </section>
 
             {/* Students */}
             <section>
-                <div className="flex items-center justify-between gap-4 mb-5">
-                    <h2 className="text-xl font-bold tracking-tight text-foreground">Ученики</h2>
-                    <span className="rounded-xl border border-border bg-muted px-3 py-1.5 text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                        {students.length} учеников
-                    </span>
+                <h2 className="mb-5 text-xl font-bold tracking-tight text-foreground sm:text-2xl">Ученики</h2>
+
+                <div className="mb-4 flex items-center gap-3 rounded-2xl border border-border bg-card p-4">
+                    <Search size={16} className="shrink-0 text-muted-foreground" />
+                    <input
+                        value={searchId}
+                        onChange={(e) => { setSearchId(e.target.value); setSearchResult(null); }}
+                        onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                        placeholder="Student ID ученика (STU-XXXXXX)"
+                        className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+                    />
+                    <button
+                        onClick={handleSearch}
+                        disabled={searching || searchId.trim().length < 3}
+                        className="inline-flex items-center gap-2 rounded-xl bg-foreground px-4 py-2 text-sm font-semibold text-background transition-all hover:opacity-90 disabled:opacity-50"
+                    >
+                        {searching ? "Поиск…" : "Найти"}
+                    </button>
                 </div>
 
-                {students.length > 0 ? (
-                    <div className="grid grid-cols-1 gap-3">
-                        {students.map((student) => (
-                            <div
-                                key={student.id}
-                                className="flex flex-col justify-between gap-4 rounded-2xl border border-border bg-card p-5 transition-all hover:bg-muted/40 sm:flex-row sm:items-center"
+                {searchResult === "not_found" ? (
+                    <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                        Ученик с таким ID не найден.
+                    </div>
+                ) : searchResult ? (
+                    <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 dark:bg-emerald-950/30">
+                        <div>
+                            <p className="font-semibold text-foreground">{searchResult.name} {searchResult.surname || ""}</p>
+                            <p className="text-xs text-muted-foreground">{searchResult.shortId}</p>
+                        </div>
+                        {members.some((m) => m.id === searchResult.id) ? (
+                            <span className="text-xs font-semibold text-muted-foreground">Уже в классе</span>
+                        ) : (
+                            <button
+                                onClick={() => handleAdd(searchResult)}
+                                className="inline-flex items-center gap-2 rounded-xl bg-foreground px-4 py-2 text-sm font-semibold text-background transition-all hover:opacity-90"
                             >
-                                <div className="flex items-center gap-4 min-w-0">
-                                    <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-muted font-bold text-foreground shadow-sm">
-                                        {student.name?.[0] || "?"}
+                                <UserPlus size={14} /> Добавить
+                            </button>
+                        )}
+                    </div>
+                ) : null}
+
+                {members.length === 0 ? (
+                    <div className="rounded-2xl border border-border bg-muted/50 py-10 text-center dark:bg-muted/30">
+                        <p className="font-medium text-muted-foreground">В классе пока нет учеников.</p>
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        {members.map((m) => (
+                            <div key={m.id} className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4">
+                                <div className="flex items-center gap-3 min-w-0">
+                                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border bg-muted font-bold text-foreground">
+                                        {m.name[0]?.toUpperCase() || "?"}
                                     </div>
                                     <div className="min-w-0">
-                                        <p className="truncate font-semibold text-foreground">
-                                            {student.name} {student.surname || ""}
-                                        </p>
-                                        <p className="mt-0.5 truncate text-xs text-muted-foreground">{student.email}</p>
+                                        <p className="truncate text-sm font-semibold text-foreground">{m.name} {m.surname || ""}</p>
+                                        <p className="font-mono text-xs text-muted-foreground">{m.shortId}</p>
                                     </div>
                                 </div>
-
-                                <div className="flex items-center justify-between sm:justify-end gap-2">
-                                    <Link
-                                        href={`/student/${student.id}`}
-                                        className="inline-flex items-center justify-center rounded-xl border border-border bg-card px-4 py-2 text-sm text-muted-foreground shadow-sm transition-all hover:bg-muted hover:text-foreground"
-                                        title="Просмотреть профиль"
-                                    >
-                                        <Eye size={16} className="mr-2" />
-                                        Профиль
-                                    </Link>
+                                <div className="flex shrink-0 items-center gap-2">
                                     <button
-                                        onClick={() => handleDeleteStudent(student.id)}
-                                        className="inline-flex items-center justify-center rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-600 transition-all hover:bg-red-100 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300 dark:hover:bg-red-950/60"
-                                        title="Удалить из класса"
+                                        onClick={() => openPlacementPicker(m)}
+                                        className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted"
                                     >
-                                        <X size={16} className="mr-2" />
-                                        Удалить
+                                        <ClipboardCheck size={13} /> Placement
+                                    </button>
+                                    <button
+                                        onClick={() => handleRemove(m)}
+                                        className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
+                                    >
+                                        <UserMinus size={13} /> Удалить
                                     </button>
                                 </div>
                             </div>
                         ))}
                     </div>
+                )}
+            </section>
+
+            {/* Assigned mocks */}
+            <section>
+                <div className="mb-5 flex items-center justify-between">
+                    <h2 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">Назначенные Mock-тесты</h2>
+                    <button
+                        onClick={openAssignPicker}
+                        className="inline-flex items-center gap-2 rounded-2xl border border-border px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-muted"
+                    >
+                        <Plus size={16} /> Назначить тест
+                    </button>
+                </div>
+
+                {assignments.length === 0 ? (
+                    <div className="rounded-2xl border border-border bg-muted/50 py-10 text-center dark:bg-muted/30">
+                        <ClipboardList size={24} className="mx-auto mb-2 text-muted-foreground/50" />
+                        <p className="font-medium text-muted-foreground">Тесты этому классу ещё не назначены.</p>
+                    </div>
                 ) : (
-                    <div className="rounded-2xl border border-border bg-muted/50 px-6 py-16 text-center dark:bg-muted/30">
-                        <p className="font-medium text-muted-foreground">В этом классе пока нет учеников.</p>
+                    <div className="space-y-3">
+                        {assignments.map((a) => (
+                            <Link
+                                key={a.id}
+                                href={`/classes/${classId}/results/${a.mockTestId}`}
+                                className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4 transition-colors hover:bg-muted/40"
+                            >
+                                <div className="min-w-0">
+                                    <p className="truncate text-sm font-semibold text-foreground">{a.title}</p>
+                                    <p className="mt-0.5 text-xs text-muted-foreground">
+                                        {a.durationMinutes} мин • {a.completedCount}/{members.length} прошли — результаты
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleUnassign(a); }}
+                                    className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
+                                >
+                                    <X size={13} /> Снять
+                                </button>
+                            </Link>
+                        ))}
                     </div>
                 )}
             </section>
 
-            {/* Danger Zone */}
-            <section className="flex justify-center pt-2">
-                <button
-                    onClick={handleDeleteClass}
-                    className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-6 py-3 text-sm font-semibold text-red-600 transition-all hover:bg-red-100 active:scale-[0.97] dark:border-red-900 dark:bg-red-950/40 dark:text-red-300 dark:hover:bg-red-950/60"
-                >
-                    <Trash2 size={16} />
-                    Удалить класс
-                </button>
-            </section>
+            {assigning && (
+                <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setAssigning(false)}>
+                    <div className="w-full max-w-md overflow-hidden rounded-3xl border border-border bg-card shadow-xl" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+                            <h3 className="font-bold text-foreground">Назначить тест классу</h3>
+                            <button onClick={() => setAssigning(false)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted"><X size={18} /></button>
+                        </div>
+                        <div className="max-h-[60vh] overflow-y-auto p-4">
+                            {assignable.length === 0 ? (
+                                <p className="px-2 py-6 text-center text-sm text-muted-foreground">
+                                    Нет доступных тестов типа «Только для класса». Создайте такой тест в админ-панели.
+                                </p>
+                            ) : (
+                                <div className="space-y-2">
+                                    {assignable.map((t) => (
+                                        <button
+                                            key={t.id}
+                                            onClick={() => handleAssign(t)}
+                                            className="flex w-full items-center justify-between gap-3 rounded-xl border border-border p-3 text-left transition-colors hover:bg-muted"
+                                        >
+                                            <span className="text-sm font-semibold text-foreground">{t.title}</span>
+                                            <Plus size={16} className="shrink-0 text-muted-foreground" />
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {placementTarget && (
+                <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setPlacementTarget(null)}>
+                    <div className="w-full max-w-md overflow-hidden rounded-3xl border border-border bg-card shadow-xl" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+                            <h3 className="font-bold text-foreground">Назначить Placement — {placementTarget.name}</h3>
+                            <button onClick={() => setPlacementTarget(null)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted"><X size={18} /></button>
+                        </div>
+                        <div className="max-h-[60vh] overflow-y-auto p-4">
+                            {placementTests.filter((t) => !activePlacementIds.has(t.id)).length === 0 ? (
+                                <p className="px-2 py-6 text-center text-sm text-muted-foreground">
+                                    Нет доступных Placement-тестов для назначения — либо их ещё не создали в админ-панели, либо у ученика уже есть активные назначения на все.
+                                </p>
+                            ) : (
+                                <div className="space-y-2">
+                                    {placementTests.filter((t) => !activePlacementIds.has(t.id)).map((t) => (
+                                        <button
+                                            key={t.id}
+                                            onClick={() => handleAssignPlacement(t)}
+                                            disabled={assigningPlacement}
+                                            className="flex w-full items-center justify-between gap-3 rounded-xl border border-border p-3 text-left transition-colors hover:bg-muted disabled:opacity-50"
+                                        >
+                                            <span className="text-sm font-semibold text-foreground">{t.title}</span>
+                                            <Plus size={16} className="shrink-0 text-muted-foreground" />
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

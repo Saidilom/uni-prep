@@ -85,23 +85,35 @@ export interface UserProgress {
   markedQuestions?: number;
   medal: Medal;
   accuracy: number; // процент точности
-  completedAt: string | Timestamp;
+  completedAt: string;
 }
 
 export interface SubjectRating {
   userId: string;
   subjectId: string;
   stars: number;
-  lastUpdated: string | Timestamp;
+  lastUpdated: string;
 }
 
 export interface Class {
   id: string;
   teacherId: string;
   name: string;
-  subjectId: string;
-  students: string[]; // массив ID студентов
-  createdAt: string | Timestamp;
+  createdAt: string;
+}
+
+export interface ClassMember {
+  id: string;
+  classId: string;
+  studentId: string;
+  addedAt: string;
+}
+
+export interface MockClassAssignment {
+  id: string;
+  mockTestId: string;
+  classId: string;
+  assignedAt: string;
 }
 
 export interface Badge {
@@ -110,7 +122,7 @@ export interface Badge {
   name: string;
   description: string;
   textbookId: string;
-  unlockedAt: string | Timestamp;
+  unlockedAt: string;
 }
 
 export interface TestResult {
@@ -122,7 +134,7 @@ export interface TestResult {
   correctAnswers: number;
   errors: number;
   timeSpentSeconds: number;
-  completedAt: string | Timestamp;
+  completedAt: string;
 }
 
 /* ─── Placement Test ─────────────────────────────────── */
@@ -143,8 +155,8 @@ export interface PlacementTest {
   durationMinutes?: number;
   passingScore?: number;
   questionIds: string[];
-  createdAt: string | Timestamp;
-  updatedAt?: string | Timestamp;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export type PlacementAssignmentStatus = "assigned" | "in_progress" | "completed";
@@ -156,9 +168,9 @@ export interface PlacementAssignment {
   testTitle: string;
   status: PlacementAssignmentStatus;
   assignedBy: string; // admin uid
-  assignedAt: string | Timestamp;
-  startedAt?: string | Timestamp;
-  completedAt?: string | Timestamp;
+  assignedAt: string;
+  startedAt?: string;
+  completedAt?: string;
 }
 
 export interface PlacementAnswerDetail {
@@ -185,12 +197,12 @@ export interface PlacementResult {
   accuracy: number; // процент 0–100
   timeSpentSeconds: number;
   answers: PlacementAnswerDetail[];
-  completedAt: string | Timestamp;
+  completedAt: string;
 }
 
 /* ─── Mock Test ──────────────────────────────────────── */
 
-export type MockTestType = "free" | "paid";
+export type MockTestType = "free" | "paid" | "class_only";
 
 export interface MockSection {
   id: string;
@@ -207,8 +219,8 @@ export interface MockTest {
   price: number; // сум в UZS, 0 для бесплатных
   durationMinutes: number;
   sections: MockSection[];
-  createdAt: string | Timestamp;
-  updatedAt?: string | Timestamp;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export type MockAccessSource = "registan" | "payment" | "admin";
@@ -218,7 +230,7 @@ export interface MockAccess {
   userId: string;
   mockTestId: string;
   source: MockAccessSource;
-  grantedAt: string | Timestamp;
+  grantedAt: string;
   paymentId?: string;
 }
 
@@ -233,7 +245,7 @@ export interface MockResult {
   accuracy: number;
   sectionScores: Record<string, number>;
   timeSpentSeconds: number;
-  completedAt: string | Timestamp;
+  completedAt: string;
 }
 
 /* ─── Payments ───────────────────────────────────────── */
@@ -252,7 +264,7 @@ export interface Payment {
   status: PaymentStatus;
   provider: string; // "payme" | "click" | ...
   providerTransactionId?: string;
-  paidAt?: string | Timestamp;
-  createdAt: string | Timestamp;
+  paidAt?: string;
+  createdAt: string;
 }
 

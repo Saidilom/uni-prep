@@ -3,7 +3,10 @@
     "allow": [
       "WebFetch(domain:www.oneprep.xyz)",
       "Bash(npm install:*)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(curl -s -X POST http://localhost:3000/api/payments/create -H \"Content-Type: application/json\" -d '{\"mockTestId\":\"x\"}' -w \"\\\\nHTTP %{http_code}\\\\n\")",
+      "Bash(curl -s -X POST http://localhost:3000/api/payments/mock-confirm -H \"Content-Type: application/json\" -d '{\"paymentId\":\"x\",\"outcome\":\"success\"}' -w \"\\\\nHTTP %{http_code}\\\\n\")",
+      "Read(//private/tmp/**)"
     ]
   },
   "enabledMcpjsonServers": [

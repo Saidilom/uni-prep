@@ -71,12 +71,28 @@ export const adminIncrementField = async (collection: string, id: string, field:
 };
 
 export const fetchAdminStats = async () => {
-    const [subjectsRes, textbooksRes, topicsRes, questionsRes, usersRes] = await Promise.all([
+    const [
+        subjectsRes,
+        textbooksRes,
+        topicsRes,
+        questionsRes,
+        usersRes,
+        classesRes,
+        mocksRes,
+        mockAttemptsRes,
+        placementAttemptsRes,
+        paymentsRes,
+    ] = await Promise.all([
         supabase.from("subjects").select("id"),
         supabase.from("textbooks").select("id"),
         supabase.from("topics").select("id"),
         supabase.from("questions").select("id"),
         supabase.from("users").select("id, role"),
+        supabase.from("classes").select("id", { count: "exact", head: true }),
+        supabase.from("mock_tests").select("id", { count: "exact", head: true }),
+        supabase.from("mock_results").select("id", { count: "exact", head: true }),
+        supabase.from("placement_results").select("id", { count: "exact", head: true }),
+        supabase.from("payments").select("amount").eq("status", "success"),
     ]);
 
     throwIfError(subjectsRes.error, "fetch stats subjects");
@@ -84,10 +100,16 @@ export const fetchAdminStats = async () => {
     throwIfError(topicsRes.error, "fetch stats topics");
     throwIfError(questionsRes.error, "fetch stats questions");
     throwIfError(usersRes.error, "fetch stats users");
+    throwIfError(classesRes.error, "fetch stats classes");
+    throwIfError(mocksRes.error, "fetch stats mocks");
+    throwIfError(mockAttemptsRes.error, "fetch stats mock attempts");
+    throwIfError(placementAttemptsRes.error, "fetch stats placement attempts");
+    throwIfError(paymentsRes.error, "fetch stats payments");
 
     const users = (usersRes.data ?? []) as Array<Record<string, unknown>>;
     const students = users.filter((user) => String(user.role ?? "").toLowerCase() === "student").length;
     const teachers = users.filter((user) => String(user.role ?? "").toLowerCase() === "teacher").length;
+    const revenue = (paymentsRes.data ?? []).reduce((sum, p) => sum + Number((p as { amount: number }).amount || 0), 0);
 
     return {
         subjects: (subjectsRes.data ?? []).length,
@@ -96,5 +118,9 @@ export const fetchAdminStats = async () => {
         questions: (questionsRes.data ?? []).length,
         students,
         teachers,
+        classes: classesRes.count ?? 0,
+        mocks: mocksRes.count ?? 0,
+        attempts: (mockAttemptsRes.count ?? 0) + (placementAttemptsRes.count ?? 0),
+        revenue,
     };
 };

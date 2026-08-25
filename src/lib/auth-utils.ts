@@ -125,7 +125,12 @@ export const createUserProfile = async (supabaseUser: SupabaseUserProfile, input
         }
 
         pageCache.invalidate(`userProfile:${uid}`);
-        return { ...userData, shortId: userData.shortid } as User;
+        return {
+            ...userData,
+            shortId: userData.shortid,
+            isRegistanStudent: userData.isregistanstudent,
+            registeredVia: userData.registeredvia,
+        } as User;
     } catch (error) {
         console.error("Error creating user profile:", error);
         throw error;

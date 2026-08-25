@@ -1,10 +1,16 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import { Golos_Text } from "next/font/google";
 import AuthProvider from "@/components/auth-provider";
 import { APP_NAME, APP_DESCRIPTION, APP_THEME_KEY } from "@/lib/app-config";
 import "./globals.css";
 import "katex/dist/katex.min.css";
 
+const golosText = Golos_Text({
+  subsets: ["latin", "cyrillic"],
+  variable: "--font-golos-text",
+  weight: ["400", "500", "600", "700", "800"],
+});
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
   variable: "--font-geist-sans",
@@ -66,7 +72,7 @@ export default function RootLayout({
         />
       </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen relative app-bg`}
+        className={`${golosText.variable} ${geistSans.variable} ${geistMono.variable} antialiased min-h-screen relative app-bg`}
       >
         <div className="relative z-10 min-h-screen">
           <AuthProvider>{children}</AuthProvider>

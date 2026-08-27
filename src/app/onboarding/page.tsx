@@ -20,62 +20,24 @@ export default function OnboardingPage() {
     const [studentId, setStudentId] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
     const router = useRouter();
-    const { setUser } = useAuthStore();
+    const { user, isLoading, setUser } = useAuthStore();
 
+    // AuthProvider (mounted once, globally) is the single source of truth
+    // for "did this browser just complete a real Google sign-in" — it
+    // already retries transient profile-fetch failures (see
+    // auth-provider.tsx). This page used to make its own second,
+    // un-retried supabase.auth.getUser() call as an extra guard, which
+    // could fail on a brief hiccup moments after a brand-new session was
+    // created and send a legitimate new signup straight back to a bare
+    // /login with no retry at all — reproduced live: QR/join registrations
+    // intermittently looped back to /login right after Google sign-in
+    // completed. Trusting the already-robust global auth state instead of
+    // re-deriving it here removes that race.
     useEffect(() => {
-        // Ensure only users who signed in with Google can access onboarding.
-        // If there's no session or provider isn't Google, send to /login.
-        let mounted = true;
-        (async () => {
-            try {
-                let { data, error } = await supabase.auth.getUser();
-
-                // If there's no user yet, try to parse an OAuth redirect URL
-                // (supabase sets session from URL after provider redirect).
-                if ((!data?.user || error) && typeof window !== "undefined") {
-                    try {
-                        const params = new URLSearchParams(window.location.hash.slice(1));
-                        const accessToken = params.get("access_token");
-                        const refreshToken = params.get("refresh_token");
-                        if (accessToken && refreshToken) {
-                            const { error: exchangeError } = await supabase.auth.setSession({
-                                access_token: accessToken,
-                                refresh_token: refreshToken,
-                            });
-                            if (!exchangeError) {
-                                const refreshed = await supabase.auth.getUser();
-                                data = refreshed.data;
-                                error = refreshed.error;
-                            }
-                        }
-                    } catch {
-                        // ignore — we'll redirect below if no session
-                    }
-                }
-
-                if (error || !data?.user) {
-                    if (!mounted) return;
-                    router.replace("/login");
-                    return;
-                }
-
-                const user = data.user;
-                const identities = user?.identities ?? [];
-                const signedWithGoogle = identities.some((id) => id.provider === "google");
-
-                if (!signedWithGoogle) {
-                    if (!mounted) return;
-                    router.replace("/login");
-                }
-            } catch (err) {
-                console.error("Error checking onboarding access:", err);
-                if (mounted) router.replace("/login");
-            }
-        })();
-        return () => {
-            mounted = false;
-        };
-    }, [router]);
+        if (!isLoading && !user) {
+            router.replace("/login");
+        }
+    }, [isLoading, user, router]);
 
     useEffect(() => {
         const root = document.documentElement;

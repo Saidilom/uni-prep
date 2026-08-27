@@ -6,6 +6,33 @@ import { useAuthStore } from "../store/useAuthStore";
 import { getUserProfile } from "../lib/auth-utils";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// This subscription fires once per tab lifetime (see the comment on the
+// effect below) — if the very first profile fetch after a real sign-in
+// gives up too early, `user` is stuck at null for the rest of the session,
+// even though the underlying Supabase session is perfectly valid. That
+// showed up as a real production bug: a brand-new signup on Vercel would
+// bounce home -> /login -> home in a fast loop (home's layout guard sees
+// user=null and pushes to /login; /login sees a real session via its own
+// getSession() call and bounces straight back), because Vercel's cold
+// serverless start + first Supabase connection can easily take longer than
+// a single 500ms retry. Retrying several times with backoff covers that
+// cold-start window instead of permanently giving up on one bad attempt.
+async function fetchProfileWithRetry(userId: string) {
+    const delaysMs = [0, 600, 1500, 3000];
+    let lastError: unknown;
+    for (const delay of delaysMs) {
+        if (delay > 0) await sleep(delay);
+        try {
+            return await getUserProfile(userId);
+        } catch (error) {
+            lastError = error;
+        }
+    }
+    throw lastError;
+}
+
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
     const { setUser, setLoading } = useAuthStore();
     const router = useRouter();
@@ -42,21 +69,16 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
             if (user) {
                 let profile;
                 try {
-                    profile = await getUserProfile(user.id);
+                    profile = await fetchProfileWithRetry(user.id);
                 } catch {
-                    // Infrastructure error fetching the profile (network hiccup,
-                    // transient RLS/auth error while a token is still settling,
-                    // most common right after a hard reload) — not proof the
-                    // account is gone. Retry once before giving up, since giving
-                    // up looks identical to "not this role" downstream and that
-                    // gets treated as a hard redirect on role-gated pages.
-                    try {
-                        await new Promise((resolve) => setTimeout(resolve, 500));
-                        profile = await getUserProfile(user.id);
-                    } catch {
-                        setLoading(false);
-                        return;
-                    }
+                    // Infrastructure error fetching the profile even after
+                    // several retries (network down, DB genuinely
+                    // unreachable) — not proof the account is gone. Leave
+                    // the store untouched rather than setting user to null,
+                    // since that gets treated as "not logged in" by every
+                    // protected layout downstream.
+                    setLoading(false);
+                    return;
                 }
                 if (profile) {
                     setUser(profile);

@@ -54,8 +54,8 @@ async function findByPaymeTransactionId(paymeTransactionId: string): Promise<Pay
 }
 
 export async function POST(req: NextRequest) {
-  const merchantKey = process.env.PAYME_MERCHANT_KEY;
-  if (!merchantKey) return NextResponse.json({ error: "PAYME_MERCHANT_KEY не настроен" }, { status: 500 });
+  const merchantKey = process.env.PAYME_SECRET_KEY;
+  if (!merchantKey) return NextResponse.json({ error: "PAYME_SECRET_KEY не настроен" }, { status: 500 });
 
   const body = (await req.json().catch(() => null)) as JsonRpcRequest | null;
   if (!body?.method) return rpcError(body?.id, PAYME_ERROR.PARSE_ERROR, "Parse error");

@@ -7,12 +7,13 @@ import { buildMockImportPrompt, MOCK_IMPORT_SYSTEM_PROMPT } from "@/lib/mock-imp
 
 export const runtime = "nodejs";
 // A real multi-page exam (measured: a 7MB/50-question biology paper) took
-// ~264s for Gemini to fully generate — 300s was already too tight before
-// accounting for upload time. No-op locally under `next dev`; Vercel will
-// enforce this once deployed (Группа 14) — revisit against whatever plan
-// tier is actually provisioned then, since Pro without Fluid Compute caps at
-// 300s and this route now assumes more.
-export const maxDuration = 500;
+// ~264s for Gemini to fully generate. 300 is the actual ceiling here, not a
+// margin of safety — Vercel's Hobby plan hard-caps maxDuration at 300 and
+// rejects the build entirely above that (confirmed: deploy failed with
+// "Builder returned invalid maxDuration value ... plan hobby" at 500). If a
+// bigger exam ever needs more than this, the fix is upgrading the Vercel
+// plan, not raising this number past 300.
+export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
 const MAX_PDF_BYTES = 32 * 1024 * 1024;
@@ -95,7 +96,12 @@ async function extractDraftWithGemini(
     return createPartFromUri(file.uri, file.mimeType);
   });
   const [testFilename, answersFilename] = files.map((f) => f.filename);
-  const timeoutMs = Number(process.env.GEMINI_IMPORT_TIMEOUT_MS || 400_000);
+  // Must fit inside maxDuration (300s, Vercel Hobby's hard ceiling) with
+  // room left over for the file upload + waitForGeminiFile polling that
+  // happen before this call and the JSON parsing/DB write after it — a
+  // timeout at or above 300 would just get killed by the platform first,
+  // before our own retry/fallback-model logic ever sees the error.
+  const timeoutMs = Number(process.env.GEMINI_IMPORT_TIMEOUT_MS || 250_000);
 
   // A two-file exam+key pair can take well over one timeout window, so each
   // attempt already spends most of the available budget — chaining 3

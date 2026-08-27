@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Plus, Users, GraduationCap, X } from "lucide-react";
+import { Plus, Users, GraduationCap, X, FileUp } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useToast } from "@/hooks/useToast";
 import { fetchTeacherClasses, createClass, ClassWithCount } from "@/lib/class-utils";
@@ -78,16 +78,21 @@ export default function TeacherDashboard() {
             </section>
 
             <section>
-                <div className="mb-5 flex items-center justify-between">
+                <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
                     <h2 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">Мои классы</h2>
-                    {!creating && (
+                    <div className="flex flex-wrap gap-2">
+                      <Link href="/teacher/mock-tests" className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-blue-700 active:scale-[0.97]">
+                        <FileUp size={16} /> Создать Mock из PDF
+                      </Link>
+                      {!creating && (
                         <button
                             onClick={() => setCreating(true)}
                             className="inline-flex items-center gap-2 rounded-2xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
                         >
                             <Plus size={16} /> Создать класс
                         </button>
-                    )}
+                      )}
+                    </div>
                 </div>
 
                 {creating && (

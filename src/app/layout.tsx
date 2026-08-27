@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import localFont from "next/font/local";
 import { Golos_Text } from "next/font/google";
 import AuthProvider from "@/components/auth-provider";
@@ -75,7 +76,9 @@ export default function RootLayout({
         className={`${golosText.variable} ${geistSans.variable} ${geistMono.variable} antialiased min-h-screen relative app-bg`}
       >
         <div className="relative z-10 min-h-screen">
-          <AuthProvider>{children}</AuthProvider>
+          <Suspense fallback={null}>
+            <AuthProvider>{children}</AuthProvider>
+          </Suspense>
         </div>
       </body>
     </html>

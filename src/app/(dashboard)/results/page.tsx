@@ -3,16 +3,10 @@
 import { useEffect, useState } from "react";
 import { Trophy, Calendar, Clock } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
-import supabase from "@/lib/supabase/client";
+import { fetchUserMockResults, MockResultRow } from "@/lib/registan-utils";
+import TeacherResultsExplorer from "@/components/teacher-results-explorer";
 
-type ResultRow = {
-    id: string;
-    mock_test_title: string;
-    score: number;
-    total_questions: number;
-    correct_answers: number;
-    completed_at: string;
-};
+type ResultRow = MockResultRow;
 
 const scoreColor = (score: number) =>
     score >= 80 ? "text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40" : score >= 50 ? "text-amber-600 bg-amber-50 dark:bg-amber-950/40" : "text-red-600 bg-red-50 dark:bg-red-950/40";
@@ -23,20 +17,19 @@ export default function ResultsPage() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (!user) return;
+        if (!user || user.role === "teacher") return;
         (async () => {
             setLoading(true);
-            const { data } = await supabase
-                .from("mock_results")
-                .select("id, mock_test_title, score, total_questions, correct_answers, completed_at")
-                .eq("user_id", user.id)
-                .order("completed_at", { ascending: false });
-            setResults((data as ResultRow[]) || []);
+            setResults(await fetchUserMockResults(user.id));
             setLoading(false);
         })();
     }, [user]);
 
-    const avgScore = results.length > 0 ? Math.round(results.reduce((sum, r) => sum + r.score, 0) / results.length) : null;
+    // `score` is raw points earned (sum of question.points), not a percentage —
+    // `accuracy` is the pre-computed correct/total percentage from submit_mock.
+    const avgScore = results.length > 0 ? Math.round(results.reduce((sum, r) => sum + r.accuracy, 0) / results.length) : null;
+
+    if (user?.role === "teacher") return <TeacherResultsExplorer />;
 
     return (
         <div className="flex flex-col gap-10 py-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -91,8 +84,8 @@ export default function ResultsPage() {
                                         </span>
                                     </div>
                                 </div>
-                                <span className={`shrink-0 self-start rounded-xl px-4 py-2 text-sm font-extrabold tabular-nums sm:self-auto ${scoreColor(r.score)}`}>
-                                    {r.score}%
+                                <span className={`shrink-0 self-start rounded-xl px-4 py-2 text-sm font-extrabold tabular-nums sm:self-auto ${scoreColor(r.accuracy)}`}>
+                                    {r.accuracy}%
                                 </span>
                             </div>
                         ))}

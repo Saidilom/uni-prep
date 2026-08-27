@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Trophy, TrendingUp, TrendingDown, CheckCircle2, ChevronDown, Circle } from "lucide-react";
+import { useToast } from "@/hooks/useToast";
 import {
     fetchClassMockResults,
     fetchMockAnswerDetails,
@@ -15,12 +16,16 @@ export default function ClassMockResultsPage() {
     const classId = id as string;
     const testId = mockTestId as string;
     const router = useRouter();
+    const toast = useToast();
 
     const [summary, setSummary] = useState<ClassMockResultsSummary | null>(null);
     const [loading, setLoading] = useState(true);
     const [openResultId, setOpenResultId] = useState<string | null>(null);
     const [details, setDetails] = useState<Record<string, MockAnswerDetail[]>>({});
     const [detailsLoading, setDetailsLoading] = useState<string | null>(null);
+    const [reviewPoints, setReviewPoints] = useState<Record<string, number>>({});
+    const [reviewFeedback, setReviewFeedback] = useState<Record<string, string>>({});
+    const [reviewingId, setReviewingId] = useState<string | null>(null);
 
     useEffect(() => {
         (async () => {
@@ -41,6 +46,27 @@ export default function ClassMockResultsPage() {
             const d = await fetchMockAnswerDetails(resultId);
             setDetails((prev) => ({ ...prev, [resultId]: d }));
             setDetailsLoading(null);
+        }
+    };
+
+    const reviewResponse = async (resultId: string, detail: MockAnswerDetail) => {
+        setReviewingId(detail.id);
+        try {
+            const response = await fetch(`/api/mock-responses/${detail.id}/review`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ points: reviewPoints[detail.id] ?? 0, feedback: reviewFeedback[detail.id] ?? "" }),
+            });
+            const body = await response.json();
+            if (!response.ok) throw new Error(body.error || "Ошибка проверки");
+            const refreshed = await fetchMockAnswerDetails(resultId);
+            setDetails((current) => ({ ...current, [resultId]: refreshed }));
+            setSummary(await fetchClassMockResults(classId, testId));
+            toast.success("Оценка сохранена");
+        } catch (error) {
+            toast.error("Не удалось сохранить оценку", { description: error instanceof Error ? error.message : String(error) });
+        } finally {
+            setReviewingId(null);
         }
     };
 
@@ -88,7 +114,7 @@ export default function ClassMockResultsPage() {
             <section>
                 <h2 className="mb-5 text-xl font-bold tracking-tight text-foreground sm:text-2xl">Ученики</h2>
                 <div className="space-y-3">
-                    {summary.students.map(({ student, resultId, score, correctAnswers, totalQuestions, raschScore, completedAt }) => {
+                    {summary.students.map(({ student, resultId, score, correctAnswers, totalQuestions, raschScore, cefrBand, cefrScore, completedAt }) => {
                         const isOpen = openResultId === resultId;
                         return (
                             <div key={student.id} className="overflow-hidden rounded-2xl border border-border bg-card">
@@ -111,6 +137,11 @@ export default function ClassMockResultsPage() {
                                         </div>
                                     </div>
                                     <div className="flex shrink-0 items-center gap-2">
+                                        {cefrBand && (
+                                            <span className="rounded-xl border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-bold text-blue-700 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-300" title={`Официальная шкала CEFR: ${cefrScore} / 75`}>
+                                                {cefrBand}
+                                            </span>
+                                        )}
                                         {raschScore !== null && (
                                             <span className="rounded-xl border border-border px-2.5 py-1.5 text-xs font-semibold tabular-nums text-muted-foreground" title="Rasch-оценка способности (θ), отдельно от процента">
                                                 θ {raschScore >= 0 ? "+" : ""}{raschScore.toFixed(2)}
@@ -150,6 +181,35 @@ export default function ClassMockResultsPage() {
                                                                 </span>
                                                             )}
                                                         </div>
+                                                        {d.reviewStatus === "pending" && (
+                                                            <div className="mt-3 rounded-xl border border-violet-200 bg-violet-50 p-3 dark:bg-violet-950/25">
+                                                                <p className="text-xs font-bold text-violet-800">Требуется ручная проверка</p>
+                                                                {d.rubricNote && (
+                                                                    <p className="mt-1.5 text-xs leading-relaxed text-violet-900/80 dark:text-violet-200/80">{d.rubricNote}</p>
+                                                                )}
+                                                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                                                    <input type="number" min={0} max={d.maxPoints} step={0.1} value={reviewPoints[d.id] ?? 0} onChange={(event) => setReviewPoints((current) => ({ ...current, [d.id]: Number(event.target.value) }))} className="w-20 rounded-lg border border-violet-200 bg-background px-3 py-2 text-sm" />
+                                                                    <span className="text-xs text-muted-foreground">из {d.maxPoints} баллов</span>
+                                                                    <input value={reviewFeedback[d.id] ?? ""} onChange={(event) => setReviewFeedback((current) => ({ ...current, [d.id]: event.target.value }))} placeholder="Комментарий ученику" className="min-w-[220px] flex-1 rounded-lg border border-violet-200 bg-background px-3 py-2 text-sm" />
+                                                                    <button onClick={() => reviewResponse(resultId, d)} disabled={reviewingId === d.id} className="rounded-lg bg-violet-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{reviewingId === d.id ? "Сохранение…" : "Сохранить"}</button>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                        {d.reviewStatus === "ai_graded" && (
+                                                            <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3 dark:bg-blue-950/25">
+                                                                <p className="text-xs font-bold text-blue-800">Оценено ИИ: {d.pointsEarned}/{d.maxPoints}</p>
+                                                                {d.reviewFeedback && (
+                                                                    <p className="mt-1.5 text-xs leading-relaxed text-blue-900/80 dark:text-blue-200/80">{d.reviewFeedback}</p>
+                                                                )}
+                                                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                                                    <input type="number" min={0} max={d.maxPoints} step={0.1} value={reviewPoints[d.id] ?? d.pointsEarned} onChange={(event) => setReviewPoints((current) => ({ ...current, [d.id]: Number(event.target.value) }))} className="w-20 rounded-lg border border-blue-200 bg-background px-3 py-2 text-sm" />
+                                                                    <span className="text-xs text-muted-foreground">из {d.maxPoints} баллов</span>
+                                                                    <input value={reviewFeedback[d.id] ?? d.reviewFeedback ?? ""} onChange={(event) => setReviewFeedback((current) => ({ ...current, [d.id]: event.target.value }))} placeholder="Комментарий ученику" className="min-w-[220px] flex-1 rounded-lg border border-blue-200 bg-background px-3 py-2 text-sm" />
+                                                                    <button onClick={() => reviewResponse(resultId, d)} disabled={reviewingId === d.id} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{reviewingId === d.id ? "Сохранение…" : "Исправить оценку"}</button>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                        {d.reviewStatus === "reviewed" && <p className="mt-2 text-xs font-semibold text-violet-700">Проверено вручную: {d.pointsEarned}/{d.maxPoints}{d.reviewFeedback ? ` · ${d.reviewFeedback}` : ""}</p>}
                                                     </div>
                                                 ))}
                                             </div>

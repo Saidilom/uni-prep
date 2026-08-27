@@ -14,13 +14,16 @@ import {
     removeStudentFromClass,
     deleteClass,
     fetchClassMockAssignments,
+    fetchClassStudentMockAssignments,
     fetchAssignableMockTests,
     assignMockToClass,
     unassignMockFromClass,
+    unassignMockFromStudent,
     fetchAssignablePlacementTests,
     fetchStudentActivePlacementTestIds,
     assignPlacementToStudent,
     ClassMockAssignment,
+    ClassStudentMockAssignment,
     AssignablePlacementTest,
 } from "@/lib/class-utils";
 import { Class, User, MockTest } from "@/lib/firestore-schema";
@@ -35,6 +38,7 @@ export default function ClassDetailPage() {
     const [cls, setCls] = useState<Class | null>(null);
     const [members, setMembers] = useState<User[]>([]);
     const [assignments, setAssignments] = useState<ClassMockAssignment[]>([]);
+    const [studentAssignments, setStudentAssignments] = useState<ClassStudentMockAssignment[]>([]);
     const [loading, setLoading] = useState(true);
 
     const [searchId, setSearchId] = useState("");
@@ -43,6 +47,8 @@ export default function ClassDetailPage() {
 
     const [assigning, setAssigning] = useState(false);
     const [assignable, setAssignable] = useState<MockTest[]>([]);
+    const [assignStudentTarget, setAssignStudentTarget] = useState<MockTest | null>(null);
+    const [assigningToStudent, setAssigningToStudent] = useState<string | null>(null);
 
     const [placementTarget, setPlacementTarget] = useState<User | null>(null);
     const [placementTests, setPlacementTests] = useState<AssignablePlacementTest[]>([]);
@@ -51,14 +57,16 @@ export default function ClassDetailPage() {
 
     const load = async () => {
         setLoading(true);
-        const [c, m, a] = await Promise.all([
+        const [c, m, a, sa] = await Promise.all([
             fetchClassById(classId),
             fetchClassMembers(classId),
             fetchClassMockAssignments(classId),
+            fetchClassStudentMockAssignments(classId),
         ]);
         setCls(c);
         setMembers(m);
         setAssignments(a);
+        setStudentAssignments(sa);
         setLoading(false);
     };
 
@@ -115,8 +123,17 @@ export default function ClassDetailPage() {
 
     const openAssignPicker = async () => {
         setAssigning(true);
-        const all = await fetchAssignableMockTests();
-        setAssignable(all.filter((t) => !assignments.some((a) => a.mockTestId === t.id)));
+        setAssignStudentTarget(null);
+        if (!user) return;
+        const all = await fetchAssignableMockTests(user.id);
+        // A test already assigned here — to the whole class or to any one
+        // student — is considered "handled" for this class and drops out of
+        // the picker, the same way a class-wide assignment already did.
+        const assignedIds = new Set([
+            ...assignments.map((a) => a.mockTestId),
+            ...studentAssignments.map((a) => a.mockTestId),
+        ]);
+        setAssignable(all.filter((t) => !assignedIds.has(t.id)));
     };
 
     const handleAssign = async (test: MockTest) => {
@@ -130,10 +147,42 @@ export default function ClassDetailPage() {
         }
     };
 
+    const handleAssignToStudent = async (test: MockTest, student: User) => {
+        setAssigningToStudent(student.id);
+        try {
+            const response = await fetch(`/api/mock-tests/${test.id}/assign`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ targetType: "student", targetId: student.id }),
+            });
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(body.error || "Не удалось назначить тест");
+            toast.success(`«${test.title}» назначен ${student.name}`);
+            setAssigning(false);
+            setAssignStudentTarget(null);
+            load();
+        } catch (err) {
+            toast.error("Не удалось назначить тест", { description: err instanceof Error ? err.message : String(err) });
+        } finally {
+            setAssigningToStudent(null);
+        }
+    };
+
     const handleUnassign = async (assignment: ClassMockAssignment) => {
         if (!confirm(`Снять назначение «${assignment.title}»?`)) return;
         try {
-            await unassignMockFromClass(assignment.id);
+            await unassignMockFromClass(assignment.id, classId);
+            toast.success("Назначение снято");
+            load();
+        } catch (err) {
+            toast.error("Не удалось снять назначение", { description: String(err) });
+        }
+    };
+
+    const handleUnassignFromStudent = async (assignment: ClassStudentMockAssignment) => {
+        if (!confirm(`Снять «${assignment.title}» у ${assignment.studentName}?`)) return;
+        try {
+            await unassignMockFromStudent(assignment.id, classId);
             toast.success("Назначение снято");
             load();
         } catch (err) {
@@ -159,7 +208,7 @@ export default function ClassDetailPage() {
             toast.success(`«${test.title}» назначен ${placementTarget.name}`);
             setPlacementTarget(null);
         } catch (err) {
-            toast.error("Не удалось назначить Placement", { description: String(err) });
+            toast.error("Не удалось назначить Школа", { description: String(err) });
         } finally {
             setAssigningPlacement(false);
         }
@@ -269,7 +318,7 @@ export default function ClassDetailPage() {
                                         onClick={() => openPlacementPicker(m)}
                                         className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted"
                                     >
-                                        <ClipboardCheck size={13} /> Placement
+                                        <ClipboardCheck size={13} /> Школа
                                     </button>
                                     <button
                                         onClick={() => handleRemove(m)}
@@ -296,60 +345,122 @@ export default function ClassDetailPage() {
                     </button>
                 </div>
 
-                {assignments.length === 0 ? (
-                    <div className="rounded-2xl border border-border bg-muted/50 py-10 text-center dark:bg-muted/30">
-                        <ClipboardList size={24} className="mx-auto mb-2 text-muted-foreground/50" />
-                        <p className="font-medium text-muted-foreground">Тесты этому классу ещё не назначены.</p>
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                    <div>
+                        <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">Всему классу</h3>
+                        {assignments.length === 0 ? (
+                            <div className="rounded-2xl border border-border bg-muted/50 py-10 text-center dark:bg-muted/30">
+                                <ClipboardList size={24} className="mx-auto mb-2 text-muted-foreground/50" />
+                                <p className="font-medium text-muted-foreground">Тесты этому классу ещё не назначены.</p>
+                            </div>
+                        ) : (
+                            <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
+                                {assignments.map((a) => (
+                                    <Link
+                                        key={a.id}
+                                        href={`/classes/${classId}/results/${a.mockTestId}`}
+                                        className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4 transition-colors hover:bg-muted/40"
+                                    >
+                                        <div className="min-w-0">
+                                            <p className="truncate text-sm font-semibold text-foreground">{a.title}</p>
+                                            <p className="mt-0.5 text-xs text-muted-foreground">
+                                                {a.durationMinutes} мин • {a.completedCount}/{members.length} прошли — результаты
+                                            </p>
+                                        </div>
+                                        <button
+                                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleUnassign(a); }}
+                                            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
+                                        >
+                                            <X size={13} /> Снять
+                                        </button>
+                                    </Link>
+                                ))}
+                            </div>
+                        )}
                     </div>
-                ) : (
-                    <div className="space-y-3">
-                        {assignments.map((a) => (
-                            <Link
-                                key={a.id}
-                                href={`/classes/${classId}/results/${a.mockTestId}`}
-                                className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4 transition-colors hover:bg-muted/40"
-                            >
-                                <div className="min-w-0">
-                                    <p className="truncate text-sm font-semibold text-foreground">{a.title}</p>
-                                    <p className="mt-0.5 text-xs text-muted-foreground">
-                                        {a.durationMinutes} мин • {a.completedCount}/{members.length} прошли — результаты
-                                    </p>
-                                </div>
-                                <button
-                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleUnassign(a); }}
-                                    className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
-                                >
-                                    <X size={13} /> Снять
-                                </button>
-                            </Link>
-                        ))}
+
+                    <div>
+                        <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">Отдельным ученикам</h3>
+                        {studentAssignments.length === 0 ? (
+                            <div className="rounded-2xl border border-border bg-muted/50 py-10 text-center dark:bg-muted/30">
+                                <ClipboardList size={24} className="mx-auto mb-2 text-muted-foreground/50" />
+                                <p className="font-medium text-muted-foreground">Индивидуальных назначений пока нет.</p>
+                            </div>
+                        ) : (
+                            <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
+                                {studentAssignments.map((a) => (
+                                    <div key={a.id} className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4">
+                                        <div className="min-w-0">
+                                            <p className="truncate text-sm font-semibold text-foreground">{a.title}</p>
+                                            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                                                {a.studentName} • {a.durationMinutes} мин • {a.completed ? "прошёл(а)" : "не прошёл(а)"}
+                                            </p>
+                                        </div>
+                                        <button
+                                            onClick={() => handleUnassignFromStudent(a)}
+                                            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
+                                        >
+                                            <X size={13} /> Снять
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
-                )}
+                </div>
             </section>
 
             {assigning && (
-                <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setAssigning(false)}>
+                <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => { setAssigning(false); setAssignStudentTarget(null); }}>
                     <div className="w-full max-w-md overflow-hidden rounded-3xl border border-border bg-card shadow-xl" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-between border-b border-border px-6 py-4">
-                            <h3 className="font-bold text-foreground">Назначить тест классу</h3>
-                            <button onClick={() => setAssigning(false)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted"><X size={18} /></button>
+                        <div className="flex items-center gap-3 border-b border-border px-6 py-4">
+                            {assignStudentTarget && (
+                                <button onClick={() => setAssignStudentTarget(null)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted"><ArrowLeft size={16} /></button>
+                            )}
+                            <h3 className="min-w-0 flex-1 truncate font-bold text-foreground">
+                                {assignStudentTarget ? `Ученику — ${assignStudentTarget.title}` : "Назначить тест классу"}
+                            </h3>
+                            <button onClick={() => { setAssigning(false); setAssignStudentTarget(null); }} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted"><X size={18} /></button>
                         </div>
                         <div className="max-h-[60vh] overflow-y-auto p-4">
-                            {assignable.length === 0 ? (
+                            {assignStudentTarget ? (
+                                members.length === 0 ? (
+                                    <p className="px-2 py-6 text-center text-sm text-muted-foreground">В классе пока нет учеников.</p>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {members.map((student) => (
+                                            <button
+                                                key={student.id}
+                                                onClick={() => handleAssignToStudent(assignStudentTarget, student)}
+                                                disabled={assigningToStudent === student.id}
+                                                className="flex w-full items-center justify-between gap-3 rounded-xl border border-border p-3 text-left transition-colors hover:bg-muted disabled:opacity-50"
+                                            >
+                                                <span className="text-sm font-semibold text-foreground">{student.name} {student.surname || ""}</span>
+                                                {assigningToStudent === student.id ? (
+                                                    <span className="shrink-0 text-xs font-semibold text-muted-foreground">Назначение…</span>
+                                                ) : (
+                                                    <Plus size={16} className="shrink-0 text-muted-foreground" />
+                                                )}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )
+                            ) : assignable.length === 0 ? (
                                 <p className="px-2 py-6 text-center text-sm text-muted-foreground">
                                     Нет доступных тестов типа «Только для класса». Создайте такой тест в админ-панели.
                                 </p>
                             ) : (
                                 <div className="space-y-2">
                                     {assignable.map((t) => (
-                                        <button
-                                            key={t.id}
-                                            onClick={() => handleAssign(t)}
-                                            className="flex w-full items-center justify-between gap-3 rounded-xl border border-border p-3 text-left transition-colors hover:bg-muted"
-                                        >
-                                            <span className="text-sm font-semibold text-foreground">{t.title}</span>
-                                            <Plus size={16} className="shrink-0 text-muted-foreground" />
-                                        </button>
+                                        <div key={t.id} className="flex items-center justify-between gap-2 rounded-xl border border-border p-3">
+                                            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">{t.title}</span>
+                                            <div className="flex shrink-0 items-center gap-2">
+                                                <button onClick={() => setAssignStudentTarget(t)} className="rounded-lg border border-border px-2.5 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted">Ученику</button>
+                                                <button onClick={() => handleAssign(t)} className="inline-flex items-center gap-1 rounded-lg bg-foreground px-2.5 py-1.5 text-xs font-semibold text-background transition-opacity hover:opacity-90">
+                                                    Всем <Plus size={14} />
+                                                </button>
+                                            </div>
+                                        </div>
                                     ))}
                                 </div>
                             )}
@@ -362,13 +473,13 @@ export default function ClassDetailPage() {
                 <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setPlacementTarget(null)}>
                     <div className="w-full max-w-md overflow-hidden rounded-3xl border border-border bg-card shadow-xl" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-between border-b border-border px-6 py-4">
-                            <h3 className="font-bold text-foreground">Назначить Placement — {placementTarget.name}</h3>
+                            <h3 className="font-bold text-foreground">Назначить Школа — {placementTarget.name}</h3>
                             <button onClick={() => setPlacementTarget(null)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted"><X size={18} /></button>
                         </div>
                         <div className="max-h-[60vh] overflow-y-auto p-4">
                             {placementTests.filter((t) => !activePlacementIds.has(t.id)).length === 0 ? (
                                 <p className="px-2 py-6 text-center text-sm text-muted-foreground">
-                                    Нет доступных Placement-тестов для назначения — либо их ещё не создали в админ-панели, либо у ученика уже есть активные назначения на все.
+                                    Нет доступных тестов «Школа» для назначения — либо их ещё не создали в админ-панели, либо у ученика уже есть активные назначения на все.
                                 </p>
                             ) : (
                                 <div className="space-y-2">

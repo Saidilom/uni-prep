@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, CreditCard, X, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, CreditCard, X, CheckCircle2, ExternalLink } from "lucide-react";
 
 type Props = {
     mockTestId: string;
@@ -11,8 +11,15 @@ type Props = {
     onSuccess: () => void;
 };
 
+// Test-mode fake checkout only shows up when explicitly enabled (local dev
+// without real Payme/Click sandbox credentials) — never in production,
+// where real money is on the line.
+const TEST_MODE = process.env.NEXT_PUBLIC_PAYMENTS_TEST_MODE === "true";
+
 export default function PaymentModal({ mockTestId, title, price, onClose, onSuccess }: Props) {
     const [paymentId, setPaymentId] = useState<string | null>(null);
+    const [paymeUrl, setPaymeUrl] = useState<string | null>(null);
+    const [clickUrl, setClickUrl] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [processing, setProcessing] = useState<"success" | "cancelled" | null>(null);
     const [succeeded, setSucceeded] = useState(false);
@@ -33,6 +40,8 @@ export default function PaymentModal({ mockTestId, title, price, onClose, onSucc
                     return;
                 }
                 setPaymentId(data.paymentId);
+                setPaymeUrl(data.paymeUrl ?? null);
+                setClickUrl(data.clickUrl ?? null);
             } catch {
                 if (active) setError("Не удалось начать оплату");
             }
@@ -50,7 +59,8 @@ export default function PaymentModal({ mockTestId, title, price, onClose, onSucc
         return () => document.removeEventListener("keydown", handler);
     }, [onClose]);
 
-    const confirm = async (outcome: "success" | "cancelled") => {
+    // Test-mode only — instantly resolves the payment without a real provider.
+    const confirmTestMode = async (outcome: "success" | "cancelled") => {
         if (!paymentId) return;
         setError(null);
         setProcessing(outcome);
@@ -110,33 +120,66 @@ export default function PaymentModal({ mockTestId, title, price, onClose, onSucc
                                 {price.toLocaleString()} <span className="text-base font-semibold text-muted-foreground">UZS</span>
                             </p>
 
-                            <div className="mt-4 flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-left text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-                                <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-                                <p>Тестовый режим оплаты — провайдер (Payme/Click/Uzum) будет подключён позже.</p>
-                            </div>
-
                             {error ? (
                                 <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
                                     {error}
                                 </div>
                             ) : null}
 
-                            <div className="mt-6 flex flex-col gap-3">
-                                <button
-                                    onClick={() => confirm("success")}
-                                    disabled={!paymentId || processing !== null}
-                                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-6 py-3.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-blue-700 active:scale-[0.97] disabled:opacity-50"
-                                >
-                                    {!paymentId ? "Подготовка…" : processing === "success" ? "Обработка…" : "Оплатить (тестовый режим)"}
-                                </button>
-                                <button
-                                    onClick={() => confirm("cancelled")}
-                                    disabled={!paymentId || processing !== null}
-                                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-border px-6 py-3 text-sm font-semibold transition-colors hover:bg-muted disabled:opacity-50"
-                                >
-                                    {processing === "cancelled" ? "Отмена…" : "Отменить"}
-                                </button>
-                            </div>
+                            {TEST_MODE ? (
+                                <>
+                                    <div className="mt-4 flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-left text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                                        <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                                        <p>Тестовый режим оплаты включён (NEXT_PUBLIC_PAYMENTS_TEST_MODE) — реальная оплата не производится.</p>
+                                    </div>
+                                    <div className="mt-6 flex flex-col gap-3">
+                                        <button
+                                            onClick={() => confirmTestMode("success")}
+                                            disabled={!paymentId || processing !== null}
+                                            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-6 py-3.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-blue-700 active:scale-[0.97] disabled:opacity-50"
+                                        >
+                                            {!paymentId ? "Подготовка…" : processing === "success" ? "Обработка…" : "Оплатить (тестовый режим)"}
+                                        </button>
+                                        <button
+                                            onClick={() => confirmTestMode("cancelled")}
+                                            disabled={!paymentId || processing !== null}
+                                            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-border px-6 py-3 text-sm font-semibold transition-colors hover:bg-muted disabled:opacity-50"
+                                        >
+                                            {processing === "cancelled" ? "Отмена…" : "Отменить"}
+                                        </button>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="mt-6 flex flex-col gap-3">
+                                    {paymeUrl && (
+                                        <a
+                                            href={paymeUrl}
+                                            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#00c8b3] px-6 py-3.5 text-sm font-bold text-white shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
+                                        >
+                                            Оплатить через Payme <ExternalLink size={15} />
+                                        </a>
+                                    )}
+                                    {clickUrl && (
+                                        <a
+                                            href={clickUrl}
+                                            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#0091e2] px-6 py-3.5 text-sm font-bold text-white shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
+                                        >
+                                            Оплатить через Click <ExternalLink size={15} />
+                                        </a>
+                                    )}
+                                    {!paymeUrl && !clickUrl && !error && (
+                                        <p className="text-sm text-muted-foreground">
+                                            {!paymentId ? "Подготовка…" : "Оплата временно недоступна — обратитесь к администратору."}
+                                        </p>
+                                    )}
+                                    <button
+                                        onClick={onClose}
+                                        className="inline-flex items-center justify-center gap-2 rounded-2xl border border-border px-6 py-3 text-sm font-semibold transition-colors hover:bg-muted"
+                                    >
+                                        Отмена
+                                    </button>
+                                </div>
+                            )}
                         </>
                     )}
                 </div>

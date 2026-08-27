@@ -35,7 +35,7 @@ export default function AdminPlacementResultsPage() {
     return (
         <div className="flex flex-col gap-10">
             <section>
-                <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Результаты Placement</h1>
+                <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Результаты Школы</h1>
                 <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
                     Все прохождения вступительного тестирования.
                 </p>

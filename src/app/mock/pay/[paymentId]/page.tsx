@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { AlertTriangle, CreditCard, X, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, CreditCard, X, CheckCircle2, Loader2 } from "lucide-react";
 import supabase from "@/lib/supabase/client";
 
 type PaymentRow = {
@@ -14,6 +14,8 @@ type PaymentRow = {
     status: "pending" | "success" | "failed" | "cancelled";
 };
 
+const TEST_MODE = process.env.NEXT_PUBLIC_PAYMENTS_TEST_MODE === "true";
+
 export default function MockCheckoutPage() {
     const { paymentId } = useParams();
     const router = useRouter();
@@ -21,9 +23,9 @@ export default function MockCheckoutPage() {
     const [loading, setLoading] = useState(true);
     const [processing, setProcessing] = useState<"success" | "cancelled" | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     const load = useCallback(async () => {
-        setLoading(true);
         const { data } = await supabase
             .from("payments")
             .select("id, mock_test_id, mock_test_title, amount, currency, status")
@@ -31,11 +33,31 @@ export default function MockCheckoutPage() {
             .single();
         setPayment((data as PaymentRow) || null);
         setLoading(false);
+        return (data as PaymentRow) || null;
     }, [paymentId]);
 
     useEffect(() => { load(); }, [load]);
 
-    const confirm = async (outcome: "success" | "cancelled") => {
+    // Payme/Click redirect the browser back here right after their own
+    // hosted checkout, but the actual status change comes from their
+    // server-to-server webhook (/api/payments/payme, /click), which can
+    // land a moment before or after this redirect — poll briefly instead
+    // of assuming either order.
+    useEffect(() => {
+        if (!payment || payment.status !== "pending") return;
+        pollRef.current = setInterval(async () => {
+            const fresh = await load();
+            if (fresh && fresh.status !== "pending" && pollRef.current) {
+                clearInterval(pollRef.current);
+            }
+        }, 2000);
+        return () => {
+            if (pollRef.current) clearInterval(pollRef.current);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [payment?.status]);
+
+    const confirmTestMode = async (outcome: "success" | "cancelled") => {
         setError(null);
         setProcessing(outcome);
         try {
@@ -109,10 +131,12 @@ export default function MockCheckoutPage() {
 
     return (
         <div className="mx-auto flex max-w-lg flex-col gap-6 px-4 py-10">
-            <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-                <AlertTriangle size={18} className="mt-0.5 shrink-0" />
-                <p>Тестовый режим оплаты — реальная оплата не производится. Провайдер (Payme/Click/Uzum) будет подключён позже.</p>
-            </div>
+            {!TEST_MODE && (
+                <div className="flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 dark:bg-blue-950/40 dark:text-blue-300">
+                    <Loader2 size={18} className="mt-0.5 shrink-0 animate-spin" />
+                    <p>Ожидаем подтверждение оплаты от платёжной системы. Обычно это занимает несколько секунд — страница обновится автоматически.</p>
+                </div>
+            )}
 
             <div className="rounded-3xl border border-border bg-card p-8 text-center shadow-sm">
                 <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-muted">
@@ -129,22 +153,30 @@ export default function MockCheckoutPage() {
                     </div>
                 ) : null}
 
-                <div className="mt-8 flex flex-col gap-3">
-                    <button
-                        onClick={() => confirm("success")}
-                        disabled={processing !== null}
-                        className="inline-flex items-center justify-center gap-2 rounded-2xl bg-foreground px-6 py-3.5 text-sm font-semibold text-background shadow-sm transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-50"
-                    >
-                        {processing === "success" ? "Обработка…" : "Оплатить (тестовый режим)"}
-                    </button>
-                    <button
-                        onClick={() => confirm("cancelled")}
-                        disabled={processing !== null}
-                        className="inline-flex items-center justify-center gap-2 rounded-2xl border border-border px-6 py-3 text-sm font-semibold hover:bg-muted transition-colors disabled:opacity-50"
-                    >
-                        {processing === "cancelled" ? "Отмена…" : "Отменить"}
-                    </button>
-                </div>
+                {TEST_MODE && (
+                    <>
+                        <div className="mt-6 flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-left text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                            <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                            <p>Тестовый режим оплаты включён — реальная оплата не производится.</p>
+                        </div>
+                        <div className="mt-6 flex flex-col gap-3">
+                            <button
+                                onClick={() => confirmTestMode("success")}
+                                disabled={processing !== null}
+                                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-foreground px-6 py-3.5 text-sm font-semibold text-background shadow-sm transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-50"
+                            >
+                                {processing === "success" ? "Обработка…" : "Оплатить (тестовый режим)"}
+                            </button>
+                            <button
+                                onClick={() => confirmTestMode("cancelled")}
+                                disabled={processing !== null}
+                                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-border px-6 py-3 text-sm font-semibold hover:bg-muted transition-colors disabled:opacity-50"
+                            >
+                                {processing === "cancelled" ? "Отмена…" : "Отменить"}
+                            </button>
+                        </div>
+                    </>
+                )}
             </div>
         </div>
     );

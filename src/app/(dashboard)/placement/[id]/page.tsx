@@ -83,6 +83,7 @@ export default function PlacementTestPage() {
 
             if (data) {
                 pageCache.invalidatePrefix("placementAssignments:");
+                if (user) pageCache.invalidate(`hasPlacementResult:${user.id}`);
                 setResult({
                     resultId: data.resultId,
                     score: data.score,

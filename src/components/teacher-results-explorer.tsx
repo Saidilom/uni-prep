@@ -1,0 +1,232 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { ArrowLeft, ChevronRight, Trophy, Users, Award, Calendar, Loader2 } from "lucide-react";
+import { useAuthStore } from "@/store/useAuthStore";
+import {
+    fetchTeacherResultsOverview,
+    fetchClassStudentsOverview,
+    TeacherResultsOverview,
+    TeacherClassSummary,
+    ClassStudentOverview,
+} from "@/lib/class-utils";
+import { fetchUserMockResults, MockResultRow } from "@/lib/registan-utils";
+
+const accuracyColor = (value: number | null) =>
+    value === null ? "text-muted-foreground bg-muted" : value >= 80 ? "text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40" : value >= 50 ? "text-amber-600 bg-amber-50 dark:bg-amber-950/40" : "text-red-600 bg-red-50 dark:bg-red-950/40";
+
+export default function TeacherResultsExplorer() {
+    const { user } = useAuthStore();
+    const [overview, setOverview] = useState<TeacherResultsOverview | null>(null);
+    const [loadingOverview, setLoadingOverview] = useState(true);
+
+    const [selectedClass, setSelectedClass] = useState<TeacherClassSummary | null>(null);
+    const [students, setStudents] = useState<ClassStudentOverview[]>([]);
+    const [loadingStudents, setLoadingStudents] = useState(false);
+
+    const [selectedStudent, setSelectedStudent] = useState<ClassStudentOverview | null>(null);
+    const [attempts, setAttempts] = useState<MockResultRow[]>([]);
+    const [loadingAttempts, setLoadingAttempts] = useState(false);
+
+    useEffect(() => {
+        if (!user) return;
+        setLoadingOverview(true);
+        fetchTeacherResultsOverview(user.id).then((data) => {
+            setOverview(data);
+            setLoadingOverview(false);
+        });
+    }, [user]);
+
+    const openClass = (cls: TeacherClassSummary) => {
+        setSelectedClass(cls);
+        setSelectedStudent(null);
+        setLoadingStudents(true);
+        fetchClassStudentsOverview(cls.id).then((data) => {
+            setStudents(data);
+            setLoadingStudents(false);
+        });
+    };
+
+    const openStudent = (student: ClassStudentOverview) => {
+        setSelectedStudent(student);
+        setLoadingAttempts(true);
+        fetchUserMockResults(student.student.id).then((data) => {
+            setAttempts(data);
+            setLoadingAttempts(false);
+        });
+    };
+
+    if (!user) return null;
+
+    return (
+        <div className="flex flex-col gap-8 py-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <section className="flex flex-wrap items-center gap-2 text-sm">
+                <button onClick={() => { setSelectedClass(null); setSelectedStudent(null); }} className={`font-bold tracking-tight ${!selectedClass ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                    Результаты учеников
+                </button>
+                {selectedClass && (
+                    <>
+                        <ChevronRight size={15} className="text-muted-foreground" />
+                        <button onClick={() => setSelectedStudent(null)} className={`font-bold ${!selectedStudent ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                            {selectedClass.name}
+                        </button>
+                    </>
+                )}
+                {selectedStudent && (
+                    <>
+                        <ChevronRight size={15} className="text-muted-foreground" />
+                        <span className="font-bold text-foreground">{selectedStudent.student.name} {selectedStudent.student.surname || ""}</span>
+                    </>
+                )}
+            </section>
+
+            {!selectedClass && (
+                <>
+                    <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div className="flex items-center gap-4 rounded-3xl border border-border bg-card p-5 shadow-sm">
+                            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-950/40"><Trophy size={22} /></span>
+                            <div className="min-w-0">
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Топ класс</p>
+                                {overview?.topClass ? (
+                                    <>
+                                        <p className="truncate font-bold text-foreground">{overview.topClass.name}</p>
+                                        <p className="text-sm text-muted-foreground">{overview.topClass.avgAccuracy}% средний результат</p>
+                                    </>
+                                ) : (
+                                    <p className="text-sm text-muted-foreground">Пока нет пройденных тестов</p>
+                                )}
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-4 rounded-3xl border border-border bg-card p-5 shadow-sm">
+                            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 dark:bg-amber-950/40"><Award size={22} /></span>
+                            <div className="min-w-0">
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Топ ученик</p>
+                                {overview?.topStudent ? (
+                                    <>
+                                        <p className="truncate font-bold text-foreground">{overview.topStudent.student.name} {overview.topStudent.student.surname || ""}</p>
+                                        <p className="text-sm text-muted-foreground">{overview.topStudent.avgAccuracy}% • {overview.topStudent.className}</p>
+                                    </>
+                                ) : (
+                                    <p className="text-sm text-muted-foreground">Пока нет пройденных тестов</p>
+                                )}
+                            </div>
+                        </div>
+                    </section>
+
+                    <section>
+                        <h2 className="mb-5 text-xl font-bold tracking-tight text-foreground">Мои классы</h2>
+                        {loadingOverview ? (
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                                {[1, 2, 3].map((n) => <div key={n} className="h-28 animate-pulse rounded-2xl border border-border bg-muted" />)}
+                            </div>
+                        ) : !overview || overview.classes.length === 0 ? (
+                            <div className="rounded-2xl border border-border bg-muted/50 py-14 text-center dark:bg-muted/30">
+                                <Users size={26} className="mx-auto mb-3 text-muted-foreground/50" />
+                                <p className="font-medium text-muted-foreground">У вас пока нет классов.</p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                                {overview.classes.map((cls) => (
+                                    <button key={cls.id} onClick={() => openClass(cls)} className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-5 text-left shadow-sm transition-all hover:bg-muted/40">
+                                        <div className="flex items-start justify-between gap-2">
+                                            <p className="font-semibold text-foreground">{cls.name}</p>
+                                            <ChevronRight size={16} className="mt-0.5 shrink-0 text-muted-foreground" />
+                                        </div>
+                                        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                            <Users size={12} /> {cls.memberCount} {cls.memberCount === 1 ? "ученик" : "учеников"}
+                                        </p>
+                                        <span className={`inline-flex w-fit items-center rounded-lg px-2.5 py-1 text-xs font-extrabold tabular-nums ${accuracyColor(cls.avgAccuracy)}`}>
+                                            {cls.avgAccuracy !== null ? `${cls.avgAccuracy}% средний результат` : "Нет попыток"}
+                                        </span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </section>
+                </>
+            )}
+
+            {selectedClass && !selectedStudent && (
+                <section>
+                    <button onClick={() => setSelectedClass(null)} className="mb-4 inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground">
+                        <ArrowLeft size={15} /> К классам
+                    </button>
+                    <div className="mb-5 flex items-center justify-between">
+                        <h2 className="text-xl font-bold tracking-tight text-foreground">{selectedClass.name}</h2>
+                        <span className="text-sm text-muted-foreground">{students.length} {students.length === 1 ? "ученик" : "учеников"}</span>
+                    </div>
+                    {loadingStudents ? (
+                        <div className="flex items-center justify-center py-16"><Loader2 className="animate-spin text-muted-foreground" /></div>
+                    ) : students.length === 0 ? (
+                        <div className="rounded-2xl border border-border bg-muted/50 py-14 text-center dark:bg-muted/30">
+                            <p className="font-medium text-muted-foreground">В этом классе пока нет учеников.</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            {students.map((s) => (
+                                <button key={s.student.id} onClick={() => openStudent(s)} className="flex w-full items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4 text-left shadow-sm transition-all hover:bg-muted/40">
+                                    <div className="flex min-w-0 items-center gap-3">
+                                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-muted font-bold text-foreground">
+                                            {s.student.name[0]?.toUpperCase() || "?"}
+                                        </span>
+                                        <div className="min-w-0">
+                                            <p className="truncate text-sm font-semibold text-foreground">{s.student.name} {s.student.surname || ""}</p>
+                                            <p className="text-xs text-muted-foreground">{s.attemptCount > 0 ? `${s.attemptCount} ${s.attemptCount === 1 ? "попытка" : "попыток"}` : "Ещё не проходил тесты"}</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex shrink-0 items-center gap-3">
+                                        <span className={`rounded-xl px-3 py-1.5 text-sm font-extrabold tabular-nums ${accuracyColor(s.avgAccuracy)}`}>
+                                            {s.avgAccuracy !== null ? `${s.avgAccuracy}%` : "—"}
+                                        </span>
+                                        <ChevronRight size={16} className="text-muted-foreground" />
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </section>
+            )}
+
+            {selectedStudent && (
+                <section>
+                    <button onClick={() => setSelectedStudent(null)} className="mb-4 inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground">
+                        <ArrowLeft size={15} /> К ученикам класса
+                    </button>
+                    <div className="mb-5 flex items-center gap-4">
+                        <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-border bg-muted text-xl font-bold text-foreground">
+                            {selectedStudent.student.name[0]?.toUpperCase() || "?"}
+                        </span>
+                        <div className="min-w-0">
+                            <h2 className="truncate text-xl font-bold tracking-tight text-foreground">{selectedStudent.student.name} {selectedStudent.student.surname || ""}</h2>
+                            <p className="text-sm text-muted-foreground">{selectedStudent.student.shortId} • {selectedClass?.name}</p>
+                        </div>
+                    </div>
+                    {loadingAttempts ? (
+                        <div className="flex items-center justify-center py-16"><Loader2 className="animate-spin text-muted-foreground" /></div>
+                    ) : attempts.length === 0 ? (
+                        <div className="rounded-2xl border border-border bg-muted/50 py-14 text-center dark:bg-muted/30">
+                            <p className="font-medium text-muted-foreground">Этот ученик ещё не проходил Mock-тесты.</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            {attempts.map((a) => (
+                                <div key={a.id} className="flex flex-col justify-between gap-3 rounded-2xl border border-border bg-card p-4 shadow-sm sm:flex-row sm:items-center">
+                                    <div className="min-w-0">
+                                        <p className="truncate font-semibold text-foreground">{a.mock_test_title}</p>
+                                        <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                                            <span className="flex items-center gap-1"><Calendar size={12} /> {new Date(a.completed_at).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })}</span>
+                                            <span>{a.correct_answers}/{a.total_questions} верно</span>
+                                        </div>
+                                    </div>
+                                    <span className={`shrink-0 self-start rounded-xl px-4 py-2 text-sm font-extrabold tabular-nums sm:self-auto ${accuracyColor(a.accuracy)}`}>
+                                        {a.accuracy}%
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </section>
+            )}
+        </div>
+    );
+}

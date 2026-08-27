@@ -64,7 +64,13 @@ export const getUserProfile = (uid: string): Promise<User | null> =>
             if (error.code === "PGRST205") {
                 throw new Error("Supabase table public.users не найдена. Создайте таблицу users в Supabase.");
             }
-            return null;
+            // PGRST116 = .single() found no matching row — that's a real "no
+            // profile yet" signal. Anything else (network hiccup, timeout, a
+            // transient RLS/auth error while a token refresh is in flight) is
+            // an infrastructure failure, not proof the profile doesn't exist —
+            // must throw so callers don't treat it as a confirmed sign-out.
+            if (error.code === "PGRST116") return null;
+            throw error;
         }
         const d = normalizeUserRow(data);
         return {

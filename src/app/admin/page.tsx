@@ -2,39 +2,32 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { fetchAdminStats } from "@/lib/admin-utils";
-import {
-    GraduationCap,
-    Users,
-    Wallet,
-    FileText,
-    BookOpen,
-    Library,
-    ListTree,
-    HelpCircle,
-    ArrowRight,
-} from "lucide-react";
+import { fetchAdminOverview } from "@/lib/admin-utils";
+import { GraduationCap, Wallet, Clock, CreditCard, ArrowRight } from "lucide-react";
 
-type Stats = Awaited<ReturnType<typeof fetchAdminStats>>;
+type Overview = Awaited<ReturnType<typeof fetchAdminOverview>>;
+
+const statusLabel: Record<string, { text: string; className: string }> = {
+    success: { text: "Успешно", className: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40" },
+    failed: { text: "Ошибка", className: "border-red-200 bg-red-50 text-red-700 dark:bg-red-950/40" },
+    pending: { text: "Ожидание", className: "border-border bg-muted text-muted-foreground" },
+};
 
 export default function AdminDashboard() {
-    const [stats, setStats] = useState<Stats | null>(null);
+    const [overview, setOverview] = useState<Overview | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        fetchAdminStats().then((data) => {
-            setStats(data);
+        fetchAdminOverview().then((data) => {
+            setOverview(data);
             setIsLoading(false);
         });
     }, []);
 
     const statCards = [
-        { label: "Ученики", value: stats?.students, icon: GraduationCap, accent: "from-blue-50 to-indigo-50 text-blue-600 dark:from-blue-950/40 dark:to-indigo-950/40" },
-        { label: "Учителя", value: stats?.teachers, icon: Users, accent: "from-violet-50 to-purple-50 text-violet-600 dark:from-violet-950/40 dark:to-purple-950/40" },
-        { label: "Выручка (UZS)", value: stats?.revenue?.toLocaleString(), icon: Wallet, accent: "from-emerald-50 to-teal-50 text-emerald-600 dark:from-emerald-950/40 dark:to-teal-950/40" },
-        { label: "Mock-тесты", value: stats?.mocks, icon: FileText, accent: "from-amber-50 to-orange-50 text-amber-600 dark:from-amber-950/40 dark:to-orange-950/40" },
-        { label: "Классы", value: stats?.classes, icon: Users, accent: "from-sky-50 to-blue-50 text-sky-600 dark:from-sky-950/40 dark:to-blue-950/40" },
-        { label: "Попыток пройдено", value: stats?.attempts, icon: FileText, accent: "from-rose-50 to-pink-50 text-rose-600 dark:from-rose-950/40 dark:to-pink-950/40" },
+        { label: "Доход (UZS)", value: overview?.revenue?.toLocaleString(), icon: Wallet, accent: "from-emerald-50 to-teal-50 text-emerald-600 dark:from-emerald-950/40 dark:to-teal-950/40" },
+        { label: "Учеников всего", value: overview?.students, icon: GraduationCap, accent: "from-blue-50 to-indigo-50 text-blue-600 dark:from-blue-950/40 dark:to-indigo-950/40" },
+        { label: "Оплатили и ждут тест", value: overview?.waitingForMock, icon: Clock, accent: "from-amber-50 to-orange-50 text-amber-600 dark:from-amber-950/40 dark:to-orange-950/40" },
     ];
 
     return (
@@ -42,13 +35,13 @@ export default function AdminDashboard() {
             <section>
                 <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Обзор системы</h1>
                 <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-                    Ключевые метрики платформы в реальном времени.
+                    Деньги и ученики платформы в реальном времени.
                 </p>
             </section>
 
-            <section className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            <section className="grid grid-cols-1 gap-5 sm:grid-cols-3">
                 {isLoading ? (
-                    [1, 2, 3, 4, 5, 6].map((i) => (
+                    [1, 2, 3].map((i) => (
                         <div key={i} className="h-28 animate-pulse rounded-2xl border border-border bg-card" />
                     ))
                 ) : (
@@ -67,31 +60,47 @@ export default function AdminDashboard() {
             </section>
 
             <section className="rounded-2xl border border-border bg-card p-8">
-                <h2 className="mb-1 text-xl font-bold tracking-tight text-foreground">Управление контентом</h2>
-                <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-                    Иерархия: Предмет → Учебник → Тема → Вопрос. Соблюдайте осторожность при удалении данных.
-                </p>
-
-                <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    {[
-                        { href: "/admin/subjects", icon: BookOpen, label: "Управление предметами" },
-                        { href: "/admin/textbooks", icon: Library, label: "Управление учебниками" },
-                        { href: "/admin/topics", icon: ListTree, label: "Управление темами" },
-                        { href: "/admin/questions", icon: HelpCircle, label: "Управление вопросами" },
-                    ].map(({ href, icon: Icon, label }) => (
-                        <Link
-                            key={href}
-                            href={href}
-                            className="group flex items-center justify-between rounded-xl border border-border p-4 transition-colors hover:bg-muted"
-                        >
-                            <div className="flex items-center gap-3">
-                                <Icon size={18} className="text-muted-foreground group-hover:text-foreground" />
-                                <span className="font-medium text-foreground">{label}</span>
-                            </div>
-                            <ArrowRight size={16} className="text-muted-foreground/60 group-hover:text-foreground" />
-                        </Link>
-                    ))}
+                <div className="mb-6 flex items-center justify-between">
+                    <div>
+                        <h2 className="flex items-center gap-2 text-xl font-bold tracking-tight text-foreground">
+                            <CreditCard size={19} className="text-muted-foreground" /> Недавние транзакции
+                        </h2>
+                        <p className="mt-1 text-sm text-muted-foreground">Последние оплаты платных Mock-тестов.</p>
+                    </div>
+                    <Link href="/admin/payments" className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600 hover:underline">
+                        Все оплаты <ArrowRight size={14} />
+                    </Link>
                 </div>
+
+                {isLoading ? (
+                    <div className="space-y-3">
+                        {[1, 2, 3].map((n) => (
+                            <div key={n} className="h-16 animate-pulse rounded-2xl border border-border bg-muted" />
+                        ))}
+                    </div>
+                ) : !overview || overview.recentTransactions.length === 0 ? (
+                    <div className="rounded-2xl border border-border bg-muted/50 py-10 text-center dark:bg-muted/30">
+                        <p className="font-medium text-muted-foreground">Пока нет транзакций.</p>
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        {overview.recentTransactions.map((t) => {
+                            const status = statusLabel[t.status] ?? statusLabel.pending;
+                            return (
+                                <div key={t.id} className="flex flex-col justify-between gap-3 rounded-2xl border border-border p-4 sm:flex-row sm:items-center">
+                                    <div className="min-w-0">
+                                        <p className="truncate text-sm font-semibold text-foreground">{t.userName}</p>
+                                        <p className="mt-0.5 truncate text-xs text-muted-foreground">{t.mockTestTitle} • {new Date(t.createdAt).toLocaleString("ru-RU")}</p>
+                                    </div>
+                                    <div className="flex shrink-0 items-center gap-3">
+                                        <p className="text-sm font-bold tabular-nums text-foreground">{t.amount.toLocaleString()} {t.currency}</p>
+                                        <span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${status.className}`}>{status.text}</span>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
             </section>
         </div>
     );

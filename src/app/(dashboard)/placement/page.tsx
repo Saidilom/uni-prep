@@ -41,10 +41,43 @@ export default function PlacementPage() {
     const [results, setResults] = useState<Record<string, ResultSummary>>({});
     const [loading, setLoading] = useState(true);
 
+    // No one assigns "Школа" to a student anymore — whichever test the admin
+    // marked active (set_active_placement_test) is open to everyone. The
+    // first visit self-assigns into it (RLS lets a student insert their own
+    // placement_assignments row), so scanning the reception QR and signing
+    // up leads straight to "Начать" with no admin step in between.
+    const ensureActiveAssignment = useCallback(async () => {
+        if (!user) return;
+        const { data: activeTest } = await supabase
+            .from("placement_tests")
+            .select("id, title")
+            .eq("is_active", true)
+            .maybeSingle();
+        if (!activeTest) return;
+
+        const { data: existing } = await supabase
+            .from("placement_assignments")
+            .select("id")
+            .eq("user_id", user.id)
+            .eq("test_id", activeTest.id)
+            .maybeSingle();
+        if (existing) return;
+
+        await supabase.from("placement_assignments").insert({
+            id: crypto.randomUUID(),
+            user_id: user.id,
+            test_id: activeTest.id,
+            test_title: activeTest.title,
+            status: "assigned",
+            assigned_by: user.id,
+        });
+    }, [user]);
+
     const load = useCallback(async () => {
         if (!user) return;
         setLoading(true);
         try {
+            await ensureActiveAssignment();
             pageCache.invalidatePrefix("placementAssignments:");
             const data = (await fetchUserPlacementAssignments(user.id)) as unknown as Array<{
                 id: string;
@@ -116,7 +149,7 @@ export default function PlacementPage() {
         } finally {
             setLoading(false);
         }
-    }, [user, toast]);
+    }, [user, toast, ensureActiveAssignment]);
 
     useEffect(() => { load(); }, [load]);
 
@@ -145,9 +178,9 @@ export default function PlacementPage() {
                         <ClipboardList className="h-5 w-5 text-[hsl(var(--brand-blue))]" />
                     </div>
                     <div>
-                        <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Placement</h1>
+                        <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Школа</h1>
                         <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-                            Ваши вступительные тесты. Нажмите «Начать» чтобы пройти назначенный тест.
+                            Ваш вступительный тест. Нажмите «Начать», время пойдёт сразу.
                         </p>
                     </div>
                 </div>
@@ -166,10 +199,10 @@ export default function PlacementPage() {
                             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted/50">
                                 <AlertCircle className="h-7 w-7 text-muted-foreground" />
                             </div>
-                            <h2 className="text-xl font-bold text-foreground">Ожидайте назначения</h2>
+                            <h2 className="text-xl font-bold text-foreground">Тест пока недоступен</h2>
                             <p className="max-w-sm text-sm text-muted-foreground">
-                                Администратор ещё не назначил вам Placement-тест.
-                                Когда тест появится, вы сразу получите уведомление.
+                                Администратор ещё не опубликовал активный тест «Школа».
+                                Как только он появится, вы сможете начать сразу.
                             </p>
                         </div>
                     </div>

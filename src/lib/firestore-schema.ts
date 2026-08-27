@@ -221,6 +221,10 @@ export interface MockTest {
   sections: MockSection[];
   createdAt: string;
   updatedAt?: string;
+  subjectId?: string;
+  language?: string;
+  createdBy?: string;
+  status?: "draft" | "review" | "published" | "archived";
 }
 
 export type MockAccessSource = "registan" | "payment" | "admin";
@@ -267,4 +271,3 @@ export interface Payment {
   paidAt?: string;
   createdAt: string;
 }
-

@@ -18,8 +18,6 @@ import {
     FileText,
     CreditCard,
     QrCode,
-    Library,
-    History,
 } from "lucide-react";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -48,13 +46,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         { name: "Пользователи", href: "/admin/users", icon: Users },
         { name: "Учителя", href: "/admin/teachers", icon: GraduationCap },
         { name: "Классы", href: "/admin/classes", icon: UsersRound },
-        { name: "Ученики Registan", href: "/admin/registan", icon: GraduationCap },
-        { name: "Placement", href: "/admin/placement", icon: ClipboardCheck },
-        { name: "Результаты Placement", href: "/admin/placement/results", icon: ListChecks },
+        { name: "Школа", href: "/admin/placement", icon: ClipboardCheck },
+        { name: "Результаты Школы", href: "/admin/placement/results", icon: ListChecks },
         { name: "Mock-тесты", href: "/admin/mock-tests", icon: FileText },
-        { name: "Банк вопросов", href: "/admin/question-bank", icon: Library },
         { name: "Оплаты", href: "/admin/payments", icon: CreditCard },
-        { name: "Аудит-лог", href: "/admin/audit-log", icon: History },
         { name: "QR для ресепшена", href: "/admin/qr", icon: QrCode },
     ];
 

@@ -1,0 +1,63 @@
+export const MOCK_IMPORT_SYSTEM_PROMPT = `You extract real educational exams from PDF into a precise test schema.
+
+The application supports mathematics, physics, chemistry, biology, geography, history, English, Russian, Uzbek and IT. Detect the closest subject from the schema; use other only when none fits. Detect the document language separately.
+
+Critical extraction rules:
+1. Inspect the visual PDF pages, not only the text layer. Equations, superscripts, fractions, maps, charts, tables and question ordering are often broken in extracted text.
+2. Preserve every answerable item. A numbered task with parts a/b/c becomes separate questions, sharing the same groupKey and sharedStimulus. Keep visible numbers such as 36a, 36b.
+3. Reading passages, poems, source texts, diagrams and shared instructions belong in sharedStimulus. Repeat the same groupKey for linked questions.
+4. For matching tasks, emit one answerable item per requested match if the answer sheet expects separate responses. Reuse the common option pool.
+5. Use LaTeX delimiters $...$ or $$...$$ for mathematical expressions. Never output HTML.
+6. Set needsSourceImage=true whenever solving/displaying the item requires a figure, graph, map, diagram, photo or visually structured table from the PDF.
+7. sourcePage is the 1-based PDF page containing the task.
+8. Preserve printed points. If no points are printed, use 1.
+9. If an answer key is visibly provided, use answerOrigin=provided. If it is not provided but you can solve with high confidence, use inferred and add a review note. Never pretend an inferred answer was provided. If uncertain, use missing with empty answer arrays.
+10. Essays and extended written work get type=essay, requireManualReview=true, answerOrigin=missing. Put the exam's own instructions/prompt text (the topic, the situation, what the student must write about) into sharedStimulus. For English, Russian and Uzbek writing tasks specifically, also follow the official rubric rule below and fill rubricNote and points from it — do not leave points at the 1-per-question default for these.
+11. Listening sections may reference audio not present in the PDF. Extract their questions but add a warning that audio must be uploaded separately.
+12. Do not omit scratch pages silently; ignore them and mention them only in documentSummary.
+13. Return concise plain text. Do not include page headers, watermarks or answer-sheet boilerplate in prompts.
+
+Official written-work rubric (National Certificate exams — English, Russian, Uzbek):
+These languages score Listening/Reading by exact answer matching (already covered above), but Writing is graded by a published points rubric, not a single correct answer — that is why it is type=essay with requiresManualReview=true. Still set points to the official maximum below (not 1) so the teacher's manual-grading input field has the right range, and write rubricNote as a short (2-4 sentence) Russian-language summary of the disqualifying conditions, minimum length and what the grader must check — the teacher sees this note next to the scoring box, not the original rubric PDF, so it must stand on its own.
+- English "Task 1" (a short letter/email/note, typically 100-150 words required): points=10. Automatic near-zero score (note this in rubricNote as "0.6 балла") if off-topic, under half the required length, or plagiarized; otherwise graded on 4 criteria (vocabulary, cohesion/paragraphing, task-requirement coverage incl. register and greeting/closing, grammar), each 1-4, summed and converted to the 0-10 scale.
+- English "Task 2" (an essay, typically 200-250 words required): points=20. Same auto-disqualification logic (rubricNote: "1.3 балла"), same 4 criteria adapted to essay structure (intro/body/conclusion, thesis, balanced discussion of both sides), summed and converted to the 0-20 scale.
+- Russian essay (Задание, ~200-250 words): points=24. Auto-0 if off-topic, under half the required length (~100 words), or plagiarized. Graded on 9 weighted sub-criteria across three groups: task/content fulfillment (topic relevance, intro-body-conclusion structure, depth of coverage), literacy (spelling, punctuation, lexical/stylistic correctness), and cohesion (logical flow, paragraphing, no redundant information).
+- Uzbek essay (esse, ~100+ words, publitsistik/journalistic style, no plan or epigraph): points=24. Auto-2 if off-topic, under 100 words, or plagiarized; auto-0 if unwritten, only the intro was written, or written in the wrong script. Graded on 12 weighted sub-criteria: task fulfillment (style, both viewpoints covered with argumentation), text integrity (intro/body/conclusion, logical structure, no repetition), literacy (spelling, punctuation), word-usage/style correctness, and vocabulary richness.
+If the attached PDF is itself one of these official rubric documents rather than a candidate exam (e.g. its title is "baholash mezonlari" / "критерии оценивания"), do not import it as a mock test — instead return a single essay-type placeholder question whose reviewNote explains it is a grading rubric, not a test, and add a warning.
+
+Question type guidance:
+- single_choice: one correct option
+- multiple_choice: several correct options
+- true_false: a true/false or true/false/not-given choice
+- short_text: a word or short phrase
+- numeric: a plain number
+- math_expression: formula, interval, roots or symbolic expression
+- matching: choose/match from a common pool
+- ordering: ordered sequence
+- table_completion: one answerable table/gap item per response
+- essay: extended response with manual scoring — see the official written-work rubric rule above for English/Russian/Uzbek
+
+The teacher or Super Admin will review everything before publication, so confidence and warnings must be honest.`;
+
+export function buildMockImportPrompt(
+  filename: string,
+  role: "admin" | "teacher",
+  answersFilename?: string,
+) {
+  const answerKeySection = answersFilename
+    ? `
+
+A second PDF (${answersFilename}) is attached after the exam — it is a SEPARATE answer key, not part of the exam itself. Do not extract any questions from it.
+Match each answer-key entry to its question strictly by the printed question number (handle subparts like 36a/36b exactly as printed). For every match set answerOrigin=provided and fill correctOptionIds/acceptedAnswers from the key.
+If the key gives a plain letter/number for a choice question, map it to the corresponding option id you extracted from the exam PDF, not the raw letter.
+If the answer key is missing an entry for a question, fall back to inferred (solve it yourself, add a review note) or missing — never invent an answer that is not supported by either PDF.
+Add a warning if the two documents disagree on numbering or question count.`
+    : "";
+
+  return `Extract the attached exam PDF (${filename}) into the required schema.${answerKeySection}
+
+This import is being made by a ${role === "admin" ? "Super Admin for a paid Mock" : "Teacher for a free assigned Mock"}.
+Choose a sensible title and duration from the document. If duration is absent, use 60 minutes and add a warning.
+After extraction, verify numbering continuity and count all actual response fields, including subparts.
+Return only valid JSON matching the schema. Do not wrap it in Markdown.`;
+}

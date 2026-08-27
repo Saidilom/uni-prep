@@ -1,381 +1,397 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import { useParams, useRouter } from "next/navigation";
-import Image from "next/image";
-import { Clock, ArrowLeft, CheckCircle2, Trophy, X, Calendar, Timer } from "lucide-react";
-import { useAuthStore } from "@/store/useAuthStore";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import {
+  AlertCircle,
+  ArrowLeft,
+  Check,
+  CheckCircle2,
+  Clock,
+  Eye,
+  Loader2,
+  Send,
+  Sparkles,
+  Trophy,
+} from "lucide-react";
 import supabase from "@/lib/supabase/client";
+import SafeMathText from "@/components/safe-math-text";
+import { useAuthStore } from "@/store/useAuthStore";
+import { invalidateStudentMockCaches } from "@/lib/registan-utils";
 
-type Section = {
-    id: string;
-    title: string;
-    questions: Question[];
-};
-
+type AnswerValue = string | string[] | Record<string, string>;
 type Question = {
-    id: string;
-    text: string;
-    options: Record<string, string>;
-    points: number;
-    image_url?: string | null;
+  id: string;
+  section_id: string;
+  text: string;
+  options: Record<string, string>;
+  points: number;
+  order: number;
+  image_url?: string | null;
+  question_type: string;
+  content: {
+    number?: string;
+    sharedStimulus?: string | null;
+    needsSourceImage?: boolean;
+  };
+  source_page?: number | null;
+  group_key?: string | null;
+  requires_manual_review?: boolean;
+};
+type Section = { id: string; title: string; order: number; questions: Question[] };
+type Result = {
+  resultId: string;
+  score: number;
+  total: number;
+  percentage: number;
+  hasPendingReview?: boolean;
+  cefrScore?: number | null;
+  cefrBand?: string | null;
 };
 
-type AnswerState = Record<string, string>;
-
-type SectionScore = { title: string; score: number; total: number };
-
-type AnswerDetail = {
-    questionId: string;
-    sectionId?: string;
-    selectedAnswer: string;
-    isCorrect: boolean;
-    pointsEarned: number;
-};
-
-type MockResult = {
-    resultId: string;
-    score: number;
-    total: number;
-    percentage: number;
-    sectionScores: Record<string, SectionScore>;
-    answers: AnswerDetail[];
-};
+function isAnswered(value: AnswerValue | undefined) {
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "string") return value.trim().length > 0;
+  return Boolean(value && Object.keys(value).length > 0);
+}
 
 export default function MockTestPage() {
-    const { id } = useParams();
-    const router = useRouter();
-    const { user } = useAuthStore();
-    const [sections, setSections] = useState<Section[]>([]);
-    const [testTitle, setTestTitle] = useState("");
-    const [answers, setAnswers] = useState<AnswerState>({});
-    const [loading, setLoading] = useState(true);
-    const [submitting, setSubmitting] = useState(false);
-    const [result, setResult] = useState<MockResult | null>(null);
-    const [showAnswers, setShowAnswers] = useState(false);
-    const [timeLeft, setTimeLeft] = useState<number | null>(null);
-    const [durationSeconds, setDurationSeconds] = useState<number | null>(null);
-    const [timeSpent, setTimeSpent] = useState(0);
-    const [sectionIdx, setSectionIdx] = useState(0);
-    const [qIdx, setQIdx] = useState(0);
-    const autoSubmittedRef = useRef(false);
+  const { id } = useParams<{ id: string }>();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const isPreview = searchParams.get("preview") === "1";
+  const { user } = useAuthStore();
+  const [title, setTitle] = useState("");
+  const [subject, setSubject] = useState<string | null>(null);
+  const [sections, setSections] = useState<Section[]>([]);
+  const [answers, setAnswers] = useState<Record<string, AnswerValue>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [grading, setGrading] = useState(false);
+  const [result, setResult] = useState<Result | null>(null);
+  const [durationSeconds, setDurationSeconds] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(0);
+  const startedAtRef = useRef(Date.now());
+  const autoSubmittedRef = useRef(false);
 
-    const load = useCallback(async () => {
-        if (!id || !user) return;
-        setLoading(true);
-        const { data: accessData } = await supabase.from("mock_access").select("*").eq("user_id", user.id).eq("mock_test_id", id as string).maybeSingle();
-        let hasAccess = !!accessData;
-        if (!hasAccess) {
-            const { data: testMeta } = await supabase.from("mock_tests").select("type").eq("id", id as string).single();
-            if (testMeta?.type === "class_only") {
-                const { data: memberships } = await supabase.from("class_members").select("class_id").eq("student_id", user.id);
-                const classIds = (memberships || []).map((m) => m.class_id as string);
-                if (classIds.length > 0) {
-                    const { data: assignment } = await supabase
-                        .from("mock_class_assignments")
-                        .select("id")
-                        .eq("mock_test_id", id as string)
-                        .in("class_id", classIds)
-                        .limit(1)
-                        .maybeSingle();
-                    hasAccess = !!assignment;
-                }
-            }
-        }
-        if (!hasAccess) {
-            router.push("/mock");
-            return;
-        }
-        const { data: testRow } = await supabase.from("mock_tests").select("title, duration_minutes").eq("id", id as string).single();
-        if (testRow?.title) setTestTitle(testRow.title);
-        if (testRow?.duration_minutes) {
-            const totalSeconds = testRow.duration_minutes * 60;
-            setDurationSeconds(totalSeconds);
-            const storageKey = `mock_start_${id}_${user.id}`;
-            const storedStart = typeof window !== "undefined" ? window.localStorage.getItem(storageKey) : null;
-            if (storedStart) {
-                const elapsed = Math.floor((Date.now() - Number(storedStart)) / 1000);
-                setTimeLeft(Math.max(0, totalSeconds - elapsed));
-            } else {
-                if (typeof window !== "undefined") window.localStorage.setItem(storageKey, String(Date.now()));
-                setTimeLeft(totalSeconds);
-            }
-        }
-        const { data: sectionsData } = await supabase.from("mock_sections").select("*").eq("mock_test_id", id as string).order("order");
-        if (!sectionsData || sectionsData.length === 0) {
-            setLoading(false);
-            return;
-        }
-        const sectionsWithQuestions: Section[] = [];
-        for (const sec of sectionsData) {
-            const { data: qs } = await supabase.rpc("get_mock_questions", { p_section_id: sec.id });
-            sectionsWithQuestions.push({ id: sec.id, title: sec.title, questions: (qs || []) as Question[] });
-        }
-        setSections(sectionsWithQuestions);
+  const load = useCallback(async () => {
+    if (!id || !user) return;
+    setLoading(true);
+    setError(null);
+    const { data: allowed, error: accessError } = await supabase.rpc("can_access_mock", { p_mock_test_id: id });
+    if (accessError || !allowed) {
+      setError("Этот Mock-тест вам не назначен или ещё не опубликован.");
+      setLoading(false);
+      return;
+    }
+
+    const { data: test, error: testError } = await supabase
+      .from("mock_tests")
+      .select("title,duration_minutes,subject_id")
+      .eq("id", id)
+      .single();
+    if (testError || !test) {
+      setError("Тест не найден.");
+      setLoading(false);
+      return;
+    }
+    setTitle(test.title);
+    setSubject(test.subject_id);
+    const seconds = Math.max(60, Number(test.duration_minutes || 60) * 60);
+    setDurationSeconds(seconds);
+    if (isPreview) {
+      // Preview is a read-only walkthrough for the author/admin — it must
+      // never touch the real per-user attempt timer, or reuse of a stale
+      // localStorage entry from an earlier real attempt on this same test
+      // would read as already-expired and auto-submit the moment it loads.
+      startedAtRef.current = Date.now();
+      setTimeLeft(seconds);
+    } else {
+      const storageKey = `mock_start_${id}_${user.id}`;
+      const stored = window.localStorage.getItem(storageKey);
+      const start = stored ? Number(stored) : Date.now();
+      if (!stored) window.localStorage.setItem(storageKey, String(start));
+      startedAtRef.current = start;
+      setTimeLeft(Math.max(0, seconds - Math.floor((Date.now() - start) / 1000)));
+
+      // The timer already survives a reload via mock_start_*, but the picked
+      // answers themselves were pure in-memory state — a refresh mid-exam
+      // wiped every selected answer even though the clock kept counting.
+      try {
+        const savedAnswers = window.localStorage.getItem(`mock_answers_${id}_${user.id}`);
+        if (savedAnswers) setAnswers(JSON.parse(savedAnswers));
+      } catch {
+        window.localStorage.removeItem(`mock_answers_${id}_${user.id}`);
+      }
+    }
+
+    const { data: sectionRows } = await supabase.from("mock_sections").select("*").eq("mock_test_id", id).order("order");
+    const loaded: Section[] = [];
+    for (const section of sectionRows || []) {
+      const { data: questionRows, error: questionError } = await supabase.rpc("get_mock_questions_v2", { p_section_id: section.id });
+      if (questionError) {
+        setError(questionError.message);
         setLoading(false);
-    }, [id, user, router]);
+        return;
+      }
+      loaded.push({ id: section.id, title: section.title, order: section.order, questions: (questionRows || []) as Question[] });
+    }
+    setSections(loaded);
+    setLoading(false);
+  }, [id, user, isPreview]);
 
-    useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (isPreview || loading || result || timeLeft <= 0) return;
+    const timer = window.setInterval(() => setTimeLeft((value) => Math.max(0, value - 1)), 1000);
+    return () => window.clearInterval(timer);
+  }, [loading, result, timeLeft]);
 
-    useEffect(() => {
-        if (timeLeft === null || timeLeft <= 0 || result) return;
-        const timer = setInterval(() => setTimeLeft((t) => (t !== null && t > 0 ? t - 1 : 0)), 1000);
-        return () => clearInterval(timer);
-    }, [timeLeft, result]);
+  useEffect(() => {
+    if (isPreview || !id || !user || loading) return;
+    try {
+      window.localStorage.setItem(`mock_answers_${id}_${user.id}`, JSON.stringify(answers));
+    } catch {
+      // storage full/unavailable — the attempt still works, just won't survive a reload
+    }
+  }, [answers, isPreview, id, user, loading]);
 
-    const handleSubmit = useCallback(async () => {
-        if (!id || submitting || result) return;
-        setSubmitting(true);
+  useEffect(() => {
+    if (isPreview || loading || result) return;
+    const handler = (event: BeforeUnloadEvent) => { event.preventDefault(); };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isPreview, loading, result]);
+
+  const questions = useMemo(() => sections.flatMap((section) => section.questions.map((question) => ({ ...question, sectionTitle: section.title }))), [sections]);
+  const answeredCount = questions.filter((question) => isAnswered(answers[question.id])).length;
+
+  const submit = useCallback(async () => {
+    if (!id || submitting || result || isPreview) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const spent = Math.max(0, Math.min(durationSeconds, Math.floor((Date.now() - startedAtRef.current) / 1000)));
+      const { data, error: submitError } = await supabase.rpc("submit_mock", {
+        p_mock_test_id: id,
+        p_answers: answers,
+        p_time_spent_seconds: spent,
+      });
+      if (submitError) throw submitError;
+      const submitted = data as Result;
+      setResult(submitted);
+      if (user) {
+        window.localStorage.removeItem(`mock_start_${id}_${user.id}`);
+        window.localStorage.removeItem(`mock_answers_${id}_${user.id}`);
+        invalidateStudentMockCaches(user.id);
+      }
+      window.scrollTo({ top: 0, behavior: "smooth" });
+
+      const recalculateRasch = () => fetch("/api/rasch/recalculate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mockTestId: id }),
+      }).catch(() => undefined);
+      // No-ops server-side for any non-English mock test.
+      const recalculateCefr = () => fetch(`/api/mock-tests/${id}/cefr-recalculate`, { method: "POST" }).catch(() => undefined);
+
+      // Essay/writing questions come back from submit_mock as pending —
+      // grade them against the official rubric right away instead of
+      // leaving the student staring at a score that's missing a whole
+      // section until a teacher happens to open the review page.
+      if (submitted.hasPendingReview) {
+        setGrading(true);
         try {
-            const spent = durationSeconds !== null ? durationSeconds - (timeLeft ?? 0) : 0;
-            const { data } = await supabase.rpc("submit_mock", {
-                p_mock_test_id: id as string,
-                p_answers: answers,
-                p_time_spent_seconds: Math.max(0, spent),
+          await fetch("/api/mock-responses/ai-grade", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ resultId: submitted.resultId }),
+          }).catch(() => undefined);
+          const [{ data: refreshed }, { count: stillPending }] = await Promise.all([
+            supabase.from("mock_results").select("score, accuracy").eq("id", submitted.resultId).single(),
+            supabase.from("mock_answer_details").select("id", { count: "exact", head: true }).eq("result_id", submitted.resultId).eq("review_status", "pending"),
+          ]);
+          if (refreshed) {
+            setResult({
+              ...submitted,
+              score: refreshed.score,
+              percentage: refreshed.accuracy,
+              hasPendingReview: (stillPending || 0) > 0,
             });
-            if (data) {
-                setResult(data as MockResult);
-                setTimeSpent(Math.max(0, spent));
-                if (user && typeof window !== "undefined") {
-                    window.localStorage.removeItem(`mock_start_${id}_${user.id}`);
-                }
-                // Fire-and-forget: recalibrates Rasch item difficulty/person
-                // ability for the whole test using every attempt on record,
-                // not just this one. Never blocks showing the result.
-                fetch("/api/rasch/recalculate", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ mockTestId: id }),
-                }).catch(() => {});
-            }
+          }
         } finally {
-            setSubmitting(false);
+          setGrading(false);
+          // Recalculate once the essay's is_correct is settled, not before —
+          // otherwise Rasch calibrates against an essay item that always
+          // reads as incorrect just because grading hadn't finished yet,
+          // and CEFR's Writing score would be computed from an unfinished
+          // (zero) essay score.
+          recalculateRasch();
         }
-    }, [id, submitting, result, durationSeconds, timeLeft, answers, user]);
+      } else {
+        recalculateRasch();
+      }
 
-    useEffect(() => {
-        if (
-            timeLeft === 0 &&
-            sections.length > 0 &&
-            !submitting &&
-            !result &&
-            !autoSubmittedRef.current
-        ) {
-            autoSubmittedRef.current = true;
-            handleSubmit();
-        }
-    }, [timeLeft, sections.length, submitting, result, handleSubmit]);
-
-    const questionMap = useMemo(() => {
-        const m = new Map<string, { text: string; sectionTitle: string }>();
-        sections.forEach((s) => s.questions.forEach((q) => m.set(q.id, { text: q.text, sectionTitle: s.title })));
-        return m;
-    }, [sections]);
-
-    const allQuestions = useMemo(() => sections.flatMap((s) => s.questions), [sections]);
-
-    const fmtTime = (s: number) => {
-        const m = Math.floor(s / 60);
-        const sec = s % 60;
-        return `${m}:${sec.toString().padStart(2, "0")}`;
-    };
-
-    const fmtDate = (d: Date) => d.toLocaleString("ru-RU");
-
-    if (loading) {
-        return (
-            <div className="flex min-h-[60vh] items-center justify-center">
-                <div className="h-10 w-28 animate-pulse rounded-3xl border border-border bg-muted" />
-            </div>
-        );
+      // Awaited (unlike Rasch, which is fire-and-forget) so an English
+      // student actually sees their CEFR band on this same screen instead
+      // of it only ever landing quietly in the database. Cheap no-op for
+      // every other subject — the route itself short-circuits immediately.
+      await recalculateCefr();
+      const { data: cefrRow } = await supabase
+        .from("mock_results")
+        .select("cefr_score, cefr_band")
+        .eq("id", submitted.resultId)
+        .single();
+      if (cefrRow?.cefr_band) {
+        setResult((current) => (current ? { ...current, cefrScore: cefrRow.cefr_score, cefrBand: cefrRow.cefr_band } : current));
+      }
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "Не удалось отправить ответы");
+    } finally {
+      setSubmitting(false);
     }
+  }, [answers, durationSeconds, id, result, submitting, user, isPreview]);
 
-    if (!sections.length) {
-        return (
-            <div className="flex min-h-[60vh] items-center justify-center">
-                <div className="max-w-md rounded-3xl border border-border bg-card px-6 py-10 text-center shadow-sm">
-                    <h2 className="mb-3 text-2xl font-bold text-foreground">Тест не найден</h2>
-                    <p className="text-sm text-muted-foreground">Проверьте ссылку и попробуйте снова.</p>
-                </div>
-            </div>
-        );
+  useEffect(() => {
+    if (isPreview) return;
+    if (timeLeft === 0 && !loading && questions.length > 0 && !result && !submitting && !autoSubmittedRef.current) {
+      autoSubmittedRef.current = true;
+      submit();
     }
+  }, [isPreview, loading, questions.length, result, submit, submitting, timeLeft]);
 
-    if (result) {
-        const sectionEntries = Object.entries(result.sectionScores || {});
-        return (
-            <div className="mx-auto flex max-w-2xl animate-in fade-in slide-in-from-bottom-4 flex-col gap-8 py-6 duration-700">
-                <div className="rounded-3xl border border-border bg-card p-8 text-center shadow-sm">
-                    <div className="flex items-center justify-center gap-3 mb-4">
-                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[hsl(var(--brand-blue-soft))] text-[hsl(var(--brand-blue))]">
-                            <Trophy size={24} />
-                        </div>
-                        <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Результат</h1>
-                    </div>
-                    {testTitle ? <p className="mt-2 text-sm text-muted-foreground">{testTitle}</p> : null}
+  const setAnswer = (questionId: string, value: AnswerValue) => setAnswers((current) => ({ ...current, [questionId]: value }));
+  const formatTime = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 
-                    <div className="mt-8">
-                        <div className="text-6xl font-extrabold tabular-nums text-foreground">{result.percentage}%</div>
-                        <p className="mt-2 text-sm text-muted-foreground">{result.score} / {result.total} правильных ответов</p>
-                    </div>
+  if (loading) return <div className="flex min-h-screen items-center justify-center bg-muted/40"><Loader2 className="animate-spin text-blue-600" size={30} /></div>;
+  if (error && sections.length === 0) return (
+    <div className="flex min-h-screen items-center justify-center bg-muted/40 p-5"><div className="max-w-md rounded-3xl border border-border bg-background p-8 text-center"><AlertCircle className="mx-auto text-red-500" /><h1 className="mt-4 text-xl font-bold">Тест недоступен</h1><p className="mt-2 text-sm text-muted-foreground">{error}</p><button onClick={() => router.back()} className="mt-6 rounded-xl bg-foreground px-5 py-3 text-sm font-bold text-background">Вернуться</button></div></div>
+  );
 
-                    <div className="mt-6 flex items-center justify-center gap-4 text-xs text-muted-foreground">
-                        <span className="inline-flex items-center gap-1"><Calendar size={12} /> {fmtDate(new Date())}</span>
-                        {timeSpent > 0 && (
-                            <span className="inline-flex items-center gap-1"><Timer size={12} /> {fmtTime(timeSpent)}</span>
-                        )}
-                    </div>
+  if (result) return (
+    <div className="flex min-h-screen items-center justify-center bg-muted/40 p-5">
+      <div className="w-full max-w-xl rounded-3xl border border-border bg-background p-8 text-center shadow-sm">
+        <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600"><Trophy size={27} /></span>
+        <h1 className="mt-5 text-3xl font-bold">Тест завершён</h1>
+        <p className="mt-2 text-sm text-muted-foreground">{title}</p>
+        <p className="mt-8 text-6xl font-black tabular-nums">{result.percentage}%</p>
+        <p className="mt-2 text-sm text-muted-foreground">Автоматически верно: {result.score} · полей ответа: {result.total}</p>
+        {result.cefrBand && (
+          <div className="mx-auto mt-4 inline-flex items-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-2 dark:border-blue-900/50 dark:bg-blue-950/30">
+            <span className="text-lg font-black text-blue-700 dark:text-blue-300">{result.cefrBand}</span>
+            <span className="text-xs font-semibold text-blue-700/70 dark:text-blue-300/70">{result.cefrScore} / 75 по официальной шкале</span>
+          </div>
+        )}
+        {grading && (
+          <p className="mt-5 flex items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-semibold text-violet-800">
+            <Loader2 size={15} className="animate-spin" /> ИИ анализирует развёрнутые ответы…
+          </p>
+        )}
+        {!grading && result.hasPendingReview && <p className="mt-5 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-800">Развёрнутые ответы не удалось оценить автоматически. Итоговый балл обновится после проверки учителем.</p>}
+        <button onClick={() => router.push("/results")} disabled={grading} className="mt-7 rounded-xl bg-blue-600 px-6 py-3 text-sm font-bold text-white disabled:opacity-50">К результатам</button>
+      </div>
+    </div>
+  );
 
-                    {sectionEntries.length > 0 && (
-                        <div className="mt-8 space-y-3 text-left">
-                            <h3 className="text-xs font-black uppercase tracking-[0.18em] text-muted-foreground">Разбивка по секциям</h3>
-                            {sectionEntries.map(([sectionId, s]) => {
-                                const pct = s.total > 0 ? Math.round((s.score / s.total) * 100) : 0;
-                                return (
-                                    <div key={sectionId} className="rounded-2xl border border-border bg-muted/40 p-4">
-                                        <div className="flex items-center justify-between gap-3">
-                                            <span className="text-sm font-semibold text-foreground">{s.title}</span>
-                                            <span className="text-sm font-bold tabular-nums text-foreground">{s.score} / {s.total}</span>
-                                        </div>
-                                        <div className="mt-2 h-1.5 rounded-full bg-muted overflow-hidden border border-border">
-                                            <div className="h-full rounded-full bg-[hsl(var(--brand-blue))]" style={{ width: `${pct}%` }} />
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
-
-                    {result.answers && result.answers.length > 0 && (
-                        <button
-                            onClick={() => setShowAnswers(true)}
-                            className="mt-8 inline-flex items-center gap-2 rounded-2xl border border-border px-6 py-3 text-sm font-semibold hover:bg-muted transition-colors"
-                        >
-                            Подробности ответов
-                        </button>
-                    )}
-
-                    <button onClick={() => router.push("/mock")} className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-foreground px-6 py-3 text-sm font-semibold text-background shadow-sm transition-all hover:opacity-90 active:scale-[0.97]">
-                        <ArrowLeft size={18} /> К каталогу
-                    </button>
-                </div>
-
-                {showAnswers && result.answers && (
-                    <div className="fixed inset-0 z-[500] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowAnswers(false)}>
-                        <div className="w-full max-w-2xl rounded-3xl border border-border bg-card shadow-xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
-                            <div className="p-6 border-b border-border flex items-center justify-between">
-                                <h2 className="text-xl font-bold text-foreground">Детализация ответов</h2>
-                                <button onClick={() => setShowAnswers(false)} className="h-9 w-9 rounded-2xl border border-border bg-card hover:bg-muted transition-colors flex items-center justify-center">
-                                    <X size={16} className="text-muted-foreground" />
-                                </button>
-                            </div>
-                            <div className="p-6 space-y-3 max-h-[60vh] overflow-y-auto">
-                                {result.answers.map((a, i) => {
-                                    const q = questionMap.get(a.questionId);
-                                    return (
-                                        <div key={i} className={`rounded-xl border p-4 ${a.isCorrect ? "border-emerald-200 bg-emerald-50 dark:bg-emerald-950/30" : "border-red-200 bg-red-50 dark:bg-red-950/30"}`}>
-                                            {q?.sectionTitle ? <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{q.sectionTitle}</p> : null}
-                                            <p className="mt-0.5 text-sm font-medium text-foreground">{i + 1}. {q?.text || "Вопрос"}</p>
-                                            <p className="mt-1 text-xs text-muted-foreground">
-                                                Ваш ответ: {a.selectedAnswer ? a.selectedAnswer.toUpperCase() : "—"} {a.isCorrect ? "✓" : "✗"}
-                                            </p>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    </div>
-                )}
-            </div>
-        );
-    }
-
-    const section = sections[sectionIdx];
-    const q = section?.questions[qIdx];
-    const isLast = sectionIdx === sections.length - 1 && qIdx === section.questions.length - 1;
-    const unansweredCount = allQuestions.filter((question) => !answers[question.id]).length;
-
-    return (
-        <div className="mx-auto flex max-w-2xl animate-in fade-in slide-in-from-bottom-4 flex-col gap-8 py-6 duration-700">
-            <div className="flex items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">{testTitle || "Mock-тест"}</h1>
-                    <p className="mt-1 text-xs text-muted-foreground">Секция {sectionIdx + 1}/{sections.length} — {section.title} • Вопрос {qIdx + 1}/{section.questions.length}</p>
-                </div>
-                {timeLeft !== null && (
-                    <div className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-bold tabular-nums ${timeLeft < 60 ? "border-red-200 bg-red-50 text-red-700 dark:bg-red-950/40" : "border-border bg-muted text-foreground"}`}>
-                        <Clock size={16} /> {fmtTime(timeLeft)}
-                    </div>
-                )}
-            </div>
-
-            <div className="h-2 rounded-full bg-muted overflow-hidden border border-border">
-                <div className="h-full rounded-full bg-[hsl(var(--brand-blue))] transition-all duration-500" style={{ width: `${((qIdx + 1) / section.questions.length) * 100}%` }} />
-            </div>
-
-            {q && (
-                <div className="rounded-3xl border border-border bg-card p-8 shadow-sm space-y-6">
-                    {q.image_url && (
-                        <Image src={q.image_url} alt="" width={600} height={320} className="max-h-72 w-auto rounded-2xl border border-border object-contain" />
-                    )}
-                    <p className="text-lg font-semibold text-foreground">{q.text}</p>
-                    <div className="grid grid-cols-1 gap-3">
-                        {["a", "b", "c", "d"].map((key) => (
-                            q.options[key] && (
-                                <button
-                                    key={key}
-                                    onClick={() => setAnswers((prev) => ({ ...prev, [q.id]: key }))}
-                                    className={`flex items-center gap-4 rounded-2xl border-2 p-5 text-left transition-all duration-200 ${answers[q.id] === key ? "border-neutral-900 bg-neutral-50 shadow-sm dark:border-neutral-100 dark:bg-neutral-900" : "border-neutral-200 bg-white hover:border-neutral-300 hover:bg-neutral-50/80 dark:border-neutral-700 dark:bg-neutral-950 dark:hover:bg-neutral-900"}`}
-                                >
-                                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-100 text-sm font-bold text-neutral-700 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200">
-                                        {key.toUpperCase()}
-                                    </span>
-                                    <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{q.options[key]}</span>
-                                    {answers[q.id] === key && <CheckCircle2 className="ml-auto h-5 w-5 shrink-0 text-neutral-900 dark:text-neutral-100" strokeWidth={2} />}
-                                </button>
-                            )
-                        ))}
-                    </div>
-                </div>
-            )}
-
-            <div className="flex items-center justify-between">
-                <button
-                    onClick={() => {
-                        if (qIdx > 0) setQIdx((i) => i - 1);
-                        else if (sectionIdx > 0) { setSectionIdx((i) => i - 1); setQIdx(sections[sectionIdx - 1].questions.length - 1); }
-                    }}
-                    disabled={sectionIdx === 0 && qIdx === 0}
-                    className="inline-flex items-center gap-2 rounded-2xl border border-border px-6 py-3 text-sm font-semibold hover:bg-muted transition-colors disabled:opacity-50"
-                >
-                    <ArrowLeft size={18} /> Назад
-                </button>
-                {isLast ? (
-                    <button
-                        onClick={() => {
-                            if (unansweredCount > 0) {
-                                const ok = window.confirm(`Не отвечено вопросов: ${unansweredCount}. Завершить тест?`);
-                                if (!ok) return;
-                            }
-                            handleSubmit();
-                        }}
-                        disabled={submitting}
-                        className="inline-flex items-center gap-2 rounded-2xl bg-foreground px-6 py-3 text-sm font-semibold text-background shadow-sm transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-50"
-                    >
-                        {submitting ? "Проверка…" : "Завершить"}
-                    </button>
-                ) : (
-                    <button
-                        onClick={() => {
-                            if (qIdx < section.questions.length - 1) setQIdx((i) => i + 1);
-                            else if (sectionIdx < sections.length - 1) { setSectionIdx((i) => i + 1); setQIdx(0); }
-                        }}
-                        className="inline-flex items-center gap-2 rounded-2xl bg-foreground px-6 py-3 text-sm font-semibold text-background shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
-                    >
-                        Далее <ArrowLeft size={18} className="rotate-180" />
-                    </button>
-                )}
-            </div>
+  return (
+    <div className="min-h-screen bg-muted/40">
+      <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3 sm:px-6">
+          <button onClick={() => router.back()} className="flex h-10 w-10 items-center justify-center rounded-xl border border-border hover:bg-muted"><ArrowLeft size={18} /></button>
+          <div className="min-w-0 flex-1"><h1 className="truncate font-bold">{title}</h1><p className="text-xs text-muted-foreground">{subject || "Mock"} · отвечено {answeredCount}/{questions.length}</p></div>
+          {isPreview ? (
+            <div className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-bold text-blue-700 dark:bg-blue-950/30"><Sparkles size={16} /> Предпросмотр</div>
+          ) : (
+            <>
+              <div className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-bold tabular-nums ${timeLeft < 300 ? "border-red-200 bg-red-50 text-red-700" : "border-border"}`}><Clock size={16} /> {formatTime(timeLeft)}</div>
+              <button onClick={() => {
+                const missing = questions.length - answeredCount;
+                if (missing > 0 && !window.confirm(`Не отвечено: ${missing}. Всё равно завершить?`)) return;
+                submit();
+              }} disabled={submitting} className="hidden items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50 sm:inline-flex">{submitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} Завершить</button>
+            </>
+          )}
         </div>
-    );
+        {isPreview && <div className="border-t border-blue-100 bg-blue-50/60 px-4 py-2 text-center text-xs font-semibold text-blue-700 dark:bg-blue-950/20 sm:px-6">Это предпросмотр теста — ответы не сохраняются и не отправляются</div>}
+        {!isPreview && <div className="h-1 bg-muted"><div className="h-full bg-blue-600 transition-all" style={{ width: `${questions.length ? answeredCount / questions.length * 100 : 0}%` }} /></div>}
+      </header>
+
+      <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_240px]">
+        <main className="overflow-hidden rounded-2xl border border-border bg-background shadow-sm">
+          {sections.map((section) => (
+            <section key={section.id}>
+              <div className="border-b border-border bg-muted/40 px-5 py-4 sm:px-8"><p className="text-xs font-bold uppercase tracking-widest text-blue-600">Раздел</p><h2 className="mt-1 text-xl font-bold">{section.title}</h2></div>
+              <div className="divide-y divide-border">
+                {section.questions.map((question, questionIndex) => {
+                  const previous = section.questions[questionIndex - 1];
+                  const showShared = Boolean(question.content?.sharedStimulus) && (!question.group_key || previous?.group_key !== question.group_key);
+                  const selected = answers[question.id];
+                  return (
+                    <article id={`question-${question.id}`} key={question.id} className="scroll-mt-24 px-5 py-7 sm:px-8">
+                      <div className="flex items-start gap-4">
+                        <span className={`flex h-9 min-w-9 shrink-0 items-center justify-center rounded-xl px-2 text-sm font-black ${isAnswered(selected) ? "bg-emerald-600 text-white" : "bg-muted text-foreground"}`}>{question.content?.number || questionIndex + 1}</span>
+                        <div className="min-w-0 flex-1">
+                          {showShared && <SafeMathText content={question.content.sharedStimulus || ""} className="mb-5 rounded-xl border border-border bg-muted/30 p-4 text-sm" />}
+                          <SafeMathText content={question.text} className="text-[15px] font-semibold sm:text-base" />
+                          {question.points > 0 && <p className="mt-1 text-xs text-muted-foreground">{question.points} балл.</p>}
+
+                          {question.content?.needsSourceImage && question.source_page && (
+                            <details className="mt-4 overflow-hidden rounded-xl border border-blue-200 bg-blue-50/50" open>
+                              <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm font-bold text-blue-800"><Eye size={16} /> Рисунок / таблица из PDF · стр. {question.source_page}</summary>
+                              <iframe title={`Источник задания ${question.content.number || ""}`} src={`/api/mock-tests/${id}/source?page=${question.source_page}`} className="h-[520px] w-full border-t border-blue-200 bg-white" />
+                            </details>
+                          )}
+
+                          {["single_choice", "true_false", "matching"].includes(question.question_type || "single_choice") && (
+                            <div className="mt-5 grid gap-2">
+                              {Object.entries(question.options || {}).map(([key, value]) => (
+                                <button key={key} onClick={() => setAnswer(question.id, key)} className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition ${selected === key ? "border-blue-600 bg-blue-50 ring-1 ring-blue-600 dark:bg-blue-950/30" : "border-border hover:bg-muted/50"}`}>
+                                  <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${selected === key ? "bg-blue-600 text-white" : "bg-muted"}`}>{selected === key ? <Check size={15} /> : key.toUpperCase()}</span>
+                                  <SafeMathText content={String(value)} as="span" className="text-sm" />
+                                </button>
+                              ))}
+                            </div>
+                          )}
+
+                          {question.question_type === "multiple_choice" && (
+                            <div className="mt-5 grid gap-2">
+                              {Object.entries(question.options || {}).map(([key, value]) => {
+                                const values = Array.isArray(selected) ? selected : [];
+                                const checked = values.includes(key);
+                                return <button key={key} onClick={() => setAnswer(question.id, checked ? values.filter((item) => item !== key) : [...values, key])} className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-left ${checked ? "border-blue-600 bg-blue-50 dark:bg-blue-950/30" : "border-border"}`}><span className={`flex h-8 w-8 items-center justify-center rounded-lg ${checked ? "bg-blue-600 text-white" : "bg-muted"}`}>{checked ? <Check size={15} /> : key.toUpperCase()}</span><SafeMathText content={String(value)} as="span" className="text-sm" /></button>;
+                              })}
+                            </div>
+                          )}
+
+                          {["short_text", "numeric", "math_expression", "ordering", "table_completion"].includes(question.question_type) && (
+                            <input value={typeof selected === "string" ? selected : ""} onChange={(event) => setAnswer(question.id, event.target.value)} placeholder={question.question_type === "math_expression" ? "Введите выражение" : "Введите ответ"} className="mt-5 w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15" />
+                          )}
+
+                          {question.question_type === "essay" && (
+                            <textarea value={typeof selected === "string" ? selected : ""} onChange={(event) => setAnswer(question.id, event.target.value)} rows={10} placeholder="Напишите развёрнутый ответ…" className="mt-5 w-full resize-y rounded-xl border border-border bg-background px-4 py-3 text-sm leading-relaxed outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15" />
+                          )}
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
+        </main>
+
+        <aside className="hidden lg:block">
+          <div className="sticky top-24 rounded-2xl border border-border bg-background p-4 shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Навигация</p>
+            <div className="mt-3 grid grid-cols-5 gap-2">{questions.map((question, index) => <a key={question.id} href={`#question-${question.id}`} className={`flex h-8 items-center justify-center rounded-lg text-xs font-bold ${isAnswered(answers[question.id]) ? "bg-emerald-600 text-white" : "bg-muted hover:bg-muted/70"}`}>{question.content?.number || index + 1}</a>)}</div>
+            {!isPreview && <button onClick={() => submit()} disabled={submitting} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-50">{submitting ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Завершить</button>}
+            {error && <p className="mt-3 text-xs text-red-600">{error}</p>}
+          </div>
+        </aside>
+      </div>
+
+      {!isPreview && <div className="sticky bottom-0 z-30 border-t border-border bg-background p-3 sm:hidden"><button onClick={() => submit()} disabled={submitting} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white">{submitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} Завершить тест</button></div>}
+    </div>
+  );
 }

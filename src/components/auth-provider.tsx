@@ -28,22 +28,55 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     useEffect(() => {
         setLoading(true);
 
-        const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+        const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
             const currentPathname = pathnameRef.current;
             const redirectTarget = searchParamsRef.current?.get("redirectTo") ?? null;
             const user = session?.user ?? null;
+            // INITIAL_SESSION fires on every fresh page load/hard refresh where a
+            // session already existed — that's normal browsing, not a new login,
+            // and used to force-redirect anyone without a phone number to
+            // /onboarding on every single reload, discarding whatever they were
+            // doing (an in-progress exam, a form, scroll position). Only a real
+            // SIGNED_IN event (actually logging in) should trigger that nag.
+            const isFreshSignIn = event === "SIGNED_IN";
             if (user) {
-                const profile = await getUserProfile(user.id);
+                let profile;
+                try {
+                    profile = await getUserProfile(user.id);
+                } catch {
+                    // Infrastructure error fetching the profile (network hiccup,
+                    // transient RLS/auth error while a token is still settling,
+                    // most common right after a hard reload) — not proof the
+                    // account is gone. Retry once before giving up, since giving
+                    // up looks identical to "not this role" downstream and that
+                    // gets treated as a hard redirect on role-gated pages.
+                    try {
+                        await new Promise((resolve) => setTimeout(resolve, 500));
+                        profile = await getUserProfile(user.id);
+                    } catch {
+                        setLoading(false);
+                        return;
+                    }
+                }
                 if (profile) {
                     setUser(profile);
                     if (profile.phone && (currentPathname === "/login" || currentPathname === "/onboarding")) {
                         router.replace(redirectTarget ? decodeURIComponent(redirectTarget) : "/");
-                    } else if (!profile.phone && currentPathname !== "/onboarding") {
+                    } else if (!profile.phone && currentPathname !== "/onboarding" && isFreshSignIn) {
                         router.replace(`/onboarding${redirectTarget ? `?redirectTo=${encodeURIComponent(redirectTarget)}` : ""}`);
                     }
-                } else {
+                } else if (isFreshSignIn) {
                     setUser(null);
                     if (currentPathname !== "/onboarding") router.replace(`/onboarding${redirectTarget ? `?redirectTo=${encodeURIComponent(redirectTarget)}` : ""}`);
+                } else {
+                    // A non-fresh-sign-in event (e.g. a token refresh after the tab
+                    // regained focus, or the profile cache expiring) that failed to
+                    // re-fetch the profile is most likely a transient hiccup, not
+                    // proof the account vanished — clearing `user` here would wipe
+                    // out an already-known-good session and bounce role-gated pages
+                    // (like /teacher/mock-tests) back to "/" for no real reason.
+                    setLoading(false);
+                    return;
                 }
             } else {
                 setUser(null);

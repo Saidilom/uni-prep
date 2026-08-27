@@ -1,14 +1,106 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BookOpen, Lock, CheckCircle2, Play } from "lucide-react";
+import { BookOpen, Lock, CheckCircle2, Play, Users, GraduationCap } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
-import { fetchAvailableMockTests, fetchUserMockAccess, fetchUserClassMockAccess, userHasMockAccess, MockTest, MockAccess } from "@/lib/registan-utils";
-import supabase from "@/lib/supabase/client";
+import { fetchAvailableMockTests, fetchUserMockAccess, fetchUserClassMockAccess, fetchUserMockResults, userHasMockAccess, MockTest, MockAccess } from "@/lib/registan-utils";
+import { fetchTeacherMockAssignmentsSummary, TeacherMockAssignmentSummary } from "@/lib/class-utils";
+import { pageCache } from "@/lib/page-cache";
 import Link from "next/link";
 import PaymentModal from "@/components/payment-modal";
 
-export default function MockCatalogPage() {
+type TeacherTestRow = { id: string; title: string; duration_minutes: number; status: string };
+
+function TeacherMockAssignments() {
+    const { user } = useAuthStore();
+    const [tests, setTests] = useState<TeacherTestRow[]>([]);
+    const [summary, setSummary] = useState<Record<string, TeacherMockAssignmentSummary>>({});
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        if (!user) return;
+        (async () => {
+            setLoading(true);
+            const response = await fetch("/api/mock-tests", { cache: "no-store" });
+            const body = await response.json().catch(() => ({}));
+            const rows = (response.ok ? body.tests || [] : []) as TeacherTestRow[];
+            setTests(rows);
+            setSummary(await fetchTeacherMockAssignmentsSummary(user.id, rows.map((t) => t.id)));
+            setLoading(false);
+        })();
+    }, [user]);
+
+    return (
+        <div className="flex flex-col gap-10">
+            <section>
+                <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Mock-тесты</h1>
+                <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
+                    Кому назначен каждый из ваших тестов — классам и/или отдельным ученикам.
+                </p>
+            </section>
+
+            <section>
+                {loading ? (
+                    <div className="space-y-3">
+                        {[1, 2, 3].map((n) => (
+                            <div key={n} className="h-32 animate-pulse rounded-2xl border border-border bg-muted" />
+                        ))}
+                    </div>
+                ) : tests.length === 0 ? (
+                    <div className="rounded-2xl border border-border bg-muted/50 py-10 text-center dark:bg-muted/30">
+                        <p className="font-medium text-muted-foreground">У вас пока нет Mock-тестов. Создайте один на странице «Мои тесты».</p>
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        {tests.map((test) => {
+                            const s = summary[test.id] || { classes: [], students: [] };
+                            return (
+                                <div key={test.id} className="rounded-2xl border border-border bg-card p-5">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <p className="truncate font-semibold text-foreground">{test.title}</p>
+                                        <span className="shrink-0 text-xs text-muted-foreground">{test.duration_minutes} мин</span>
+                                    </div>
+                                    <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                        <div>
+                                            <p className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                                                <GraduationCap size={12} /> Классам
+                                            </p>
+                                            {s.classes.length === 0 ? (
+                                                <p className="text-xs text-muted-foreground">Не назначен</p>
+                                            ) : (
+                                                <div className="flex max-h-24 flex-wrap gap-1.5 overflow-y-auto pr-1">
+                                                    {s.classes.map((c) => (
+                                                        <span key={c.id} className="rounded-full border border-border bg-muted px-2.5 py-1 text-xs font-semibold text-foreground">{c.name}</span>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div>
+                                            <p className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                                                <Users size={12} /> Ученикам
+                                            </p>
+                                            {s.students.length === 0 ? (
+                                                <p className="text-xs text-muted-foreground">Не назначен</p>
+                                            ) : (
+                                                <div className="flex max-h-24 flex-wrap gap-1.5 overflow-y-auto pr-1">
+                                                    {s.students.map((st) => (
+                                                        <span key={st.id} className="rounded-full border border-border bg-muted px-2.5 py-1 text-xs font-semibold text-foreground">{st.name}</span>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </section>
+        </div>
+    );
+}
+
+function StudentMockCatalog() {
     const { user } = useAuthStore();
     const [tests, setTests] = useState<MockTest[]>([]);
     const [accessList, setAccessList] = useState<MockAccess[]>([]);
@@ -20,16 +112,16 @@ export default function MockCatalogPage() {
     const load = async () => {
         if (!user) return;
         setLoading(true);
-        const [allTests, userAccess, classAccess, { data: allResults }] = await Promise.all([
+        const [allTests, userAccess, classAccess, allResults] = await Promise.all([
             fetchAvailableMockTests(),
             fetchUserMockAccess(user.id),
             fetchUserClassMockAccess(user.id),
-            supabase.from("mock_results").select("mock_test_id").eq("user_id", user.id),
+            fetchUserMockResults(user.id),
         ]);
         setTests(allTests);
         setAccessList(userAccess);
         setClassAccessIds(classAccess);
-        setResults(new Set((allResults?.map((r) => r.mock_test_id) || [])));
+        setResults(new Set(allResults.map((r) => r.mock_test_id)));
         setLoading(false);
     };
 
@@ -124,10 +216,17 @@ export default function MockCatalogPage() {
                     onClose={() => setPayingFor(null)}
                     onSuccess={() => {
                         setPayingFor(null);
+                        if (user) pageCache.invalidate(`mockAccess:${user.id}`);
                         load();
                     }}
                 />
             ) : null}
         </div>
     );
+}
+
+export default function MockCatalogPage() {
+    const { user } = useAuthStore();
+    if (user?.role === "teacher") return <TeacherMockAssignments />;
+    return <StudentMockCatalog />;
 }

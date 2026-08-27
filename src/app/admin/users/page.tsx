@@ -9,6 +9,12 @@ type AdminUser = UserType & { registeredVia?: string; shortid?: string };
 
 const studentId = (u: AdminUser) => u.shortId || u.shortid || "";
 
+// Locked in the DB too (protect_user_privileged_fields_trg /
+// protect_super_admin_delete_trg, migration 025) — this is just so an admin
+// doesn't get a confusing silent no-op from clicking a dropdown that can't
+// actually change anything.
+const PERMANENT_SUPER_ADMIN_ID = "ed845170-28aa-4d33-b0a1-40a9e8d8af01";
+
 export default function AdminUsersPage() {
     const [users, setUsers] = useState<AdminUser[]>([]);
     const [search, setSearch] = useState("");
@@ -104,21 +110,30 @@ export default function AdminUsersPage() {
                                         <UserCheck size={14} />
                                         {u.isRegistanStudent ? "Registan" : "Обычный"}
                                     </button>
-                                    <select
-                                        value={u.role}
-                                        onChange={(e) => setRole(u, e.target.value as "student" | "teacher" | "admin")}
-                                        className={`rounded-xl border px-3 py-2 text-xs font-semibold transition-all ${
-                                            u.role === "admin"
-                                                ? "border-amber-200 bg-amber-50 text-amber-700 dark:bg-amber-950/40"
-                                                : u.role === "teacher"
-                                                ? "border-violet-200 bg-violet-50 text-violet-700 dark:bg-violet-950/40"
-                                                : "border-border bg-card text-muted-foreground"
-                                        }`}
-                                    >
-                                        <option value="student">Ученик</option>
-                                        <option value="teacher">Учитель</option>
-                                        <option value="admin">Super Admin</option>
-                                    </select>
+                                    {u.id === PERMANENT_SUPER_ADMIN_ID ? (
+                                        <span
+                                            title="Постоянный Super Admin — роль защищена на уровне базы данных, изменить или удалить нельзя"
+                                            className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700 dark:bg-amber-950/40"
+                                        >
+                                            Главный Super Admin
+                                        </span>
+                                    ) : (
+                                        <select
+                                            value={u.role}
+                                            onChange={(e) => setRole(u, e.target.value as "student" | "teacher" | "admin")}
+                                            className={`rounded-xl border px-3 py-2 text-xs font-semibold transition-all ${
+                                                u.role === "admin"
+                                                    ? "border-amber-200 bg-amber-50 text-amber-700 dark:bg-amber-950/40"
+                                                    : u.role === "teacher"
+                                                    ? "border-violet-200 bg-violet-50 text-violet-700 dark:bg-violet-950/40"
+                                                    : "border-border bg-card text-muted-foreground"
+                                            }`}
+                                        >
+                                            <option value="student">Ученик</option>
+                                            <option value="teacher">Учитель</option>
+                                            <option value="admin">Super Admin</option>
+                                        </select>
+                                    )}
                                 </div>
                             </div>
                         ))}

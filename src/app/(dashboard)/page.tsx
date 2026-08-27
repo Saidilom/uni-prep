@@ -2,22 +2,14 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Copy, Check, Trophy, ArrowRight, Lock, Play, CheckCircle2, Calendar } from "lucide-react";
+import { Copy, Check, Trophy, ArrowRight, Lock, Play, Calendar } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
-import supabase from "@/lib/supabase/client";
-import { fetchAvailableMockTests, fetchUserMockAccess, userHasMockAccess, MockTest, MockAccess } from "@/lib/registan-utils";
+import { fetchAvailableMockTests, fetchUserMockAccess, fetchUserClassMockAccess, fetchUserMockResults, fetchHasPlacementResult, userHasMockAccess, MockTest, MockAccess, MockResultRow } from "@/lib/registan-utils";
+import { pageCache } from "@/lib/page-cache";
 import PaymentModal from "@/components/payment-modal";
-import TeacherDashboard from "@/components/teacher-dashboard";
+import TeacherHome from "@/components/teacher-home";
 
-type ResultRow = {
-    id: string;
-    mock_test_id: string;
-    mock_test_title: string;
-    score: number;
-    total_questions: number;
-    correct_answers: number;
-    completed_at: string;
-};
+type ResultRow = MockResultRow;
 
 export default function HomePage() {
     const { user } = useAuthStore();
@@ -25,6 +17,7 @@ export default function HomePage() {
     const [loading, setLoading] = useState(true);
     const [tests, setTests] = useState<MockTest[]>([]);
     const [accessList, setAccessList] = useState<MockAccess[]>([]);
+    const [classAccessIds, setClassAccessIds] = useState<Set<string>>(new Set());
     const [results, setResults] = useState<ResultRow[]>([]);
     const [hasPlacementResult, setHasPlacementResult] = useState<boolean | null>(null);
     const [payingFor, setPayingFor] = useState<MockTest | null>(null);
@@ -32,20 +25,18 @@ export default function HomePage() {
     const load = async () => {
         if (!user) return;
         setLoading(true);
-        const [allTests, userAccess, resultsRes, placementCountRes] = await Promise.all([
+        const [allTests, userAccess, classAccess, resultsRes, hasPlacement] = await Promise.all([
             fetchAvailableMockTests(),
             fetchUserMockAccess(user.id),
-            supabase
-                .from("mock_results")
-                .select("id, mock_test_id, mock_test_title, score, total_questions, correct_answers, completed_at")
-                .eq("user_id", user.id)
-                .order("completed_at", { ascending: false }),
-            supabase.from("placement_results").select("id", { count: "exact", head: true }).eq("user_id", user.id),
+            fetchUserClassMockAccess(user.id),
+            fetchUserMockResults(user.id),
+            fetchHasPlacementResult(user.id),
         ]);
         setTests(allTests);
         setAccessList(userAccess);
-        setResults((resultsRes.data as ResultRow[]) || []);
-        setHasPlacementResult((placementCountRes.count ?? 0) > 0);
+        setClassAccessIds(classAccess);
+        setResults(resultsRes);
+        setHasPlacementResult(hasPlacement);
         setLoading(false);
     };
 
@@ -64,18 +55,28 @@ export default function HomePage() {
     const completedIds = new Set(results.map((r) => r.mock_test_id));
     const getStatus = (test: MockTest) => {
         if (completedIds.has(test.id)) return "completed" as const;
-        if (user && userHasMockAccess(user, test, accessList)) return "available" as const;
+        if (user && userHasMockAccess(user, test, accessList, classAccessIds)) return "available" as const;
         return "locked" as const;
     };
     const duration = (test: MockTest) => (test as unknown as { duration_minutes?: number }).duration_minutes ?? test.durationMinutes ?? 0;
 
     const premiumTests = tests.filter((t) => t.type === "paid").slice(0, 3);
-    const freeTests = tests.filter((t) => t.type === "free").slice(0, 4);
+    // "free" tests are shown even when locked, as a Registan-membership upsell.
+    // class_only tests have no such upsell — only show ones actually assigned
+    // to this student (individually or via their class), otherwise every
+    // teacher's class test in the system would clutter this widget.
+    // Already-completed tests are excluded — this widget is for freshly
+    // assigned tests, not a place to relaunch ones already taken.
+    const freeTests = tests
+        .filter((t) => (t.type === "free" || (t.type === "class_only" && classAccessIds.has(t.id))) && !completedIds.has(t.id))
+        .slice(0, 4);
     const recentResults = results.slice(0, 3);
-    const avgScore = results.length > 0 ? Math.round(results.reduce((sum, r) => sum + r.score, 0) / results.length) : null;
+    // `score` is raw points earned (sum of question.points), not a percentage —
+    // `accuracy` is the pre-computed correct/total percentage from submit_mock.
+    const avgScore = results.length > 0 ? Math.round(results.reduce((sum, r) => sum + r.accuracy, 0) / results.length) : null;
 
     if (!user) return null;
-    if (user.role === "teacher") return <TeacherDashboard />;
+    if (user.role === "teacher") return <TeacherHome />;
 
     return (
         <div className="flex flex-col gap-10 py-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -213,7 +214,7 @@ export default function HomePage() {
                         </div>
                     ) : freeTests.length === 0 ? (
                         <div className="rounded-2xl border border-border bg-muted/50 py-8 text-center dark:bg-muted/30">
-                            <p className="text-sm font-medium text-muted-foreground">Пока нет бесплатных Mock-тестов.</p>
+                            <p className="text-sm font-medium text-muted-foreground">Пока нет доступных Mock-тестов.</p>
                         </div>
                     ) : (
                         <div className="space-y-3">
@@ -235,8 +236,8 @@ export default function HomePage() {
                                                 href={`/mock/${test.id}`}
                                                 className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-foreground px-4 py-2 text-xs font-semibold text-background shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
                                             >
-                                                {status === "completed" ? <CheckCircle2 size={13} /> : <Play size={13} />}
-                                                {status === "completed" ? "Повторить" : "Начать"}
+                                                <Play size={13} />
+                                                Начать
                                             </Link>
                                         )}
                                     </div>
@@ -277,7 +278,7 @@ export default function HomePage() {
                                         </p>
                                     </div>
                                     <span className="shrink-0 rounded-xl bg-muted px-3 py-1.5 text-sm font-extrabold tabular-nums text-foreground">
-                                        {r.score}%
+                                        {r.accuracy}%
                                     </span>
                                 </div>
                             ))}
@@ -294,6 +295,7 @@ export default function HomePage() {
                     onClose={() => setPayingFor(null)}
                     onSuccess={() => {
                         setPayingFor(null);
+                        if (user) pageCache.invalidate(`mockAccess:${user.id}`);
                         load();
                     }}
                 />

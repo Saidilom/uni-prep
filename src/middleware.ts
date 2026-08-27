@@ -8,7 +8,19 @@ function resolveRedirectTarget(request: NextRequest) {
   return target === "/" ? null : target;
 }
 
+// Server-to-server webhooks (Payme/Click call these directly from their own
+// infrastructure) never carry a Supabase session cookie at all — without
+// this exemption the auth check below would 302 every webhook call to
+// /login before the route handler ever ran, silently breaking payments in
+// production. These routes authenticate the caller themselves (Basic Auth
+// / MD5 signature), not via Supabase auth.
+const PUBLIC_API_PATHS = ["/api/payments/payme", "/api/payments/click"];
+
 export async function middleware(request: NextRequest) {
+  if (PUBLIC_API_PATHS.some((path) => request.nextUrl.pathname === path)) {
+    return NextResponse.next();
+  }
+
   const response = NextResponse.next({
     request: {
       headers: request.headers,

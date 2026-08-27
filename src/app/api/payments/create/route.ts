@@ -1,6 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerClient, supabaseServer } from "@/lib/supabase/server";
 import { evaluatePaymentCreation } from "@/lib/payment-rules";
+import { buildPaymeCheckoutUrl } from "@/lib/payme";
+import { buildClickCheckoutUrl } from "@/lib/click";
+
+function buildCheckoutUrls(req: NextRequest, paymentId: string, amount: number) {
+  const returnUrl = `${req.nextUrl.origin}/mock/pay/${paymentId}`;
+  const paymeMerchantId = process.env.PAYME_MERCHANT_ID;
+  const clickMerchantId = process.env.CLICK_MERCHANT_ID;
+  const clickServiceId = process.env.CLICK_SERVICE_ID;
+
+  const paymeUrl = paymeMerchantId
+    ? buildPaymeCheckoutUrl({ merchantId: paymeMerchantId, orderId: paymentId, amountUzs: amount, returnUrl, testMode: process.env.PAYME_TEST_MODE === "true" })
+    : null;
+  const clickUrl = clickMerchantId && clickServiceId
+    ? buildClickCheckoutUrl({ serviceId: clickServiceId, merchantId: clickMerchantId, amountUzs: amount, orderId: paymentId, returnUrl })
+    : null;
+
+  return { paymeUrl, clickUrl };
+}
 
 export async function POST(req: NextRequest) {
     const routeClient = createRouteHandlerClient();
@@ -53,7 +71,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: decision.reason }, { status: 400 });
     }
     if (decision.action === "reuse_pending") {
-        return NextResponse.json({ paymentId: decision.paymentId });
+        return NextResponse.json({ paymentId: decision.paymentId, ...buildCheckoutUrls(req, decision.paymentId, test.price) });
     }
 
     const { data: profile } = await supabaseServer
@@ -73,12 +91,14 @@ export async function POST(req: NextRequest) {
         amount: test.price,
         currency: "UZS",
         status: "pending",
-        provider: "mock",
+        // Real provider ("payme"/"click") is only known once the matching
+        // webhook claims this order — see /api/payments/payme and /click.
+        provider: "pending",
     });
 
     if (insertError) {
         return NextResponse.json({ error: "Не удалось создать платёж" }, { status: 500 });
     }
 
-    return NextResponse.json({ paymentId });
+    return NextResponse.json({ paymentId, ...buildCheckoutUrls(req, paymentId, test.price) });
 }

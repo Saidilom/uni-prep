@@ -2,11 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerClient, supabaseServer } from "@/lib/supabase/server";
 import { evaluatePaymentConfirmation } from "@/lib/payment-rules";
 
-// Stand-in for a real provider webhook. Triggered directly by the mock
-// checkout UI (src/app/mock/pay/[paymentId]/page.tsx) since there is no
-// external provider to call back yet. Replace with a signature-verified
-// /api/payments/webhook once a real provider (Payme/Click/Uzum) is wired up.
+// Dev/test-only stand-in for a real provider webhook — grants access without
+// any money changing hands, so it must never be reachable outside local
+// testing. Real payments now go through /api/payments/payme and
+// /api/payments/click, which verify a provider signature instead of trusting
+// the caller's own session.
 export async function POST(req: NextRequest) {
+    if (process.env.NEXT_PUBLIC_PAYMENTS_TEST_MODE !== "true") {
+        return NextResponse.json({ error: "Тестовый режим оплаты отключён" }, { status: 403 });
+    }
+
     const routeClient = createRouteHandlerClient();
     const {
         data: { user },
@@ -56,6 +61,7 @@ export async function POST(req: NextRequest) {
         .from("payments")
         .update({
             status: "success",
+            provider: "mock",
             paid_at: new Date().toISOString(),
             provider_transaction_id: providerTransactionId,
         })

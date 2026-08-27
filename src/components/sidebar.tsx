@@ -12,7 +12,6 @@ import {
     CircleUserRound,
     GraduationCap,
     FileText,
-    IdCard,
     BarChart3,
     Settings,
     X,
@@ -23,8 +22,8 @@ import {
 const mainLinks = (isTeacher: boolean) => [
     { name: "Главная", href: "/", icon: LayoutDashboard },
     ...(isTeacher ? [{ name: "Мои классы", href: "/classes", icon: GraduationCap }] : []),
+    ...(isTeacher ? [{ name: "Мои тесты", href: "/teacher/mock-tests", icon: FileText }] : []),
     { name: "Mock-тесты", href: "/mock", icon: FileText },
-    { name: "Мой ID", href: "/id", icon: IdCard },
     { name: "Результаты", href: "/results", icon: BarChart3 },
     { name: "Профиль", href: "/profile", icon: CircleUserRound },
 ];
@@ -58,7 +57,7 @@ function Sidebar() {
                 `}
             >
                 {/* ── Logo ── */}
-                <div className={`shrink-0 pt-5 pb-4 flex items-center border-b border-border ${isCollapsed ? "md:justify-center md:px-0 px-5 justify-between" : "px-5 justify-between"}`}>
+                <div className={`shrink-0 pt-5 pb-4 flex items-center justify-between border-b border-border px-5 ${isCollapsed ? "md:flex-col md:justify-center md:gap-2 md:px-0" : ""}`}>
                     {/* Full logo — hidden when collapsed on desktop */}
                     <Link href="/" className={`flex flex-1 items-center justify-center ${isCollapsed ? "md:hidden" : ""}`} onClick={close}>
                         <div className="relative h-14 w-44">
@@ -83,7 +82,7 @@ function Sidebar() {
                     {/* Desktop: collapse/expand toggle */}
                     <button
                         onClick={toggleCollapsed}
-                        className={`hidden md:flex p-1.5 rounded-lg hover:bg-muted transition-colors ${isCollapsed ? "mt-2" : ""}`}
+                        className="hidden md:flex p-1.5 rounded-lg hover:bg-muted transition-colors"
                         aria-label={isCollapsed ? "Развернуть меню" : "Свернуть меню"}
                         title={isCollapsed ? "Развернуть" : "Свернуть"}
                     >

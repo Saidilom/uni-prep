@@ -1,7 +1,5 @@
 import supabase from "./supabase/client";
 
-const getTableName = (collection: string) => collection;
-
 const throwIfError = (error: { message?: string } | null | undefined, context: string) => {
     if (error) {
         console.error(`[admin-utils] ${context}:`, error);
@@ -9,118 +7,67 @@ const throwIfError = (error: { message?: string } | null | undefined, context: s
     }
 };
 
-export const adminFetchCollection = async (collection: string, sortBy?: string) => {
-    const query = supabase.from(getTableName(collection)).select("*");
-    const { data, error } = sortBy
-        ? await query.order(sortBy, { ascending: true })
-        : await query;
-
-    throwIfError(error, `fetch ${collection}`);
-    return (data ?? []) as Record<string, unknown>[];
+export type RecentTransaction = {
+    id: string;
+    userName: string;
+    mockTestTitle: string;
+    amount: number;
+    currency: string;
+    status: string;
+    createdAt: string;
 };
 
-export const adminAddItem = async (collection: string, item: Record<string, unknown>) => {
-    const { data, error } = await supabase
-        .from(getTableName(collection))
-        .insert([item])
-        .select()
-        .single();
-
-    throwIfError(error, `add ${collection}`);
-    return data as Record<string, unknown>;
-};
-
-export const adminDeleteItem = async (collection: string, id: string) => {
-    const { error } = await supabase.from(getTableName(collection)).delete().eq("id", id);
-    throwIfError(error, `delete ${collection}`);
-};
-
-export const adminUpdateItem = async (collection: string, id: string, payload: Record<string, unknown>) => {
-    const { data, error } = await supabase
-        .from(getTableName(collection))
-        .update(payload)
-        .eq("id", id)
-        .select()
-        .single();
-
-    throwIfError(error, `update ${collection}`);
-    return data as Record<string, unknown>;
-};
-
-export const adminIncrementField = async (collection: string, id: string, field: string, amount: number) => {
-    const { data: currentRow, error: fetchError } = await supabase
-        .from(getTableName(collection))
-        .select(field)
-        .eq("id", id)
-        .single();
-
-    throwIfError(fetchError, `increment fetch ${collection}`);
-
-    const currentValue = Number((currentRow as Record<string, unknown> | null)?.[field] ?? 0);
-    const nextValue = currentValue + amount;
-
-    const { data, error } = await supabase
-        .from(getTableName(collection))
-        .update({ [field]: nextValue })
-        .eq("id", id)
-        .select()
-        .single();
-
-    throwIfError(error, `increment ${collection}`);
-    return data as Record<string, unknown>;
-};
-
-export const fetchAdminStats = async () => {
-    const [
-        subjectsRes,
-        textbooksRes,
-        topicsRes,
-        questionsRes,
-        usersRes,
-        classesRes,
-        mocksRes,
-        mockAttemptsRes,
-        placementAttemptsRes,
-        paymentsRes,
-    ] = await Promise.all([
-        supabase.from("subjects").select("id"),
-        supabase.from("textbooks").select("id"),
-        supabase.from("topics").select("id"),
-        supabase.from("questions").select("id"),
+export const fetchAdminOverview = async () => {
+    const [usersRes, paymentsRes, resultsRes, recentPaymentsRes] = await Promise.all([
         supabase.from("users").select("id, role"),
-        supabase.from("classes").select("id", { count: "exact", head: true }),
-        supabase.from("mock_tests").select("id", { count: "exact", head: true }),
-        supabase.from("mock_results").select("id", { count: "exact", head: true }),
-        supabase.from("placement_results").select("id", { count: "exact", head: true }),
-        supabase.from("payments").select("amount").eq("status", "success"),
+        // Only successful payments carry real access grants — pending/failed
+        // rows must not count toward revenue or the "waiting for their test" set.
+        supabase.from("payments").select("user_id, mock_test_id, amount").eq("status", "success"),
+        supabase.from("mock_results").select("user_id, mock_test_id"),
+        supabase
+            .from("payments")
+            .select("id, user_name, mock_test_title, amount, currency, status, created_at")
+            .order("created_at", { ascending: false })
+            .limit(8),
     ]);
 
-    throwIfError(subjectsRes.error, "fetch stats subjects");
-    throwIfError(textbooksRes.error, "fetch stats textbooks");
-    throwIfError(topicsRes.error, "fetch stats topics");
-    throwIfError(questionsRes.error, "fetch stats questions");
-    throwIfError(usersRes.error, "fetch stats users");
-    throwIfError(classesRes.error, "fetch stats classes");
-    throwIfError(mocksRes.error, "fetch stats mocks");
-    throwIfError(mockAttemptsRes.error, "fetch stats mock attempts");
-    throwIfError(placementAttemptsRes.error, "fetch stats placement attempts");
-    throwIfError(paymentsRes.error, "fetch stats payments");
+    throwIfError(usersRes.error, "fetch overview users");
+    throwIfError(paymentsRes.error, "fetch overview payments");
+    throwIfError(resultsRes.error, "fetch overview results");
+    throwIfError(recentPaymentsRes.error, "fetch overview recent payments");
 
     const users = (usersRes.data ?? []) as Array<Record<string, unknown>>;
     const students = users.filter((user) => String(user.role ?? "").toLowerCase() === "student").length;
-    const teachers = users.filter((user) => String(user.role ?? "").toLowerCase() === "teacher").length;
-    const revenue = (paymentsRes.data ?? []).reduce((sum, p) => sum + Number((p as { amount: number }).amount || 0), 0);
+
+    const successfulPayments = (paymentsRes.data ?? []) as Array<{ user_id: string; mock_test_id: string; amount: number }>;
+    const revenue = successfulPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
+    // A student who paid for a Mock but hasn't submitted a result for that
+    // exact test yet is still "waiting" on it — this is what the dashboard
+    // means by paid students waiting for their test.
+    const completedPairs = new Set(
+        ((resultsRes.data ?? []) as Array<{ user_id: string; mock_test_id: string }>).map((r) => `${r.user_id}:${r.mock_test_id}`),
+    );
+    const waitingStudentIds = new Set(
+        successfulPayments
+            .filter((p) => !completedPairs.has(`${p.user_id}:${p.mock_test_id}`))
+            .map((p) => p.user_id),
+    );
+
+    const recentTransactions: RecentTransaction[] = ((recentPaymentsRes.data ?? []) as Array<Record<string, unknown>>).map((p) => ({
+        id: p.id as string,
+        userName: p.user_name as string,
+        mockTestTitle: p.mock_test_title as string,
+        amount: p.amount as number,
+        currency: p.currency as string,
+        status: p.status as string,
+        createdAt: p.created_at as string,
+    }));
 
     return {
-        subjects: (subjectsRes.data ?? []).length,
-        textbooks: (textbooksRes.data ?? []).length,
-        topics: (topicsRes.data ?? []).length,
-        questions: (questionsRes.data ?? []).length,
         students,
-        teachers,
-        classes: classesRes.count ?? 0,
-        mocks: mocksRes.count ?? 0,
-        attempts: (mockAttemptsRes.count ?? 0) + (placementAttemptsRes.count ?? 0),
         revenue,
+        waitingForMock: waitingStudentIds.size,
+        recentTransactions,
     };
 };

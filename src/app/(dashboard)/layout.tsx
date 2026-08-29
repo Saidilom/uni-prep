@@ -6,7 +6,7 @@ import PageWrapper from "@/components/page-wrapper";
 import Topbar from "@/components/topbar";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useSidebarStore } from "@/store/useSidebarStore";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useEffect } from "react";
 
 export default function DashboardLayout({
@@ -17,12 +17,18 @@ export default function DashboardLayout({
     const { user, isLoading } = useAuthStore();
     const { isCollapsed } = useSidebarStore();
     const router = useRouter();
+    const pathname = usePathname();
+    // "/" doubles as the public landing page for logged-out visitors (see
+    // middleware.ts and auth-provider.tsx, which already exempt "/" from
+    // their own anonymous-redirect-to-/login logic) — every other dashboard
+    // route stays guarded exactly as before.
+    const isPublicHome = pathname === "/";
 
     useEffect(() => {
-        if (!isLoading && !user) {
+        if (!isLoading && !user && !isPublicHome) {
             router.push("/login");
         }
-    }, [user, isLoading, router]);
+    }, [user, isLoading, router, isPublicHome]);
 
     if (isLoading) {
         return (
@@ -32,7 +38,11 @@ export default function DashboardLayout({
         );
     }
 
-    if (!user) return null;
+    if (!user) {
+        // No sidebar/topbar chrome for the anonymous landing page.
+        if (isPublicHome) return <>{children}</>;
+        return null;
+    }
 
     return (
         <div className="h-dvh max-h-dvh min-h-0 overflow-hidden bg-background">

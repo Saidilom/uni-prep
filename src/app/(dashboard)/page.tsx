@@ -9,6 +9,7 @@ import { pageCache } from "@/lib/page-cache";
 import { accuracyColor } from "@/lib/status-colors";
 import PaymentModal from "@/components/payment-modal";
 import TeacherHome from "@/components/teacher-home";
+import LandingView from "@/components/landing";
 
 type ResultRow = MockResultRow;
 
@@ -76,7 +77,7 @@ export default function HomePage() {
     // `accuracy` is the pre-computed correct/total percentage from submit_mock.
     const avgScore = results.length > 0 ? Math.round(results.reduce((sum, r) => sum + r.accuracy, 0) / results.length) : null;
 
-    if (!user) return null;
+    if (!user) return <LandingView />;
     if (user.role === "teacher") return <TeacherHome />;
 
     return (

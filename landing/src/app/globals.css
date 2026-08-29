@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --background: 210 33% 98%;
+  --foreground: 0 0% 3.9%;
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 3.9%;
+  --primary: 203 35% 48%;
+  --primary-foreground: 0 0% 100%;
+  --muted: 0 0% 96.1%;
+  --muted-foreground: 0 0% 45.1%;
+  --border: 0 0% 89.8%;
+  --ring: 203 35% 48%;
+  --radius: 1.25rem;
+
+  --brand-olive: 179 48% 32%;
+  --brand-olive-soft: 179 40% 94%;
+  --brand-olive-ink: 179 45% 22%;
+  --brand-blue: 203 35% 48%;
+  --brand-blue-soft: 203 60% 95%;
+  --brand-blue-ink: 199 49% 37%;
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: var(--font-golos-text), system-ui, sans-serif;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

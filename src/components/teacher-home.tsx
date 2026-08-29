@@ -42,38 +42,32 @@ export default function TeacherHome() {
 
     return (
         <div className="flex flex-col gap-10 py-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-blue-600 to-indigo-700 p-8 text-white shadow-sm">
-                <div
-                    aria-hidden
-                    className="pointer-events-none absolute inset-0 opacity-[0.12]"
-                    style={{
-                        backgroundImage: "radial-gradient(circle, white 1.5px, transparent 1.5px)",
-                        backgroundSize: "18px 18px",
-                    }}
-                />
-                <div className="relative">
-                    <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">С возвращением, {user.name}</h1>
-                    <p className="mt-2 max-w-md text-sm leading-relaxed text-blue-100">
-                        Общая статистика по вашим группам и тестам.
-                    </p>
-                </div>
+            <section className="rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8">
+                <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+                    С возвращением, <span className="font-medium text-muted-foreground">{user.name?.trim()}</span>
+                </h1>
+                <p className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
+                    Общая статистика по вашим группам и тестам.
+                </p>
             </section>
 
-            <section className="grid grid-cols-1 gap-5 sm:grid-cols-3">
+            <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
                 {loading ? (
-                    [1, 2, 3].map((i) => <div key={i} className="h-28 animate-pulse rounded-2xl border border-border bg-card" />)
+                    <div className="grid grid-cols-1 gap-4 p-6 sm:grid-cols-3">
+                        {[1, 2, 3].map((i) => <div key={i} className="h-20 animate-pulse rounded-2xl bg-muted" />)}
+                    </div>
                 ) : (
-                    statCards.map((card, idx) => (
-                        <div key={idx} className="flex items-center gap-4 rounded-2xl border border-border bg-card p-6 shadow-sm">
-                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-muted text-foreground">
-                                <card.icon size={22} />
+                    <div className="grid grid-cols-1 sm:grid-cols-3 sm:divide-x sm:divide-border">
+                        {statCards.map((card, idx) => (
+                            <div key={idx} className="p-6">
+                                <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-[hsl(var(--brand-blue-ink))]/10 text-[hsl(var(--brand-blue-ink))]">
+                                    <card.icon size={20} strokeWidth={1.75} />
+                                </div>
+                                <p className="text-xs text-muted-foreground">{card.label}</p>
+                                <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{card.value}</p>
                             </div>
-                            <div className="min-w-0">
-                                <p className="truncate text-2xl font-extrabold tabular-nums text-foreground">{card.value}</p>
-                                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{card.label}</p>
-                            </div>
-                        </div>
-                    ))
+                        ))}
+                    </div>
                 )}
             </section>
         </div>

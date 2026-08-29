@@ -264,23 +264,23 @@ export default function MockTestPage() {
   const setAnswer = (questionId: string, value: AnswerValue) => setAnswers((current) => ({ ...current, [questionId]: value }));
   const formatTime = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 
-  if (loading) return <div className="flex min-h-screen items-center justify-center bg-muted/40"><Loader2 className="animate-spin text-blue-600" size={30} /></div>;
+  if (loading) return <div className="flex min-h-screen items-center justify-center bg-muted/40"><Loader2 className="animate-spin text-primary" size={30} /></div>;
   if (error && sections.length === 0) return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/40 p-5"><div className="max-w-md rounded-3xl border border-border bg-background p-8 text-center"><AlertCircle className="mx-auto text-red-500" /><h1 className="mt-4 text-xl font-bold">Тест недоступен</h1><p className="mt-2 text-sm text-muted-foreground">{error}</p><button onClick={() => router.back()} className="mt-6 rounded-xl bg-foreground px-5 py-3 text-sm font-bold text-background">Вернуться</button></div></div>
+    <div className="flex min-h-screen items-center justify-center bg-muted/40 p-5"><div className="max-w-md rounded-3xl border border-border bg-background p-8 text-center"><AlertCircle className="mx-auto text-red-500" /><h1 className="mt-4 text-xl font-bold">Тест недоступен</h1><p className="mt-2 text-sm text-muted-foreground">{error}</p><button onClick={() => router.back()} className="mt-6 rounded-xl bg-primary px-5 py-3 text-sm font-bold text-primary-foreground">Вернуться</button></div></div>
   );
 
   if (result) return (
     <div className="flex min-h-screen items-center justify-center bg-muted/40 p-5">
       <div className="w-full max-w-xl rounded-3xl border border-border bg-background p-8 text-center shadow-sm">
-        <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600"><Trophy size={27} /></span>
+        <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[hsl(var(--brand-blue-soft))] text-[hsl(var(--brand-blue-ink))]"><Trophy size={27} /></span>
         <h1 className="mt-5 text-3xl font-bold">Тест завершён</h1>
         <p className="mt-2 text-sm text-muted-foreground">{title}</p>
         <p className="mt-8 text-6xl font-black tabular-nums">{result.percentage}%</p>
         <p className="mt-2 text-sm text-muted-foreground">Автоматически верно: {result.score} · полей ответа: {result.total}</p>
         {result.cefrBand && (
-          <div className="mx-auto mt-4 inline-flex items-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-2 dark:border-blue-900/50 dark:bg-blue-950/30">
-            <span className="text-lg font-black text-blue-700 dark:text-blue-300">{result.cefrBand}</span>
-            <span className="text-xs font-semibold text-blue-700/70 dark:text-blue-300/70">{result.cefrScore} / 75 по официальной шкале</span>
+          <div className="mx-auto mt-4 inline-flex items-center gap-2 rounded-2xl border border-[hsl(var(--brand-blue))]/20 bg-[hsl(var(--brand-blue-soft))] px-4 py-2">
+            <span className="text-lg font-black text-[hsl(var(--brand-blue-ink))]">{result.cefrBand}</span>
+            <span className="text-xs font-semibold text-[hsl(var(--brand-blue-ink))]/70">{result.cefrScore} / 75 по официальной шкале</span>
           </div>
         )}
         {grading && (
@@ -289,7 +289,7 @@ export default function MockTestPage() {
           </p>
         )}
         {!grading && result.hasPendingReview && <p className="mt-5 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-800">Развёрнутые ответы не удалось оценить автоматически. Итоговый балл обновится после проверки учителем.</p>}
-        <button onClick={() => router.push("/results")} disabled={grading} className="mt-7 rounded-xl bg-blue-600 px-6 py-3 text-sm font-bold text-white disabled:opacity-50">К результатам</button>
+        <button onClick={() => router.push("/results")} disabled={grading} className="mt-7 rounded-xl bg-primary px-6 py-3 text-sm font-bold text-primary-foreground disabled:opacity-50">К результатам</button>
       </div>
     </div>
   );
@@ -301,7 +301,7 @@ export default function MockTestPage() {
           <button onClick={() => router.back()} className="flex h-10 w-10 items-center justify-center rounded-xl border border-border hover:bg-muted"><ArrowLeft size={18} /></button>
           <div className="min-w-0 flex-1"><h1 className="truncate font-bold">{title}</h1><p className="text-xs text-muted-foreground">{subject || "Mock"} · отвечено {answeredCount}/{questions.length}</p></div>
           {isPreview ? (
-            <div className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-bold text-blue-700 dark:bg-blue-950/30"><Sparkles size={16} /> Предпросмотр</div>
+            <div className="flex items-center gap-2 rounded-xl border border-[hsl(var(--brand-blue))]/20 bg-[hsl(var(--brand-blue-soft))] px-3 py-2 text-sm font-bold text-[hsl(var(--brand-blue-ink))]"><Sparkles size={16} /> Предпросмотр</div>
           ) : (
             <>
               <div className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-bold tabular-nums ${timeLeft < 300 ? "border-red-200 bg-red-50 text-red-700" : "border-border"}`}><Clock size={16} /> {formatTime(timeLeft)}</div>
@@ -309,19 +309,19 @@ export default function MockTestPage() {
                 const missing = questions.length - answeredCount;
                 if (missing > 0 && !window.confirm(`Не отвечено: ${missing}. Всё равно завершить?`)) return;
                 submit();
-              }} disabled={submitting} className="hidden items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50 sm:inline-flex">{submitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} Завершить</button>
+              }} disabled={submitting} className="hidden items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-50 sm:inline-flex">{submitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} Завершить</button>
             </>
           )}
         </div>
-        {isPreview && <div className="border-t border-blue-100 bg-blue-50/60 px-4 py-2 text-center text-xs font-semibold text-blue-700 dark:bg-blue-950/20 sm:px-6">Это предпросмотр теста — ответы не сохраняются и не отправляются</div>}
-        {!isPreview && <div className="h-1 bg-muted"><div className="h-full bg-blue-600 transition-all" style={{ width: `${questions.length ? answeredCount / questions.length * 100 : 0}%` }} /></div>}
+        {isPreview && <div className="border-t border-[hsl(var(--brand-blue))]/15 bg-[hsl(var(--brand-blue-soft))] px-4 py-2 text-center text-xs font-semibold text-[hsl(var(--brand-blue-ink))] sm:px-6">Это предпросмотр теста — ответы не сохраняются и не отправляются</div>}
+        {!isPreview && <div className="h-1 bg-muted"><div className="h-full bg-primary transition-all" style={{ width: `${questions.length ? answeredCount / questions.length * 100 : 0}%` }} /></div>}
       </header>
 
       <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_240px]">
         <main className="overflow-hidden rounded-2xl border border-border bg-background shadow-sm">
           {sections.map((section) => (
             <section key={section.id}>
-              <div className="border-b border-border bg-muted/40 px-5 py-4 sm:px-8"><p className="text-xs font-bold uppercase tracking-widest text-blue-600">Раздел</p><h2 className="mt-1 text-xl font-bold">{section.title}</h2></div>
+              <div className="border-b border-border bg-muted/40 px-5 py-4 sm:px-8"><p className="text-xs font-bold uppercase tracking-widest text-primary">Раздел</p><h2 className="mt-1 text-xl font-bold">{section.title}</h2></div>
               <div className="divide-y divide-border">
                 {section.questions.map((question, questionIndex) => {
                   const previous = section.questions[questionIndex - 1];
@@ -337,17 +337,17 @@ export default function MockTestPage() {
                           {question.points > 0 && <p className="mt-1 text-xs text-muted-foreground">{question.points} балл.</p>}
 
                           {question.content?.needsSourceImage && question.source_page && (
-                            <details className="mt-4 overflow-hidden rounded-xl border border-blue-200 bg-blue-50/50" open>
-                              <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm font-bold text-blue-800"><Eye size={16} /> Рисунок / таблица из PDF · стр. {question.source_page}</summary>
-                              <iframe title={`Источник задания ${question.content.number || ""}`} src={`/api/mock-tests/${id}/source?page=${question.source_page}`} className="h-[520px] w-full border-t border-blue-200 bg-white" />
+                            <details className="mt-4 overflow-hidden rounded-xl border border-[hsl(var(--brand-blue))]/20 bg-[hsl(var(--brand-blue-soft))]/60" open>
+                              <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm font-bold text-[hsl(var(--brand-blue-ink))]"><Eye size={16} /> Рисунок / таблица из PDF · стр. {question.source_page}</summary>
+                              <iframe title={`Источник задания ${question.content.number || ""}`} src={`/api/mock-tests/${id}/source?page=${question.source_page}`} className="h-[520px] w-full border-t border-[hsl(var(--brand-blue))]/20 bg-white" />
                             </details>
                           )}
 
                           {["single_choice", "true_false", "matching"].includes(question.question_type || "single_choice") && (
                             <div className="mt-5 grid gap-2">
                               {Object.entries(question.options || {}).map(([key, value]) => (
-                                <button key={key} onClick={() => setAnswer(question.id, key)} className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition ${selected === key ? "border-blue-600 bg-blue-50 ring-1 ring-blue-600 dark:bg-blue-950/30" : "border-border hover:bg-muted/50"}`}>
-                                  <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${selected === key ? "bg-blue-600 text-white" : "bg-muted"}`}>{selected === key ? <Check size={15} /> : key.toUpperCase()}</span>
+                                <button key={key} onClick={() => setAnswer(question.id, key)} className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition ${selected === key ? "border-primary bg-[hsl(var(--brand-blue-soft))] ring-1 ring-primary" : "border-border hover:bg-muted/50"}`}>
+                                  <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${selected === key ? "bg-primary text-primary-foreground" : "bg-muted"}`}>{selected === key ? <Check size={15} /> : key.toUpperCase()}</span>
                                   <SafeMathText content={String(value)} as="span" className="text-sm" />
                                 </button>
                               ))}
@@ -359,17 +359,17 @@ export default function MockTestPage() {
                               {Object.entries(question.options || {}).map(([key, value]) => {
                                 const values = Array.isArray(selected) ? selected : [];
                                 const checked = values.includes(key);
-                                return <button key={key} onClick={() => setAnswer(question.id, checked ? values.filter((item) => item !== key) : [...values, key])} className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-left ${checked ? "border-blue-600 bg-blue-50 dark:bg-blue-950/30" : "border-border"}`}><span className={`flex h-8 w-8 items-center justify-center rounded-lg ${checked ? "bg-blue-600 text-white" : "bg-muted"}`}>{checked ? <Check size={15} /> : key.toUpperCase()}</span><SafeMathText content={String(value)} as="span" className="text-sm" /></button>;
+                                return <button key={key} onClick={() => setAnswer(question.id, checked ? values.filter((item) => item !== key) : [...values, key])} className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-left ${checked ? "border-primary bg-[hsl(var(--brand-blue-soft))]" : "border-border"}`}><span className={`flex h-8 w-8 items-center justify-center rounded-lg ${checked ? "bg-primary text-primary-foreground" : "bg-muted"}`}>{checked ? <Check size={15} /> : key.toUpperCase()}</span><SafeMathText content={String(value)} as="span" className="text-sm" /></button>;
                               })}
                             </div>
                           )}
 
                           {["short_text", "numeric", "math_expression", "ordering", "table_completion"].includes(question.question_type) && (
-                            <input value={typeof selected === "string" ? selected : ""} onChange={(event) => setAnswer(question.id, event.target.value)} placeholder={question.question_type === "math_expression" ? "Введите выражение" : "Введите ответ"} className="mt-5 w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15" />
+                            <input value={typeof selected === "string" ? selected : ""} onChange={(event) => setAnswer(question.id, event.target.value)} placeholder={question.question_type === "math_expression" ? "Введите выражение" : "Введите ответ"} className="mt-5 w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/15" />
                           )}
 
                           {question.question_type === "essay" && (
-                            <textarea value={typeof selected === "string" ? selected : ""} onChange={(event) => setAnswer(question.id, event.target.value)} rows={10} placeholder="Напишите развёрнутый ответ…" className="mt-5 w-full resize-y rounded-xl border border-border bg-background px-4 py-3 text-sm leading-relaxed outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15" />
+                            <textarea value={typeof selected === "string" ? selected : ""} onChange={(event) => setAnswer(question.id, event.target.value)} rows={10} placeholder="Напишите развёрнутый ответ…" className="mt-5 w-full resize-y rounded-xl border border-border bg-background px-4 py-3 text-sm leading-relaxed outline-none focus:border-primary focus:ring-2 focus:ring-primary/15" />
                           )}
                         </div>
                       </div>
@@ -385,13 +385,13 @@ export default function MockTestPage() {
           <div className="sticky top-24 rounded-2xl border border-border bg-background p-4 shadow-sm">
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Навигация</p>
             <div className="mt-3 grid grid-cols-5 gap-2">{questions.map((question, index) => <a key={question.id} href={`#question-${question.id}`} className={`flex h-8 items-center justify-center rounded-lg text-xs font-bold ${isAnswered(answers[question.id]) ? "bg-emerald-600 text-white" : "bg-muted hover:bg-muted/70"}`}>{question.content?.number || index + 1}</a>)}</div>
-            {!isPreview && <button onClick={() => submit()} disabled={submitting} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-50">{submitting ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Завершить</button>}
+            {!isPreview && <button onClick={() => submit()} disabled={submitting} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground disabled:opacity-50">{submitting ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Завершить</button>}
             {error && <p className="mt-3 text-xs text-red-600">{error}</p>}
           </div>
         </aside>
       </div>
 
-      {!isPreview && <div className="sticky bottom-0 z-30 border-t border-border bg-background p-3 sm:hidden"><button onClick={() => submit()} disabled={submitting} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white">{submitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} Завершить тест</button></div>}
+      {!isPreview && <div className="sticky bottom-0 z-30 border-t border-border bg-background p-3 sm:hidden"><button onClick={() => submit()} disabled={submitting} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground">{submitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} Завершить тест</button></div>}
     </div>
   );
 }

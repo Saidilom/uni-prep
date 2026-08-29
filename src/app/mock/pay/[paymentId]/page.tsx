@@ -120,7 +120,7 @@ export default function MockCheckoutPage() {
                     )}
                     <button
                         onClick={() => router.push(`/mock/${payment.mock_test_id}`)}
-                        className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-foreground px-6 py-3 text-sm font-semibold text-background shadow-sm transition-all hover:opacity-90"
+                        className="mt-6 inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:opacity-90"
                     >
                         К тесту
                     </button>
@@ -132,7 +132,7 @@ export default function MockCheckoutPage() {
     return (
         <div className="mx-auto flex max-w-lg flex-col gap-6 px-4 py-10">
             {!TEST_MODE && (
-                <div className="flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 dark:bg-blue-950/40 dark:text-blue-300">
+                <div className="flex items-start gap-3 rounded-xl border border-[hsl(var(--brand-blue))]/20 bg-[hsl(var(--brand-blue-soft))] px-4 py-3 text-sm text-[hsl(var(--brand-blue-ink))]">
                     <Loader2 size={18} className="mt-0.5 shrink-0 animate-spin" />
                     <p>Ожидаем подтверждение оплаты от платёжной системы. Обычно это занимает несколько секунд — страница обновится автоматически.</p>
                 </div>
@@ -148,14 +148,14 @@ export default function MockCheckoutPage() {
                 </p>
 
                 {error ? (
-                    <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
+                    <div className="mt-6 rounded-xl bg-destructive/10 px-4 py-3 text-sm text-destructive">
                         {error}
                     </div>
                 ) : null}
 
                 {TEST_MODE && (
                     <>
-                        <div className="mt-6 flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-left text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                        <div className="mt-6 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-left text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
                             <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                             <p>Тестовый режим оплаты включён — реальная оплата не производится.</p>
                         </div>
@@ -163,14 +163,14 @@ export default function MockCheckoutPage() {
                             <button
                                 onClick={() => confirmTestMode("success")}
                                 disabled={processing !== null}
-                                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-foreground px-6 py-3.5 text-sm font-semibold text-background shadow-sm transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-50"
+                                className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3.5 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-50"
                             >
                                 {processing === "success" ? "Обработка…" : "Оплатить (тестовый режим)"}
                             </button>
                             <button
                                 onClick={() => confirmTestMode("cancelled")}
                                 disabled={processing !== null}
-                                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-border px-6 py-3 text-sm font-semibold hover:bg-muted transition-colors disabled:opacity-50"
+                                className="inline-flex items-center justify-center gap-2 rounded-xl border border-border px-6 py-3 text-sm font-semibold hover:bg-muted transition-colors disabled:opacity-50"
                             >
                                 {processing === "cancelled" ? "Отмена…" : "Отменить"}
                             </button>

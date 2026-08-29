@@ -255,7 +255,7 @@ export default function PlacementTestPage() {
                     <p className="text-sm text-muted-foreground">Проверьте ссылку — задание не найдено или недоступно.</p>
                     <button
                         onClick={() => router.push("/placement")}
-                        className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-foreground px-6 py-3 text-sm font-semibold text-background shadow-sm hover:opacity-90"
+                        className="mt-6 inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-sm hover:opacity-90"
                     >
                         <ArrowLeft size={18} /> К списку тестов
                     </button>
@@ -311,7 +311,7 @@ export default function PlacementTestPage() {
 
                     <button
                         onClick={() => router.push("/placement")}
-                        className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-foreground px-6 py-3 text-sm font-semibold text-background shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
+                        className="mt-6 inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
                     >
                         <ArrowLeft size={18} /> К списку тестов
                     </button>
@@ -328,7 +328,7 @@ export default function PlacementTestPage() {
                     <p className="text-sm text-muted-foreground">В этом тесте пока нет вопросов. Обратитесь к администратору.</p>
                     <button
                         onClick={() => router.push("/placement")}
-                        className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-foreground px-6 py-3 text-sm font-semibold text-background shadow-sm hover:opacity-90"
+                        className="mt-6 inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-sm hover:opacity-90"
                     >
                         <ArrowLeft size={18} /> К списку тестов
                     </button>
@@ -356,7 +356,7 @@ export default function PlacementTestPage() {
             </div>
 
             <div className="h-2 rounded-full bg-muted overflow-hidden border border-border">
-                <div className="h-full rounded-full bg-[hsl(var(--brand-blue))] transition-all duration-500" style={{ width: `${((currentQ + 1) / questions.length) * 100}%` }} />
+                <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${((currentQ + 1) / questions.length) * 100}%` }} />
             </div>
 
             {q && (
@@ -366,21 +366,22 @@ export default function PlacementTestPage() {
                     )}
                     <p className="text-lg font-semibold text-foreground">{q.text}</p>
                     <div className="grid grid-cols-1 gap-3">
-                        {["a", "b", "c", "d"].map((key) => (
-                            q.options[key] && (
+                        {["a", "b", "c", "d"].map((key) => {
+                            const selected = answers[q.id] === key;
+                            return q.options[key] && (
                                 <button
                                     key={key}
                                     onClick={() => setAnswers((prev) => ({ ...prev, [q.id]: key }))}
-                                    className={`flex items-center gap-4 rounded-2xl border-2 p-5 text-left transition-all duration-200 ${answers[q.id] === key ? "border-neutral-900 bg-neutral-50 shadow-sm dark:border-neutral-100 dark:bg-neutral-900" : "border-neutral-200 bg-white hover:border-neutral-300 hover:bg-neutral-50/80 dark:border-neutral-700 dark:bg-neutral-950 dark:hover:bg-neutral-900"}`}
+                                    className={`flex items-center gap-4 rounded-xl border p-5 text-left transition-all duration-200 ${selected ? "border-primary bg-[hsl(var(--brand-blue-soft))] ring-1 ring-primary" : "border-border bg-card hover:bg-muted/50"}`}
                                 >
-                                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-100 text-sm font-bold text-neutral-700 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200">
+                                    <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-bold ${selected ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"}`}>
                                         {key.toUpperCase()}
                                     </span>
-                                    <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{q.options[key]}</span>
-                                    {answers[q.id] === key && <CheckCircle2 className="ml-auto h-5 w-5 shrink-0 text-neutral-900 dark:text-neutral-100" strokeWidth={2} />}
+                                    <span className="text-sm font-medium text-foreground">{q.options[key]}</span>
+                                    {selected && <CheckCircle2 className="ml-auto h-5 w-5 shrink-0 text-primary" strokeWidth={2} />}
                                 </button>
-                            )
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
             )}
@@ -389,7 +390,7 @@ export default function PlacementTestPage() {
                 <button
                     onClick={() => setCurrentQ((c) => Math.max(0, c - 1))}
                     disabled={currentQ === 0}
-                    className="inline-flex items-center gap-2 rounded-2xl border border-border px-6 py-3 text-sm font-semibold hover:bg-muted transition-colors disabled:opacity-50"
+                    className="inline-flex items-center gap-2 rounded-xl border border-border px-6 py-3 text-sm font-semibold hover:bg-muted transition-colors disabled:opacity-50"
                 >
                     <ArrowLeft size={18} /> Назад
                 </button>
@@ -405,14 +406,14 @@ export default function PlacementTestPage() {
                             handleSubmit();
                         }}
                         disabled={submitting}
-                        className="inline-flex items-center gap-2 rounded-2xl bg-foreground px-6 py-3 text-sm font-semibold text-background shadow-sm transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-50"
+                        className="inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-50"
                     >
                         {submitting ? "Проверка…" : "Завершить"}
                     </button>
                 ) : (
                     <button
                         onClick={() => setCurrentQ((c) => Math.min(questions.length - 1, c + 1))}
-                        className="inline-flex items-center gap-2 rounded-2xl bg-foreground px-6 py-3 text-sm font-semibold text-background shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
+                        className="inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
                     >
                         Далее <ArrowLeft size={18} className="rotate-180" />
                     </button>

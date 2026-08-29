@@ -11,9 +11,8 @@ import {
     ClassStudentOverview,
 } from "@/lib/class-utils";
 import { fetchUserMockResults, MockResultRow } from "@/lib/registan-utils";
-
-const accuracyColor = (value: number | null) =>
-    value === null ? "text-muted-foreground bg-muted" : value >= 80 ? "text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40" : value >= 50 ? "text-amber-600 bg-amber-50 dark:bg-amber-950/40" : "text-red-600 bg-red-50 dark:bg-red-950/40";
+import { accuracyColor } from "@/lib/status-colors";
+import { pluralizeRu } from "@/lib/pluralize-ru";
 
 export default function TeacherResultsExplorer() {
     const { user } = useAuthStore();
@@ -83,8 +82,8 @@ export default function TeacherResultsExplorer() {
             {!selectedClass && (
                 <>
                     <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <div className="flex items-center gap-4 rounded-3xl border border-border bg-card p-5 shadow-sm">
-                            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-950/40"><Trophy size={22} /></span>
+                        <div className="flex items-center gap-4 rounded-2xl border border-border bg-card p-5 shadow-sm">
+                            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[hsl(var(--brand-blue-soft))] text-[hsl(var(--brand-blue-ink))]"><Trophy size={22} /></span>
                             <div className="min-w-0">
                                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Топ группа</p>
                                 {overview?.topClass ? (
@@ -97,7 +96,7 @@ export default function TeacherResultsExplorer() {
                                 )}
                             </div>
                         </div>
-                        <div className="flex items-center gap-4 rounded-3xl border border-border bg-card p-5 shadow-sm">
+                        <div className="flex items-center gap-4 rounded-2xl border border-border bg-card p-5 shadow-sm">
                             <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 dark:bg-amber-950/40"><Award size={22} /></span>
                             <div className="min-w-0">
                                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Топ ученик</p>
@@ -114,7 +113,7 @@ export default function TeacherResultsExplorer() {
                     </section>
 
                     <section>
-                        <h2 className="mb-5 text-xl font-bold tracking-tight text-foreground">Мои группы</h2>
+                        <h2 className="mb-5 text-xl font-bold tracking-tight text-[hsl(var(--brand-blue-ink))]">Мои группы</h2>
                         {loadingOverview ? (
                             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                                 {[1, 2, 3].map((n) => <div key={n} className="h-28 animate-pulse rounded-2xl border border-border bg-muted" />)}
@@ -133,7 +132,7 @@ export default function TeacherResultsExplorer() {
                                             <ChevronRight size={16} className="mt-0.5 shrink-0 text-muted-foreground" />
                                         </div>
                                         <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                                            <Users size={12} /> {cls.memberCount} {cls.memberCount === 1 ? "ученик" : "учеников"}
+                                            <Users size={12} /> {cls.memberCount} {pluralizeRu(cls.memberCount, ["ученик", "ученика", "учеников"])}
                                         </p>
                                         <span className={`inline-flex w-fit items-center rounded-lg px-2.5 py-1 text-xs font-extrabold tabular-nums ${accuracyColor(cls.avgAccuracy)}`}>
                                             {cls.avgAccuracy !== null ? `${cls.avgAccuracy}% средний результат` : "Нет попыток"}
@@ -153,7 +152,7 @@ export default function TeacherResultsExplorer() {
                     </button>
                     <div className="mb-5 flex items-center justify-between">
                         <h2 className="text-xl font-bold tracking-tight text-foreground">{selectedClass.name}</h2>
-                        <span className="text-sm text-muted-foreground">{students.length} {students.length === 1 ? "ученик" : "учеников"}</span>
+                        <span className="text-sm text-muted-foreground">{students.length} {pluralizeRu(students.length, ["ученик", "ученика", "учеников"])}</span>
                     </div>
                     {loadingStudents ? (
                         <div className="flex items-center justify-center py-16"><Loader2 className="animate-spin text-muted-foreground" /></div>
@@ -171,7 +170,7 @@ export default function TeacherResultsExplorer() {
                                         </span>
                                         <div className="min-w-0">
                                             <p className="truncate text-sm font-semibold text-foreground">{s.student.name} {s.student.surname || ""}</p>
-                                            <p className="text-xs text-muted-foreground">{s.attemptCount > 0 ? `${s.attemptCount} ${s.attemptCount === 1 ? "попытка" : "попыток"}` : "Ещё не проходил тесты"}</p>
+                                            <p className="text-xs text-muted-foreground">{s.attemptCount > 0 ? `${s.attemptCount} ${pluralizeRu(s.attemptCount, ["попытка", "попытки", "попыток"])}` : "Ещё не проходил тесты"}</p>
                                         </div>
                                     </div>
                                     <div className="flex shrink-0 items-center gap-3">

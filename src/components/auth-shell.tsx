@@ -2,11 +2,12 @@
 
 import Image from "next/image";
 import { APP_NAME } from "@/lib/app-config";
+import HeroBanner from "@/components/hero-banner";
 
 export default function AuthShell({ children }: { children: React.ReactNode }) {
     return (
-        <div className="relative flex min-h-dvh flex-col overflow-hidden bg-neutral-50 text-neutral-900">
-            <div className="absolute inset-x-0 top-0 z-20 h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-blue-600" />
+        <div className="relative flex min-h-dvh flex-col overflow-hidden bg-background text-foreground">
+            <div className="absolute inset-x-0 top-0 z-20 h-1 bg-[hsl(var(--brand-olive))]" />
             <div
                 aria-hidden
                 className="pointer-events-none absolute inset-0"
@@ -18,17 +19,9 @@ export default function AuthShell({ children }: { children: React.ReactNode }) {
                 }}
             />
             <div className="relative z-10 flex flex-1 items-center justify-center px-4 py-10 sm:py-16">
-                <div className="flex w-full max-w-4xl overflow-hidden rounded-3xl border border-neutral-200/90 bg-white shadow-xl shadow-neutral-900/[0.06]">
+                <div className="flex w-full max-w-4xl overflow-hidden rounded-3xl border border-border bg-card shadow-xl shadow-foreground/[0.06]">
                     {/* Decorative left panel — hidden on mobile */}
-                    <div className="relative hidden w-[300px] shrink-0 items-center justify-center overflow-hidden bg-gradient-to-br from-blue-600 to-indigo-700 p-10 md:flex">
-                        <div
-                            aria-hidden
-                            className="pointer-events-none absolute inset-0 opacity-[0.15]"
-                            style={{
-                                backgroundImage: "radial-gradient(circle, white 1.5px, transparent 1.5px)",
-                                backgroundSize: "18px 18px",
-                            }}
-                        />
+                    <HeroBanner className="hidden w-[300px] shrink-0 items-center justify-center rounded-none bg-none bg-[hsl(var(--brand-olive))] p-10 md:flex">
                         <div className="relative h-40 w-52">
                             <Image
                                 src="/registan-logo.png"
@@ -38,7 +31,7 @@ export default function AuthShell({ children }: { children: React.ReactNode }) {
                                 priority
                             />
                         </div>
-                    </div>
+                    </HeroBanner>
 
                     {/* Form panel */}
                     <div className="flex-1 px-6 py-10 sm:px-10 sm:py-12">

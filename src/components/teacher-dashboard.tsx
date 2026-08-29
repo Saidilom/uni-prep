@@ -51,44 +51,45 @@ export default function TeacherDashboard() {
 
     return (
         <div className="flex flex-col gap-10 py-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-blue-600 to-indigo-700 p-8 text-white shadow-sm">
-                <div
-                    aria-hidden
-                    className="pointer-events-none absolute inset-0 opacity-[0.12]"
-                    style={{
-                        backgroundImage: "radial-gradient(circle, white 1.5px, transparent 1.5px)",
-                        backgroundSize: "18px 18px",
-                    }}
-                />
-                <div className="relative">
-                    <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">С возвращением, {user.name}</h1>
-                    <p className="mt-2 max-w-md text-sm leading-relaxed text-blue-100">
-                        Управляйте группами, добавляйте учеников и назначайте им Mock-тесты.
-                    </p>
-                    <div className="mt-6 flex flex-wrap gap-6">
-                        <div>
-                            <p className="text-3xl font-extrabold tabular-nums">{classes.length}</p>
-                            <p className="text-xs text-blue-100">{pluralizeRu(classes.length, ["группа", "группы", "групп"])}</p>
+            <section className="rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8">
+                <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+                    С возвращением, <span className="font-medium text-muted-foreground">{user.name?.trim()}</span>
+                </h1>
+                <p className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
+                    Управляйте группами, добавляйте учеников и назначайте им Mock-тесты.
+                </p>
+            </section>
+
+            <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+                <div className="grid grid-cols-2 sm:divide-x sm:divide-border">
+                    <div className="p-6">
+                        <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                            <GraduationCap size={20} strokeWidth={1.75} />
                         </div>
-                        <div>
-                            <p className="text-3xl font-extrabold tabular-nums">{totalStudents}</p>
-                            <p className="text-xs text-blue-100">{pluralizeRu(totalStudents, ["ученик", "ученика", "учеников"])}</p>
+                        <p className="text-xs text-muted-foreground">{pluralizeRu(classes.length, ["Группа", "Группы", "Групп"])}</p>
+                        <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{classes.length}</p>
+                    </div>
+                    <div className="p-6">
+                        <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                            <Users size={20} strokeWidth={1.75} />
                         </div>
+                        <p className="text-xs text-muted-foreground">{pluralizeRu(totalStudents, ["Ученик", "Ученика", "Учеников"])}</p>
+                        <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{totalStudents}</p>
                     </div>
                 </div>
             </section>
 
             <section>
                 <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-                    <h2 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">Мои группы</h2>
+                    <h2 className="text-xl font-bold tracking-tight text-[hsl(var(--brand-blue-ink))] sm:text-2xl">Мои группы</h2>
                     <div className="flex flex-wrap gap-2">
-                      <Link href="/teacher/mock-tests" className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-blue-700 active:scale-[0.97]">
+                      <Link href="/teacher/mock-tests" className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-muted">
                         <FileUp size={16} /> Создать Mock из PDF
                       </Link>
                       {!creating && (
                         <button
                             onClick={() => setCreating(true)}
-                            className="inline-flex items-center gap-2 rounded-2xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
+                            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
                         >
                             <Plus size={16} /> Создать группу
                         </button>
@@ -104,12 +105,12 @@ export default function TeacherDashboard() {
                             onChange={(e) => setNewName(e.target.value)}
                             onKeyDown={(e) => e.key === "Enter" && handleCreate()}
                             placeholder="Например, 10-A"
-                            className="flex-1 rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/25"
+                            className="flex-1 rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15"
                         />
                         <button
                             onClick={handleCreate}
                             disabled={saving || newName.trim().length < 1}
-                            className="inline-flex items-center gap-2 rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background transition-all hover:opacity-90 disabled:opacity-50"
+                            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-all hover:opacity-90 disabled:opacity-50"
                         >
                             {saving ? "Создание…" : "Создать"}
                         </button>
@@ -147,7 +148,7 @@ export default function TeacherDashboard() {
                                     <p className="font-semibold text-foreground">{cls.name}</p>
                                     <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
                                         <Users size={12} />
-                                        {cls.memberCount} {cls.memberCount === 1 ? "ученик" : "учеников"}
+                                        {cls.memberCount} {pluralizeRu(cls.memberCount, ["ученик", "ученика", "учеников"])}
                                     </p>
                                 </div>
                             </Link>

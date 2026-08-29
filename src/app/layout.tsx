@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import localFont from "next/font/local";
 import { Golos_Text } from "next/font/google";
 import AuthProvider from "@/components/auth-provider";
-import { APP_NAME, APP_DESCRIPTION, APP_THEME_KEY } from "@/lib/app-config";
+import { APP_NAME, APP_DESCRIPTION } from "@/lib/app-config";
 import "./globals.css";
 import "katex/dist/katex.min.css";
 
@@ -53,24 +53,6 @@ export default function RootLayout({
         <link rel="icon" type="image/png" sizes="32x32" href="/gogg.png" />
         <link rel="shortcut icon" href="/gogg.png" />
         <link rel="apple-touch-icon" sizes="180x180" href="/gogg.png" />
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-(() => {
-  try {
-    const key = "${APP_THEME_KEY}";
-    const saved = localStorage.getItem(key);
-    const root = document.documentElement;
-    if (saved === "dark") {
-      root.classList.add("dark");
-    } else {
-      root.classList.remove("dark");
-      if (saved !== "light") localStorage.setItem(key, "light");
-    }
-  } catch {}
-})();`,
-          }}
-        />
       </head>
       <body
         className={`${golosText.variable} ${geistSans.variable} ${geistMono.variable} antialiased min-h-screen relative app-bg`}

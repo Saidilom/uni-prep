@@ -26,8 +26,8 @@ export default function DashboardLayout({
 
     if (isLoading) {
         return (
-            <div className="flex h-dvh items-center justify-center bg-neutral-50">
-                <div className="h-9 w-9 animate-spin rounded-full border-[3px] border-blue-100 border-t-blue-600" />
+            <div className="flex h-dvh items-center justify-center bg-background">
+                <div className="h-9 w-9 animate-spin rounded-full border-[3px] border-muted border-t-primary" />
             </div>
         );
     }
@@ -35,14 +35,12 @@ export default function DashboardLayout({
     if (!user) return null;
 
     return (
-        <div className="h-dvh max-h-dvh min-h-0 overflow-hidden bg-muted/50 dark:bg-black">
+        <div className="h-dvh max-h-dvh min-h-0 overflow-hidden bg-background">
             <Sidebar />
             <NavProgressBar />
-            <main className={`flex h-dvh max-h-dvh min-h-0 flex-col overflow-hidden bg-muted/50 dark:bg-black transition-[margin] duration-300 ease-in-out ${isCollapsed ? "md:ml-16" : "md:ml-64"}`}>
+            <main className={`flex h-dvh max-h-dvh min-h-0 flex-col overflow-hidden bg-background transition-[margin] duration-300 ease-in-out ${isCollapsed ? "md:ml-16" : "md:ml-64"}`}>
                 <Topbar />
-                <div className="mx-3 mb-3 mt-2 flex min-h-0 flex-1 flex-col sm:mx-5 sm:mb-5 sm:mt-4">
-                    <PageWrapper>{children}</PageWrapper>
-                </div>
+                <PageWrapper>{children}</PageWrapper>
             </main>
         </div>
     );

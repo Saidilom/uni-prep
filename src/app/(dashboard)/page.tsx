@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Copy, Check, Trophy, ArrowRight, Lock, Play, Calendar } from "lucide-react";
+import { Copy, Check, ArrowRight, Lock, Play, Calendar, Trophy, CheckCircle2, ClipboardList, GraduationCap, Crown } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { fetchAvailableMockTests, fetchUserMockAccess, fetchUserClassMockAccess, fetchUserMockResults, fetchHasPlacementResult, userHasMockAccess, MockTest, MockAccess, MockResultRow } from "@/lib/registan-utils";
 import { pageCache } from "@/lib/page-cache";
+import { accuracyColor } from "@/lib/status-colors";
 import PaymentModal from "@/components/payment-modal";
 import TeacherHome from "@/components/teacher-home";
 
@@ -80,75 +81,78 @@ export default function HomePage() {
 
     return (
         <div className="flex flex-col gap-10 py-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            {/* Greeting + current standing */}
-            <section className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-                <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-blue-600 to-indigo-700 p-8 text-white shadow-sm lg:col-span-2">
-                    <div
-                        aria-hidden
-                        className="pointer-events-none absolute inset-0 opacity-[0.12]"
-                        style={{
-                            backgroundImage: "radial-gradient(circle, white 1.5px, transparent 1.5px)",
-                            backgroundSize: "18px 18px",
-                        }}
-                    />
-                    <div className="relative">
-                        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-                            Готовы поднять уровень, {user.name}?
-                        </h1>
-                        <p className="mt-2 max-w-md text-sm leading-relaxed text-blue-100">
-                            {hasPlacementResult
-                                ? "Продолжайте готовиться — ниже ваши Mock-тесты и последние результаты."
-                                : "Пройдите вступительный тест, чтобы определить сильные стороны и получить план подготовки."}
-                        </p>
-                        <div className="mt-6 flex flex-wrap items-center gap-3">
-                            {!hasPlacementResult ? (
-                                <Link
-                                    href="/placement"
-                                    className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-bold text-blue-700 shadow-sm transition-all hover:bg-blue-50 active:scale-[0.97]"
-                                >
-                                    Пройти вступительный тест
-                                    <ArrowRight size={16} />
-                                </Link>
-                            ) : null}
-                            <button
-                                type="button"
-                                onClick={copyStudentId}
-                                className="inline-flex items-center gap-2 rounded-2xl border border-white/25 bg-white/10 px-4 py-3 font-mono text-sm font-bold tracking-wide text-white transition-colors hover:bg-white/15"
-                            >
-                                {user.shortId || user.id}
-                                {copied ? <Check size={16} className="text-emerald-300" /> : <Copy size={16} className="text-blue-100" />}
-                            </button>
-                        </div>
-                    </div>
+            {/* Greeting */}
+            <section className="rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8">
+                <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+                    Готовы поднять уровень, <span className="font-medium text-muted-foreground">{user.name?.trim()}</span>?
+                </h1>
+                <p className="mt-2 max-w-xl text-sm font-normal leading-relaxed text-muted-foreground">
+                    {hasPlacementResult
+                        ? "Продолжайте готовиться — ниже ваши Mock-тесты и последние результаты."
+                        : "Пройдите вступительный тест, чтобы определить сильные стороны и получить план подготовки."}
+                </p>
+                <div className="mt-5 flex flex-wrap items-center gap-3">
+                    {!hasPlacementResult ? (
+                        <Link
+                            href="/placement"
+                            className="inline-flex items-center gap-2 rounded-xl bg-[hsl(var(--brand-blue-ink))] px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
+                        >
+                            Пройти вступительный тест
+                            <ArrowRight size={16} />
+                        </Link>
+                    ) : null}
+                    <button
+                        type="button"
+                        onClick={copyStudentId}
+                        className="inline-flex items-center gap-2 rounded-xl border border-border bg-background px-4 py-2.5 font-mono text-sm font-medium tracking-wide text-foreground transition-colors hover:bg-muted"
+                    >
+                        {user.shortId || user.id}
+                        {copied ? <Check size={16} className="text-emerald-600" /> : <Copy size={16} className="text-muted-foreground" />}
+                    </button>
                 </div>
+            </section>
 
-                <div className="flex flex-col justify-between rounded-3xl border border-border bg-card p-6 shadow-sm">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Текущий результат</p>
-                    {avgScore !== null ? (
-                        <>
-                            <p className="mt-2 text-4xl font-extrabold tabular-nums text-foreground">
-                                {avgScore}
-                                <span className="text-lg font-semibold text-muted-foreground">%</span>
-                            </p>
-                            <p className="mt-1 text-xs text-muted-foreground">Средний балл по всем Mock-тестам</p>
-                            <div className="mt-4 h-2 overflow-hidden rounded-full bg-muted">
-                                <div className="h-full rounded-full bg-blue-600 transition-all" style={{ width: `${avgScore}%` }} />
-                            </div>
-                        </>
-                    ) : (
-                        <div className="mt-3 flex flex-1 flex-col items-center justify-center gap-2 py-2 text-center">
-                            <Trophy size={26} className="text-muted-foreground/40" />
-                            <p className="text-xs text-muted-foreground">Пройдите первый Mock-тест, чтобы увидеть статистику</p>
+            {/* Analytics — same numbers as before, laid out as one stat row */}
+            <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-7 sm:grid-cols-4 sm:gap-0 sm:divide-x sm:divide-border">
+                    <div className="bg-[hsl(var(--brand-blue-ink))] p-6">
+                        <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-white/15 text-white">
+                            <Trophy size={20} strokeWidth={1.75} />
                         </div>
-                    )}
+                        <p className="text-xs text-white/70">Средний балл</p>
+                        <p className="mt-1 text-2xl font-semibold tabular-nums text-white">{avgScore !== null ? `${avgScore}%` : "—"}</p>
+                    </div>
+                    <div className="p-6">
+                        <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-[hsl(var(--brand-blue-ink))]/10 text-[hsl(var(--brand-blue-ink))]">
+                            <CheckCircle2 size={20} strokeWidth={1.75} />
+                        </div>
+                        <p className="text-xs text-muted-foreground">Пройдено тестов</p>
+                        <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{results.length}</p>
+                    </div>
+                    <div className="p-6">
+                        <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-[hsl(var(--brand-blue-ink))]/10 text-[hsl(var(--brand-blue-ink))]">
+                            <ClipboardList size={20} strokeWidth={1.75} />
+                        </div>
+                        <p className="text-xs text-muted-foreground">Доступно тестов</p>
+                        <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{tests.length}</p>
+                    </div>
+                    <div className="p-6">
+                        <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-[hsl(var(--brand-blue-ink))]/10 text-[hsl(var(--brand-blue-ink))]">
+                            <GraduationCap size={20} strokeWidth={1.75} />
+                        </div>
+                        <p className="text-xs text-muted-foreground">Вступительный тест</p>
+                        <p className={`mt-1 text-2xl font-semibold ${hasPlacementResult ? "text-emerald-600" : "text-foreground"}`}>
+                            {hasPlacementResult ? "Пройден" : "Не пройден"}
+                        </p>
+                    </div>
                 </div>
             </section>
 
             {/* Premium Mocks */}
             <section>
                 <div className="mb-5 flex items-center justify-between">
-                    <h2 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">Premium Mocks</h2>
-                    <Link href="/mock" className="text-sm font-semibold text-blue-600 hover:underline">
+                    <h2 className="text-xl font-bold tracking-tight sm:text-2xl text-[hsl(var(--brand-blue-ink))]">Premium Mocks</h2>
+                    <Link href="/mock" className="text-sm font-semibold text-[hsl(var(--brand-blue-ink))] hover:underline">
                         Все тесты
                     </Link>
                 </div>
@@ -169,9 +173,14 @@ export default function HomePage() {
                             return (
                                 <div key={test.id} className="flex flex-col justify-between gap-4 rounded-2xl border border-border bg-card p-5 shadow-sm transition-all hover:bg-muted/40">
                                     <div>
-                                        <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
-                                            {test.price.toLocaleString()} UZS
-                                        </span>
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[hsl(var(--brand-olive-soft))] text-[hsl(var(--brand-olive-ink))]">
+                                                <Crown size={16} />
+                                            </div>
+                                            <span className="inline-flex items-center rounded-full bg-red-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-red-600 dark:bg-red-950/40 dark:text-red-300">
+                                                {test.price.toLocaleString()} UZS
+                                            </span>
+                                        </div>
                                         <p className="mt-3 font-semibold text-foreground">{test.title}</p>
                                         {test.description ? (
                                             <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{test.description}</p>
@@ -181,14 +190,14 @@ export default function HomePage() {
                                     {status === "locked" ? (
                                         <button
                                             onClick={() => setPayingFor(test)}
-                                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-blue-700 active:scale-[0.97]"
+                                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-red-700 active:scale-[0.97]"
                                         >
                                             Enroll
                                         </button>
                                     ) : (
                                         <Link
                                             href={`/mock/${test.id}`}
-                                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
+                                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-[hsl(var(--brand-blue-ink))] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
                                         >
                                             {status === "completed" ? "Повторить" : "Начать"}
                                         </Link>
@@ -204,7 +213,7 @@ export default function HomePage() {
             <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 <div>
                     <div className="mb-5 flex items-center justify-between">
-                        <h2 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">Доступные Mock-тесты</h2>
+                        <h2 className="text-xl font-bold tracking-tight sm:text-2xl text-[hsl(var(--brand-blue-ink))]">Доступные Mock-тесты</h2>
                     </div>
                     {loading ? (
                         <div className="space-y-3">
@@ -221,20 +230,23 @@ export default function HomePage() {
                             {freeTests.map((test) => {
                                 const status = getStatus(test);
                                 return (
-                                    <div key={test.id} className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4 shadow-sm transition-all hover:bg-muted/40">
-                                        <div className="min-w-0">
+                                    <div key={test.id} className="flex items-center gap-3 rounded-2xl border border-border bg-card p-4 shadow-sm transition-all hover:bg-muted/40">
+                                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[hsl(var(--brand-blue-ink))] text-white">
+                                            <Play size={15} />
+                                        </div>
+                                        <div className="min-w-0 flex-1">
                                             <p className="truncate text-sm font-semibold text-foreground">{test.title}</p>
                                             <p className="mt-0.5 text-xs text-muted-foreground">{duration(test)} мин</p>
                                         </div>
                                         {status === "locked" ? (
-                                            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-border bg-muted px-3 py-2 text-xs font-semibold text-muted-foreground">
+                                            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-[hsl(var(--brand-olive-soft))] px-3 py-2 text-xs font-semibold text-[hsl(var(--brand-olive-ink))]">
                                                 <Lock size={13} />
                                                 Registan
                                             </span>
                                         ) : (
                                             <Link
                                                 href={`/mock/${test.id}`}
-                                                className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-foreground px-4 py-2 text-xs font-semibold text-background shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
+                                                className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-[hsl(var(--brand-blue-ink))] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
                                             >
                                                 <Play size={13} />
                                                 Начать
@@ -249,9 +261,9 @@ export default function HomePage() {
 
                 <div>
                     <div className="mb-5 flex items-center justify-between">
-                        <h2 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">Последние результаты</h2>
+                        <h2 className="text-xl font-bold tracking-tight sm:text-2xl text-[hsl(var(--brand-blue-ink))]">Последние результаты</h2>
                         {results.length > 0 ? (
-                            <Link href="/results" className="text-sm font-semibold text-blue-600 hover:underline">
+                            <Link href="/results" className="text-sm font-semibold text-[hsl(var(--brand-blue-ink))] hover:underline">
                                 Вся история
                             </Link>
                         ) : null}
@@ -277,7 +289,7 @@ export default function HomePage() {
                                             {new Date(r.completed_at).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}
                                         </p>
                                     </div>
-                                    <span className="shrink-0 rounded-xl bg-muted px-3 py-1.5 text-sm font-extrabold tabular-nums text-foreground">
+                                    <span className={`shrink-0 rounded-xl px-3 py-1.5 text-sm font-bold tabular-nums ${accuracyColor(r.accuracy)}`}>
                                         {r.accuracy}%
                                     </span>
                                 </div>

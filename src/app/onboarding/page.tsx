@@ -6,7 +6,7 @@ import { ArrowRight, Check, Copy } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { createUserProfile } from "@/lib/auth-utils";
 import supabase from "@/lib/supabase/client";
-import { APP_NAME, APP_THEME_KEY, REGISTERED_VIA_KEY } from "@/lib/app-config";
+import { APP_NAME, REGISTERED_VIA_KEY } from "@/lib/app-config";
 import RegistanLogo from "@/components/registan-logo";
 import { isValidUzPhone, formatPhoneDisplay, normalizePhone } from "@/lib/phone-utils";
 import type { RegisteredVia } from "@/lib/firestore-schema";
@@ -38,20 +38,6 @@ export default function OnboardingPage() {
             router.replace("/login");
         }
     }, [isLoading, user, router]);
-
-    useEffect(() => {
-        const root = document.documentElement;
-        root.classList.remove("dark");
-        return () => {
-            try {
-                const saved = localStorage.getItem(APP_THEME_KEY);
-                if (saved === "dark") root.classList.add("dark");
-                else root.classList.remove("dark");
-            } catch {
-                /* ignore */
-            }
-        };
-    }, []);
 
     const handleFinish = async () => {
         setError(null);
@@ -101,40 +87,40 @@ export default function OnboardingPage() {
     const isPhoneValid = isValidUzPhone(phone);
 
     const primaryBtnClass =
-        "w-full flex items-center justify-center gap-2 rounded-2xl border border-neutral-200 bg-neutral-900 py-4 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-neutral-800 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-35";
+        "w-full flex items-center justify-center gap-2 rounded-xl bg-primary py-4 text-sm font-semibold text-primary-foreground shadow-sm transition-all duration-200 hover:opacity-90 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-35";
 
     return (
-        <div className="relative flex min-h-dvh flex-col bg-white text-neutral-900">
+        <div className="relative flex min-h-dvh flex-col bg-background text-foreground">
             <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-4 py-12 sm:py-16">
                 <div className="w-full max-w-md">
                     <div className="mb-8 flex justify-center">
                         <div className="flex items-center gap-3">
                             <RegistanLogo className="h-14 w-14 sm:h-16 sm:w-16" />
-                            <span className="text-2xl font-extrabold tracking-tight text-neutral-900 sm:text-[1.75rem]">
+                            <span className="text-2xl font-extrabold tracking-tight text-foreground sm:text-[1.75rem]">
                                 {APP_NAME}
                             </span>
                         </div>
                     </div>
 
-                    <div className="overflow-hidden rounded-3xl border border-neutral-200/90 bg-white shadow-md">
+                    <div className="overflow-hidden rounded-3xl border border-border bg-card shadow-md">
                         {studentId ? (
                             <div className="px-6 py-8 text-center sm:px-8 sm:py-9">
-                                <h1 className="text-2xl font-bold tracking-tight text-neutral-900 sm:text-3xl">
+                                <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
                                     Готово!
                                 </h1>
-                                <p className="mt-2 text-sm text-neutral-500">
+                                <p className="mt-2 text-sm text-muted-foreground">
                                     Это ваш ID ученика — сохраните его, он понадобится учителю
                                 </p>
                                 <button
                                     type="button"
                                     onClick={copyStudentId}
-                                    className="mx-auto mt-6 flex items-center gap-3 rounded-2xl border border-neutral-200 bg-neutral-50 px-6 py-4 font-mono text-xl font-bold tracking-widest text-neutral-900 transition-colors hover:bg-neutral-100"
+                                    className="mx-auto mt-6 flex items-center gap-3 rounded-xl border border-border bg-muted/40 px-6 py-4 font-mono text-xl font-bold tracking-widest text-foreground transition-colors hover:bg-muted"
                                 >
                                     {studentId}
                                     {copied ? (
                                         <Check className="h-5 w-5 text-emerald-600" strokeWidth={2.5} />
                                     ) : (
-                                        <Copy className="h-5 w-5 text-neutral-400" strokeWidth={2} />
+                                        <Copy className="h-5 w-5 text-muted-foreground" strokeWidth={2} />
                                     )}
                                 </button>
                                 <button
@@ -149,16 +135,16 @@ export default function OnboardingPage() {
                         ) : (
                             <div className="px-6 py-8 sm:px-8 sm:py-9">
                                 <div className="mb-8 text-center">
-                                    <h1 className="text-2xl font-bold tracking-tight text-neutral-900 sm:text-3xl">
+                                    <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
                                         Ваш профиль
                                     </h1>
-                                    <p className="mt-2 text-sm text-neutral-500">
+                                    <p className="mt-2 text-sm text-muted-foreground">
                                         Администратор увидит вас в панели и назначит тест
                                     </p>
                                 </div>
                                 <div className="mb-8 space-y-4">
                                     <div className="space-y-1.5">
-                                        <label className="ml-0.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                                        <label className="ml-0.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                                             Имя
                                         </label>
                                         <input
@@ -166,12 +152,12 @@ export default function OnboardingPage() {
                                             value={name}
                                             onChange={(e) => setName(e.target.value)}
                                             placeholder="Ваше имя"
-                                            className="w-full rounded-2xl border border-neutral-200 bg-white p-4 text-neutral-900 placeholder:text-neutral-400 transition-colors focus:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900/10"
+                                            className="w-full rounded-xl border border-border bg-card p-4 text-foreground placeholder:text-muted-foreground transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15"
                                             required
                                         />
                                     </div>
                                     <div className="space-y-1.5">
-                                        <label className="ml-0.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                                        <label className="ml-0.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                                             Фамилия
                                         </label>
                                         <input
@@ -179,11 +165,11 @@ export default function OnboardingPage() {
                                             value={surname}
                                             onChange={(e) => setSurname(e.target.value)}
                                             placeholder="По желанию"
-                                            className="w-full rounded-2xl border border-neutral-200 bg-white p-4 text-neutral-900 placeholder:text-neutral-400 transition-colors focus:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900/10"
+                                            className="w-full rounded-xl border border-border bg-card p-4 text-foreground placeholder:text-muted-foreground transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15"
                                         />
                                     </div>
                                     <div className="space-y-1.5">
-                                        <label className="ml-0.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                                        <label className="ml-0.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                                             Номер телефона
                                         </label>
                                         <input
@@ -191,10 +177,10 @@ export default function OnboardingPage() {
                                             value={phone}
                                             onChange={(e) => setPhone(e.target.value)}
                                             placeholder="+998 90 123 45 67"
-                                            className="w-full rounded-2xl border border-neutral-200 bg-white p-4 text-neutral-900 placeholder:text-neutral-400 transition-colors focus:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900/10"
+                                            className="w-full rounded-xl border border-border bg-card p-4 text-foreground placeholder:text-muted-foreground transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15"
                                         />
                                         {phone && isPhoneValid ? (
-                                            <p className="ml-0.5 text-xs text-neutral-500">
+                                            <p className="ml-0.5 text-xs text-muted-foreground">
                                                 {formatPhoneDisplay(normalizePhone(phone))}
                                             </p>
                                         ) : null}
@@ -202,7 +188,7 @@ export default function OnboardingPage() {
                                 </div>
 
                                 {error ? (
-                                    <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                                    <div className="mb-4 rounded-xl bg-destructive/10 px-4 py-3 text-sm text-destructive">
                                         {error}
                                     </div>
                                 ) : null}

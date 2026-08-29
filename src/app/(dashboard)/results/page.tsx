@@ -4,12 +4,10 @@ import { useEffect, useState } from "react";
 import { Trophy, Calendar, Clock } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { fetchUserMockResults, MockResultRow } from "@/lib/registan-utils";
+import { accuracyColor } from "@/lib/status-colors";
 import TeacherResultsExplorer from "@/components/teacher-results-explorer";
 
 type ResultRow = MockResultRow;
-
-const scoreColor = (score: number) =>
-    score >= 80 ? "text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40" : score >= 50 ? "text-amber-600 bg-amber-50 dark:bg-amber-950/40" : "text-red-600 bg-red-50 dark:bg-red-950/40";
 
 export default function ResultsPage() {
     const { user } = useAuthStore();
@@ -42,7 +40,7 @@ export default function ResultsPage() {
                 </div>
                 {avgScore !== null ? (
                     <div className="flex items-center gap-3 self-start rounded-2xl border border-border bg-muted/50 px-5 py-3 dark:bg-muted/30">
-                        <Trophy size={18} className="text-blue-600" />
+                        <Trophy size={18} className="text-primary" />
                         <div>
                             <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Средний балл</p>
                             <p className="text-xl font-extrabold tabular-nums text-foreground">{avgScore}%</p>
@@ -84,7 +82,7 @@ export default function ResultsPage() {
                                         </span>
                                     </div>
                                 </div>
-                                <span className={`shrink-0 self-start rounded-xl px-4 py-2 text-sm font-extrabold tabular-nums sm:self-auto ${scoreColor(r.accuracy)}`}>
+                                <span className={`shrink-0 self-start rounded-xl px-4 py-2 text-sm font-extrabold tabular-nums sm:self-auto ${accuracyColor(r.accuracy)}`}>
                                     {r.accuracy}%
                                 </span>
                             </div>

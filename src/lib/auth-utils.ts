@@ -107,8 +107,8 @@ export const createUserProfile = async (supabaseUser: SupabaseUserProfile, input
             id: uid,
             email: supabaseUser.email || "",
             phone: resolvedPhone,
-            name: name || supabaseUser.user_metadata?.full_name || "Ученик",
-            surname: surname || "",
+            name: (name || supabaseUser.user_metadata?.full_name || "Ученик").trim(),
+            surname: (surname || "").trim(),
             avatar: supabaseUser.user_metadata?.avatar_url || "",
             role,
             subjects,
@@ -145,8 +145,8 @@ export const createUserProfile = async (supabaseUser: SupabaseUserProfile, input
 
 export const updateUserProfile = async (uid: string, data: { name: string; surname?: string; phone?: string }) => {
     try {
-        const updateData: Record<string, unknown> = { name: data.name, updatedAt: new Date().toISOString() };
-        if (data.surname !== undefined) updateData.surname = data.surname;
+        const updateData: Record<string, unknown> = { name: data.name.trim(), updatedAt: new Date().toISOString() };
+        if (data.surname !== undefined) updateData.surname = data.surname.trim();
         if (data.phone) updateData.phone = normalizePhone(data.phone);
 
         await supabase.from("users").update(updateData).eq("id", uid);

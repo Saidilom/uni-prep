@@ -433,7 +433,7 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
 
         <div className="grid min-h-[760px] gap-5 xl:grid-cols-[minmax(360px,0.85fr)_minmax(520px,1.15fr)]">
           <aside className="xl:sticky xl:top-0 xl:h-[calc(100vh-170px)]">
-            <div className="h-full overflow-hidden rounded-2xl border border-border bg-neutral-100">
+            <div className="h-full overflow-hidden rounded-2xl border border-border bg-muted">
               <iframe title="Исходный PDF" src={importResult.previewUrl} className="h-full min-h-[640px] w-full" />
             </div>
           </aside>
@@ -471,7 +471,7 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
               <section key={`${section.order}-${sectionIndex}`} className="space-y-3">
                 <div className="flex items-center justify-between gap-3 px-1">
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-widest text-blue-600">{section.kind}</p>
+                    <p className="text-xs font-bold uppercase tracking-widest text-primary">{section.kind}</p>
                     <h2 className="text-xl font-bold">{section.title}</h2>
                   </div>
                   <span className="text-xs font-semibold text-muted-foreground">{section.questions.length} заданий</span>
@@ -480,7 +480,7 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
                 {section.questions.map((question, questionIndex) => (
                   <article key={`${question.number}-${questionIndex}`} className={`rounded-2xl border bg-card p-5 shadow-sm ${question.answerOrigin === "missing" && !question.requiresManualReview ? "border-amber-300" : "border-border"}`}>
                     <div className="mb-4 flex flex-wrap items-center gap-2">
-                      <input aria-label="Номер задания" value={question.number} onChange={(event) => updateQuestion(sectionIndex, questionIndex, { number: event.target.value })} className="w-14 rounded-lg bg-foreground px-2.5 py-1 text-center text-xs font-bold text-background outline-none" />
+                      <input aria-label="Номер задания" value={question.number} onChange={(event) => updateQuestion(sectionIndex, questionIndex, { number: event.target.value })} className="w-14 rounded-lg bg-primary px-2.5 py-1 text-center text-xs font-bold text-primary-foreground outline-none" />
                       <select value={question.type} onChange={(event) => updateQuestion(sectionIndex, questionIndex, { type: event.target.value as ImportedQuestion["type"] })} className="rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-semibold">
                         {MOCK_QUESTION_TYPES.map((type) => <option key={type} value={type}>{QUESTION_LABELS[type]}</option>)}
                       </select>
@@ -501,7 +501,7 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
                     </label>
 
                     {question.needsSourceImage && (
-                      <p className="mt-3 inline-flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 dark:bg-blue-950/30">
+                      <p className="mt-3 inline-flex items-center gap-2 rounded-lg bg-[hsl(var(--brand-blue-soft))] px-3 py-2 text-xs font-semibold text-[hsl(var(--brand-blue-ink))]">
                         <Eye size={14} /> В задании будет показана исходная страница с рисунком
                       </p>
                     )}
@@ -567,7 +567,7 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
                 <p className="truncate text-sm font-bold">{draft.title}</p>
                 <p className="text-xs text-muted-foreground">{itemCount} полей ответа · {draft.durationMinutes} мин</p>
               </div>
-              <button onClick={publish} disabled={publishing} className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-700 disabled:opacity-50">
+              <button onClick={publish} disabled={publishing} className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-bold text-primary-foreground transition hover:opacity-90 disabled:opacity-50">
                 {publishing ? <Loader2 size={17} className="animate-spin" /> : <Check size={17} />}
                 {publishing ? "Публикация…" : "Проверено — готово"}
               </button>
@@ -582,14 +582,14 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
     <div className="space-y-8">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-600">{mode === "admin" ? "Super Admin" : "Teacher workspace"}</p>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">{mode === "admin" ? "Super Admin" : "Teacher workspace"}</p>
           <h1 className="mt-2 text-3xl font-bold tracking-tight">{mode === "admin" ? "Платные Mock-тесты" : "Мои бесплатные Mock-тесты"}</h1>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
             Загрузите настоящий PDF. Gemini определит предмет и структуру, заполнит задания и оставит вам только проверку.
           </p>
         </div>
         {!pendingTest && (
-          <button onClick={() => inputRef.current?.click()} disabled={importing} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-700 disabled:opacity-60">
+          <button onClick={() => inputRef.current?.click()} disabled={importing} className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-bold text-primary-foreground transition hover:opacity-90 disabled:opacity-60">
             <UploadCloud size={18} /> Загрузить PDF
           </button>
         )}
@@ -604,18 +604,18 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
           onDragOver={(event) => event.preventDefault()}
           onDragLeave={() => setDragging(false)}
           onDrop={(event) => { event.preventDefault(); setDragging(false); selectTest(event.dataTransfer.files?.[0]); }}
-          className={`group flex w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-10 text-center transition ${dragging ? "border-blue-500 bg-blue-50 dark:bg-blue-950/20" : "border-border bg-muted/30 hover:border-blue-300 hover:bg-blue-50/50 dark:hover:bg-blue-950/10"}`}
+          className={`group flex w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-10 text-center transition ${dragging ? "border-primary bg-primary/5" : "border-border bg-muted/30 hover:border-primary/40 hover:bg-primary/5"}`}
         >
-          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-600 text-white shadow-sm"><FileText size={22} /></span>
+          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm"><FileText size={22} /></span>
           <span className="mt-4 font-bold">Перетащите PDF сюда</span>
           <span className="mt-1 text-sm text-muted-foreground">До 32 MB · формулы, таблицы, графики и изображения поддерживаются</span>
         </button>
       ) : (
-        <div className="rounded-2xl border-2 border-dashed border-blue-300 bg-blue-50/50 p-6 dark:bg-blue-950/10">
-          <p className="text-sm font-bold text-blue-700">Готово к распознаванию</p>
+        <div className="rounded-2xl border-2 border-dashed border-primary/30 bg-primary/5 p-6">
+          <p className="text-sm font-bold text-primary">Готово к распознаванию</p>
           <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
             <div className="flex min-w-0 items-center gap-3">
-              <FileText size={18} className="shrink-0 text-blue-600" />
+              <FileText size={18} className="shrink-0 text-primary" />
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold">{pendingTest.name}</p>
                 <p className="text-xs text-muted-foreground">Тест — вопросы и задания</p>
@@ -642,13 +642,13 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
           )}
 
           <div className="mt-5 flex items-center gap-3">
-            <button onClick={runImport} disabled={importing} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-700 disabled:opacity-60">
+            <button onClick={runImport} disabled={importing} className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-bold text-primary-foreground transition hover:opacity-90 disabled:opacity-60">
               {importing ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
               {importing ? "Gemini распознаёт…" : "Распознать тест"}
             </button>
             <button onClick={cancelPending} disabled={importing} className="rounded-xl px-4 py-3 text-sm font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50">Отмена</button>
           </div>
-          {importing && <p className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-blue-600"><Loader2 size={16} className="animate-spin" /> Анализ страниц может занять несколько минут</p>}
+          {importing && <p className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-primary"><Loader2 size={16} className="animate-spin" /> Анализ страниц может занять несколько минут</p>}
         </div>
       )}
 
@@ -674,7 +674,7 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
               <span className="truncate text-sm text-muted-foreground">{test.creator_name}</span>
               <div className="flex justify-end gap-2">
                 <Link href={`/mock/${test.id}?preview=1`} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border hover:bg-muted" title="Предпросмотр"><Eye size={16} /></Link>
-                {mode === "teacher" && <button onClick={() => openAssignments(test)} className="inline-flex items-center gap-2 rounded-lg bg-foreground px-3 py-2 text-xs font-bold text-background"><Send size={14} /> Назначить</button>}
+                {mode === "teacher" && <button onClick={() => openAssignments(test)} className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground"><Send size={14} /> Назначить</button>}
               </div>
             </div>
           ))}
@@ -685,7 +685,7 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
         <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm" onClick={() => setAssigningTest(null)}>
           <div className="max-h-[85vh] w-full max-w-2xl overflow-hidden rounded-3xl border border-border bg-background shadow-2xl" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-start justify-between border-b border-border p-6">
-              <div><p className="text-xs font-bold uppercase tracking-wider text-blue-600">Назначение Mock</p><h2 className="mt-1 text-xl font-bold">{assigningTest.title}</h2></div>
+              <div><p className="text-xs font-bold uppercase tracking-wider text-primary">Назначение Mock</p><h2 className="mt-1 text-xl font-bold">{assigningTest.title}</h2></div>
               <button onClick={() => setAssigningTest(null)} className="rounded-xl p-2 hover:bg-muted"><X size={18} /></button>
             </div>
             <div className="max-h-[65vh] space-y-6 overflow-y-auto p-6">
@@ -693,7 +693,7 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
                 <h3 className="flex items-center gap-2 font-bold"><Users size={17} /> Вся группа</h3>
                 <div className="mt-3 space-y-2">
                   {classes.length === 0 ? <p className="text-sm text-muted-foreground">Сначала создайте группу.</p> : classes.map((item) => (
-                    <div key={item.id} className="flex items-center justify-between rounded-xl border border-border px-4 py-3"><span className="font-medium">{item.name}</span><button onClick={() => assign("class", item.id)} disabled={assigning === `class:${item.id}`} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{assigning === `class:${item.id}` ? "Назначение…" : "Назначить всем"}</button></div>
+                    <div key={item.id} className="flex items-center justify-between rounded-xl border border-border px-4 py-3"><span className="font-medium">{item.name}</span><button onClick={() => assign("class", item.id)} disabled={assigning === `class:${item.id}`} className="rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground disabled:opacity-50">{assigning === `class:${item.id}` ? "Назначение…" : "Назначить всем"}</button></div>
                   ))}
                 </div>
               </div>

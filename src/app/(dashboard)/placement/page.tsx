@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ClipboardList, Play, CheckCircle2, Clock, AlertCircle } from "lucide-react";
+import { ClipboardList, Play, CheckCircle2, AlertCircle } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useToast } from "@/hooks/useToast";
 import { fetchUserPlacementAssignments } from "@/lib/registan-utils";
@@ -23,7 +23,15 @@ type AssignmentRow = {
     assigned_at: string;
     passingScore: number;
     timeLimitMinutes?: number | null;
+    questionCount: number;
 };
+
+type StatusTab = "assigned" | "in_progress" | "completed";
+const STATUS_TABS: Array<{ id: StatusTab; label: string }> = [
+    { id: "assigned", label: "Новые" },
+    { id: "in_progress", label: "В процессе" },
+    { id: "completed", label: "Пройдены" },
+];
 
 type ResultSummary = {
     percentage: number;
@@ -40,6 +48,11 @@ export default function PlacementPage() {
     const [assignments, setAssignments] = useState<AssignmentRow[]>([]);
     const [results, setResults] = useState<Record<string, ResultSummary>>({});
     const [loading, setLoading] = useState(true);
+    // null until the first successful load picks a sensible starting tab
+    // (whichever status actually has assignments) — kept afterwards so a
+    // background refresh (e.g. after ensureActiveAssignment) never yanks the
+    // student back to a different tab than the one they're looking at.
+    const [activeTab, setActiveTab] = useState<StatusTab | null>(null);
 
     // No one assigns "Школа" to a student anymore — whichever test the admin
     // marked active (set_active_placement_test) is open to everyone. The
@@ -94,20 +107,20 @@ export default function PlacementPage() {
                 if (a.test_id) testIds.add(a.test_id);
             }
 
-            const testMap: Record<string, { passingScore: number; durationMinutes: number }> = {};
-            for (const tid of Array.from(testIds)) {
-                const { data: td } = await supabase
-                    .from("placement_tests")
-                    .select("passing_score, time_limit_minutes")
-                    .eq("id", tid)
-                    .single();
-                if (td) {
+            const testMap: Record<string, { passingScore: number; durationMinutes: number; questionCount: number }> = {};
+            await Promise.all(
+                Array.from(testIds).map(async (tid) => {
+                    const [{ data: td }, { count }] = await Promise.all([
+                        supabase.from("placement_tests").select("passing_score, time_limit_minutes").eq("id", tid).single(),
+                        supabase.from("placement_questions").select("id", { count: "exact", head: true }).eq("test_id", tid),
+                    ]);
                     testMap[tid] = {
-                        passingScore: Number(td.passing_score ?? 0),
-                        durationMinutes: Number(td.time_limit_minutes ?? 0),
+                        passingScore: Number(td?.passing_score ?? 0),
+                        durationMinutes: Number(td?.time_limit_minutes ?? 0),
+                        questionCount: count ?? 0,
                     };
-                }
-            }
+                })
+            );
 
             for (const a of data) {
                 const test = testMap[a.test_id];
@@ -115,10 +128,16 @@ export default function PlacementPage() {
                     ...a,
                     passingScore: test?.passingScore || 0,
                     timeLimitMinutes: test?.durationMinutes ?? null,
+                    questionCount: test?.questionCount || 0,
                 });
             }
 
             setAssignments(enriched);
+            setActiveTab((current) => {
+                if (current) return current;
+                const firstNonEmpty = STATUS_TABS.find((tab) => enriched.some((a) => a.status === tab.id));
+                return firstNonEmpty?.id ?? "assigned";
+            });
 
             const completedIds = enriched.filter((a) => a.status === "completed").map((a) => a.id);
             const resultMap: Record<string, ResultSummary> = {};
@@ -158,7 +177,7 @@ export default function PlacementPage() {
             case "assigned":
                 return { text: "Назначен", icon: AlertCircle, color: "text-amber-600" };
             case "in_progress":
-                return { text: "В процессе", icon: Play, color: "text-blue-600" };
+                return { text: "В процессе", icon: Play, color: "text-primary" };
             case "completed":
                 return { text: "Пройден", icon: CheckCircle2, color: "text-emerald-600" };
             default:
@@ -170,9 +189,12 @@ export default function PlacementPage() {
 
     if (!user) return null;
 
+    const tabCount = (tab: StatusTab) => assignments.filter((a) => a.status === tab).length;
+    const visibleAssignments = activeTab ? assignments.filter((a) => a.status === activeTab) : [];
+
     return (
-        <div className="flex flex-col gap-10">
-            <section>
+        <div className="flex flex-col gap-8">
+            <section className="flex flex-wrap items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-[hsl(var(--brand-blue-soft))]">
                         <ClipboardList className="h-5 w-5 text-[hsl(var(--brand-blue))]" />
@@ -184,13 +206,33 @@ export default function PlacementPage() {
                         </p>
                     </div>
                 </div>
+
+                {assignments.length > 0 && (
+                    <div className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-border bg-card p-1">
+                        {STATUS_TABS.map((tab) => (
+                            <button
+                                key={tab.id}
+                                type="button"
+                                onClick={() => setActiveTab(tab.id)}
+                                className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-semibold transition-colors ${
+                                    activeTab === tab.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                                }`}
+                            >
+                                {tab.label}
+                                <span className={`rounded-full px-1.5 py-0.5 text-xs font-bold tabular-nums ${activeTab === tab.id ? "bg-primary-foreground/20" : "bg-muted"}`}>
+                                    {tabCount(tab.id)}
+                                </span>
+                            </button>
+                        ))}
+                    </div>
+                )}
             </section>
 
             <section>
                 {loading ? (
-                    <div className="space-y-3">
-                        {[1, 2, 3].map((n) => (
-                            <div key={n} className="h-28 animate-pulse rounded-2xl border border-border bg-muted" />
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        {[1, 2].map((n) => (
+                            <div key={n} className="h-56 animate-pulse rounded-2xl border border-border bg-muted" />
                         ))}
                     </div>
                 ) : assignments.length === 0 ? (
@@ -206,77 +248,87 @@ export default function PlacementPage() {
                             </p>
                         </div>
                     </div>
+                ) : visibleAssignments.length === 0 ? (
+                    <div className="rounded-2xl border border-border bg-muted/50 py-14 text-center dark:bg-muted/30">
+                        <p className="font-medium text-muted-foreground">
+                            Нет тестов в статусе «{STATUS_TABS.find((t) => t.id === activeTab)?.label}».
+                        </p>
+                    </div>
                 ) : (
-                    <div className="space-y-4">
-                        {assignments.map((a) => {
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        {visibleAssignments.map((a) => {
                             const statusInfo = getStatusLabel(a.status);
                             const Icon = statusInfo.icon;
                             const result = results[a.id];
                             const isCompleted = a.status === "completed";
                             const isAssigned = a.status === "assigned";
                             const isInProgress = a.status === "in_progress";
+                            // We only track a single status per assignment, not
+                            // per-question progress — so the bar is qualitative
+                            // (empty/half/full), not a measured fraction.
+                            const progressWidth = isCompleted ? "100%" : isInProgress ? "50%" : "6%";
 
                             return (
                                 <div
                                     key={a.id}
-                                    className="rounded-2xl border border-border bg-card p-6 shadow-sm transition-all hover:bg-muted/40"
+                                    className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-6 shadow-sm transition-all hover:bg-muted/40"
                                 >
-                                    <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-                                        <div className="min-w-0 flex-1">
-                                            <div className="flex items-center gap-2">
-                                                <p className="truncate font-semibold text-foreground">{a.test_title}</p>
-                                                <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${statusInfo.color}`}>
-                                                    <Icon size={10} />
-                                                    {statusInfo.text}
-                                                </span>
-                                            </div>
+                                    <div>
+                                        <p className="truncate text-lg font-bold text-foreground">{a.test_title}</p>
+                                        <p className="mt-1 text-xs text-muted-foreground">Назначен {fmtDate(a.assigned_at)}</p>
+                                    </div>
 
-                                            <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                                                <span className="inline-flex items-center gap-1">
-                                                    <Clock size={11} />
-                                                    Дата назначения: {fmtDate(a.assigned_at)}
-                                                </span>
-                                                {a.timeLimitMinutes && (
-                                                    <span className="inline-flex items-center gap-1">
-                                                        <Clock size={11} />
-                                                        Время: {a.timeLimitMinutes} мин
-                                                    </span>
-                                                )}
-                                                {a.passingScore > 0 && (
-                                                    <span className="inline-flex items-center gap-1">
-                                                        <AlertCircle size={11} />
-                                                        Проходной: {a.passingScore}%
-                                                    </span>
-                                                )}
-                                            </div>
-
-                                            {isCompleted && result && (
-                                                <div className="mt-2 text-xs text-muted-foreground">
-                                                    <span className="font-semibold text-foreground">{result.percentage}%</span> — {result.score}/{result.total} правильных • {fmtDate(result.completed_at)}
-                                                </div>
-                                            )}
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="rounded-xl border border-border bg-muted/40 px-4 py-3">
+                                            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Вопросов</p>
+                                            <p className="mt-1 text-xl font-extrabold tabular-nums text-foreground">{a.questionCount || "—"}</p>
                                         </div>
-
-                                        <div className="flex gap-2">
-                                            {isAssigned || isInProgress ? (
-                                                <button
-                                                    onClick={() => router.push(`/placement/${a.id}`)}
-                                                    className="inline-flex items-center gap-2 rounded-2xl bg-foreground px-5 py-2.5 text-sm font-semibold text-background shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
-                                                >
-                                                    <Play size={16} />
-                                                    {isAssigned ? "Начать" : "Продолжить"}
-                                                </button>
-                                            ) : isCompleted ? (
-                                                <button
-                                                    onClick={() => router.push(`/placement/${a.id}`)}
-                                                    className="inline-flex items-center gap-2 rounded-2xl border border-border px-5 py-2.5 text-sm font-semibold hover:bg-muted transition-colors"
-                                                >
-                                                    <CheckCircle2 size={16} />
-                                                    Результат
-                                                </button>
-                                            ) : null}
+                                        <div className="rounded-xl border border-border bg-muted/40 px-4 py-3">
+                                            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Время</p>
+                                            <p className="mt-1 text-xl font-extrabold tabular-nums text-foreground">{a.timeLimitMinutes ? `${a.timeLimitMinutes} мин` : "—"}</p>
                                         </div>
                                     </div>
+
+                                    <div className="rounded-xl border border-border bg-muted/30 p-4">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <span className="text-sm font-semibold text-foreground">
+                                                {isCompleted && result ? `${result.percentage}%` : statusInfo.text}
+                                            </span>
+                                            <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${statusInfo.color}`}>
+                                                <Icon size={10} />
+                                                {statusInfo.text}
+                                            </span>
+                                        </div>
+                                        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
+                                            <div className="h-full rounded-full bg-primary transition-all" style={{ width: progressWidth }} />
+                                        </div>
+                                        {isCompleted && result && (
+                                            <p className="mt-2 text-xs text-muted-foreground">
+                                                {result.score}/{result.total} правильных • {fmtDate(result.completed_at)}
+                                            </p>
+                                        )}
+                                        {a.passingScore > 0 && !isCompleted && (
+                                            <p className="mt-2 text-xs text-muted-foreground">Проходной балл: {a.passingScore}%</p>
+                                        )}
+                                    </div>
+
+                                    {isAssigned || isInProgress ? (
+                                        <button
+                                            onClick={() => router.push(`/placement/${a.id}`)}
+                                            className="mt-auto inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-bold text-primary-foreground shadow-sm transition-all hover:opacity-90 active:scale-[0.98]"
+                                        >
+                                            <Play size={16} />
+                                            {isAssigned ? "Начать" : "Продолжить"}
+                                        </button>
+                                    ) : isCompleted ? (
+                                        <button
+                                            onClick={() => router.push(`/placement/${a.id}`)}
+                                            className="mt-auto inline-flex w-full items-center justify-center gap-2 rounded-xl border border-border px-5 py-3 text-sm font-bold hover:bg-muted transition-colors"
+                                        >
+                                            <CheckCircle2 size={16} />
+                                            Результат
+                                        </button>
+                                    ) : null}
                                 </div>
                             );
                         })}

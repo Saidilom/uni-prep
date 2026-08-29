@@ -6,6 +6,7 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { fetchAvailableMockTests, fetchUserMockAccess, fetchUserClassMockAccess, fetchUserMockResults, userHasMockAccess, MockTest, MockAccess } from "@/lib/registan-utils";
 import { fetchTeacherMockAssignmentsSummary, TeacherMockAssignmentSummary } from "@/lib/class-utils";
 import { pageCache } from "@/lib/page-cache";
+import { MOCK_STATUS_COLOR } from "@/lib/status-colors";
 import Link from "next/link";
 import PaymentModal from "@/components/payment-modal";
 
@@ -152,9 +153,9 @@ function StudentMockCatalog() {
     });
 
     const statusLabel: Record<string, { text: string; icon: typeof BookOpen; color: string }> = {
-        available: { text: "Доступен", icon: Play, color: "text-emerald-600" },
-        locked: { text: "Заблокирован", icon: Lock, color: "text-red-600" },
-        completed: { text: "Пройден", icon: CheckCircle2, color: "text-blue-600" },
+        available: { text: "Доступен", icon: Play, color: MOCK_STATUS_COLOR.available },
+        locked: { text: "Заблокирован", icon: Lock, color: MOCK_STATUS_COLOR.locked },
+        completed: { text: "Пройден", icon: CheckCircle2, color: MOCK_STATUS_COLOR.completed },
     };
 
     return (
@@ -200,18 +201,18 @@ function StudentMockCatalog() {
                                     {status === "locked" && test.type === "paid" ? (
                                         <button
                                             onClick={() => setPayingFor(test)}
-                                            className="shrink-0 inline-flex items-center gap-2 rounded-2xl bg-foreground px-5 py-2.5 text-sm font-semibold text-background shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
+                                            className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-red-700 active:scale-[0.97]"
                                         >
                                             Купить
                                         </button>
                                     ) : status === "locked" ? (
-                                        <span className="shrink-0 rounded-2xl border border-border bg-muted px-5 py-2.5 text-center text-sm font-semibold text-muted-foreground">
+                                        <span className="shrink-0 rounded-xl border border-border bg-muted px-5 py-2.5 text-center text-sm font-semibold text-muted-foreground">
                                             {test.type === "class_only" ? "Доступно только вашей группе" : "Только для учеников Registan"}
                                         </span>
                                     ) : (
                                         <Link
                                             href={`/mock/${test.id}`}
-                                            className="shrink-0 inline-flex items-center gap-2 rounded-2xl bg-foreground px-5 py-2.5 text-sm font-semibold text-background shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
+                                            className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
                                         >
                                             {status === "completed" ? "Повторить" : "Начать"}
                                         </Link>

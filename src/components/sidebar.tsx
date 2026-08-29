@@ -49,7 +49,7 @@ function Sidebar() {
 
             <aside
                 className={`
-                    fixed left-0 top-0 h-screen bg-background border-r border-border flex flex-col z-50
+                    fixed left-0 top-0 h-screen bg-[hsl(var(--brand-olive))] flex flex-col z-50
                     overflow-y-auto overflow-x-hidden
                     transition-[width,transform] duration-300 ease-in-out
                     w-64
@@ -58,11 +58,11 @@ function Sidebar() {
                 `}
             >
                 {/* ── Logo ── */}
-                <div className={`shrink-0 pt-5 pb-4 flex items-center justify-between border-b border-border px-5 ${isCollapsed ? "md:flex-col md:justify-center md:gap-2 md:px-0" : ""}`}>
+                <div className={`shrink-0 pt-5 pb-4 flex items-center justify-between border-b border-white/10 px-5 ${isCollapsed ? "md:flex-col md:justify-center md:gap-2 md:px-0" : ""}`}>
                     {/* Full logo — hidden when collapsed on desktop */}
                     <Link href="/" className={`flex flex-1 items-center justify-center ${isCollapsed ? "md:hidden" : ""}`} onClick={close}>
                         <div className="relative h-14 w-44">
-                            <Image src="/registan-logo.png" alt={APP_NAME} fill className="object-contain" priority />
+                            <Image src="/registan-logo.png" alt={APP_NAME} fill className="object-contain brightness-0 invert" priority />
                         </div>
                     </Link>
 
@@ -70,26 +70,26 @@ function Sidebar() {
                     {isCollapsed && (
                         <Link href="/" className="hidden md:flex items-center justify-center" onClick={close} title={APP_NAME}>
                             <div className="relative h-10 w-10">
-                                <Image src="/registan-logo.png" alt={APP_NAME} fill className="object-contain" priority />
+                                <Image src="/registan-logo.png" alt={APP_NAME} fill className="object-contain brightness-0 invert" priority />
                             </div>
                         </Link>
                     )}
 
                     {/* Mobile: close drawer */}
-                    <button onClick={close} className="md:hidden p-1.5 rounded-lg hover:bg-muted transition-colors" aria-label="Закрыть меню">
-                        <X size={18} className="text-muted-foreground" />
+                    <button onClick={close} className="md:hidden p-1.5 rounded-lg hover:bg-white/10 transition-colors" aria-label="Закрыть меню">
+                        <X size={18} className="text-white/70" />
                     </button>
 
                     {/* Desktop: collapse/expand toggle */}
                     <button
                         onClick={toggleCollapsed}
-                        className="hidden md:flex p-1.5 rounded-lg hover:bg-muted transition-colors"
+                        className="hidden md:flex p-1.5 rounded-lg hover:bg-white/10 transition-colors"
                         aria-label={isCollapsed ? "Развернуть меню" : "Свернуть меню"}
                         title={isCollapsed ? "Развернуть" : "Свернуть"}
                     >
                         {isCollapsed
-                            ? <PanelLeft size={16} className="text-muted-foreground" />
-                            : <PanelLeftClose size={16} className="text-muted-foreground" />
+                            ? <PanelLeft size={16} className="text-white/70" />
+                            : <PanelLeftClose size={16} className="text-white/70" />
                         }
                     </button>
                 </div>
@@ -106,11 +106,11 @@ function Sidebar() {
                                         title={isCollapsed ? name : undefined}
                                         className={`flex items-center rounded-lg text-[13.5px] font-medium transition-colors duration-100
                                             ${isCollapsed ? "md:justify-center md:px-0 md:py-2.5 gap-3 px-3 py-2.5" : "gap-3 px-3 py-2.5"}
-                                            ${active ? "bg-muted text-foreground font-semibold" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
+                                            ${active ? "bg-white/15 text-white font-semibold" : "text-white/65 hover:text-white hover:bg-white/10"}`}
                                     >
                                         <Icon
                                             size={18}
-                                            className={`flex-shrink-0 transition-colors duration-100 ${active ? "text-foreground" : "text-muted-foreground"}`}
+                                            className={`flex-shrink-0 transition-colors duration-100 ${active ? "text-white" : "text-white/65"}`}
                                         />
                                         <span className={isCollapsed ? "md:hidden" : ""}>{name}</span>
                                     </Link>
@@ -121,19 +121,19 @@ function Sidebar() {
                 </nav>
 
                 {/* ── User ── */}
-                <div className={`pt-2 pb-4 border-t border-border mt-auto flex-1 flex flex-col justify-end ${isCollapsed ? "md:px-2 px-3" : "px-3"}`}>
+                <div className={`pt-2 pb-4 border-t border-white/10 mt-auto flex-1 flex flex-col justify-end ${isCollapsed ? "md:px-2 px-3" : "px-3"}`}>
                     <div className={`flex items-center rounded-lg py-2 ${isCollapsed ? "md:justify-center md:px-0 px-3 gap-3" : "px-3 gap-3"}`}>
                         <div
-                            className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-[11px] font-bold flex-shrink-0"
+                            className="w-7 h-7 rounded-full bg-white text-[hsl(var(--brand-olive-ink))] flex items-center justify-center text-[11px] font-bold flex-shrink-0"
                             title={isCollapsed ? `${user.name} ${user.surname || ""}` : undefined}
                         >
                             {user.name[0].toUpperCase()}
                         </div>
                         <div className={`flex-1 min-w-0 ${isCollapsed ? "md:hidden" : ""}`}>
-                            <p className="text-[12.5px] font-semibold text-foreground truncate leading-tight">
+                            <p className="text-[12.5px] font-semibold text-white truncate leading-tight">
                                 {user.name} {user.surname || ""}
                             </p>
-                            <p className="mt-1 text-[11px] font-semibold text-muted-foreground truncate">{user.email}</p>
+                            <p className="mt-1 text-[11px] font-semibold text-white/60 truncate">{user.email}</p>
                         </div>
                     </div>
                 </div>

@@ -1,13 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, LogOut, GraduationCap, Menu } from "lucide-react";
+import { ChevronDown, LogOut, GraduationCap, Menu, Search } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useSidebarStore } from "@/store/useSidebarStore";
 import { logOut } from "@/lib/auth-utils";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { APP_NAME } from "@/lib/app-config";
 
 type MenuItem = {
@@ -17,14 +16,34 @@ type MenuItem = {
     visible?: boolean;
 };
 
+type SearchablePage = { name: string; href: string };
+
+const STUDENT_PAGES: SearchablePage[] = [
+    { name: "Главная", href: "/" },
+    { name: "Mock-тесты", href: "/mock" },
+    { name: "Результаты", href: "/results" },
+    { name: "Школа", href: "/placement" },
+    { name: "Достижения", href: "/achievements" },
+    { name: "Профиль", href: "/profile" },
+];
+const TEACHER_PAGES: SearchablePage[] = [
+    { name: "Мои группы", href: "/classes" },
+    { name: "Мои тесты", href: "/teacher/mock-tests" },
+];
+const ADMIN_PAGES: SearchablePage[] = [{ name: "Админ-панель", href: "/admin" }];
+
 export default function Topbar() {
     const router = useRouter();
     const { user } = useAuthStore();
     const { toggle } = useSidebarStore();
 
     const [openUser, setOpenUser] = useState(false);
+    const [query, setQuery] = useState("");
+    const [searchOpen, setSearchOpen] = useState(false);
 
     const userRef = useRef<HTMLDivElement | null>(null);
+    const searchRef = useRef<HTMLDivElement | null>(null);
+    const searchInputRef = useRef<HTMLInputElement | null>(null);
 
     // Close user menu on outside click
     useEffect(() => {
@@ -36,6 +55,52 @@ export default function Topbar() {
         document.addEventListener("mousedown", handler);
         return () => document.removeEventListener("mousedown", handler);
     }, [openUser]);
+
+    // Close search dropdown on outside click
+    useEffect(() => {
+        if (!searchOpen) return;
+        const handler = (e: MouseEvent) => {
+            if (!(e.target instanceof Node)) return;
+            if (searchRef.current && !searchRef.current.contains(e.target)) setSearchOpen(false);
+        };
+        document.addEventListener("mousedown", handler);
+        return () => document.removeEventListener("mousedown", handler);
+    }, [searchOpen]);
+
+    // Cmd/Ctrl+K focuses the search input from anywhere on a dashboard page,
+    // matching the shortcut convention most users already expect.
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+                e.preventDefault();
+                searchInputRef.current?.focus();
+            }
+        };
+        document.addEventListener("keydown", handler);
+        return () => document.removeEventListener("keydown", handler);
+    }, []);
+
+    const searchablePages = useMemo(() => {
+        if (!user) return [];
+        return [
+            ...STUDENT_PAGES,
+            ...(user.role === "teacher" ? TEACHER_PAGES : []),
+            ...(user.role === "admin" ? ADMIN_PAGES : []),
+        ];
+    }, [user]);
+
+    const searchResults = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        if (!q) return searchablePages;
+        return searchablePages.filter((p) => p.name.toLowerCase().includes(q));
+    }, [query, searchablePages]);
+
+    const goToPage = (href: string) => {
+        setSearchOpen(false);
+        setQuery("");
+        searchInputRef.current?.blur();
+        router.push(href);
+    };
 
     const userMenu: MenuItem[] = [
         { label: "Мои группы", href: "/classes", icon: GraduationCap, visible: user?.role === "teacher" },
@@ -61,9 +126,51 @@ export default function Topbar() {
                 {/* App name — mobile only */}
                 <span className="md:hidden font-extrabold text-base text-foreground tracking-tight">{APP_NAME}</span>
 
-                <div className="flex-1" />
+                {/* Quick page search — desktop only, mobile relies on the sidebar */}
+                <div ref={searchRef} className="relative hidden flex-1 md:block">
+                    <div className="relative">
+                        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <input
+                            ref={searchInputRef}
+                            type="text"
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                            onFocus={() => setSearchOpen(true)}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter" && searchResults[0]) goToPage(searchResults[0].href);
+                                if (e.key === "Escape") { setSearchOpen(false); searchInputRef.current?.blur(); }
+                            }}
+                            placeholder="Поиск по разделам…"
+                            className="h-10 w-full rounded-xl border border-border bg-muted/50 pl-10 pr-14 text-sm text-foreground placeholder:text-muted-foreground transition-colors focus:border-primary focus:bg-background focus:outline-none focus:ring-2 focus:ring-primary/15"
+                        />
+                        <span className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 items-center rounded-md border border-border bg-background px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground sm:flex">
+                            ⌘K
+                        </span>
+                    </div>
 
-                <ThemeToggle />
+                    {searchOpen && (
+                        <div className="absolute left-0 right-0 mt-2 max-h-80 overflow-y-auto rounded-2xl border border-border bg-card shadow-lg z-10 origin-top animate-in fade-in-0 zoom-in-95 duration-150">
+                            {searchResults.length === 0 ? (
+                                <p className="px-4 py-3 text-sm text-muted-foreground">Ничего не найдено</p>
+                            ) : (
+                                <div className="py-1.5">
+                                    {searchResults.map((page) => (
+                                        <button
+                                            key={page.href}
+                                            type="button"
+                                            onClick={() => goToPage(page.href)}
+                                            className="mx-1.5 flex w-[calc(100%-0.75rem)] items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-foreground transition-colors hover:bg-muted"
+                                        >
+                                            {page.name}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex-1 md:hidden" />
 
                 {/* User menu */}
                 <div ref={userRef} className="relative">

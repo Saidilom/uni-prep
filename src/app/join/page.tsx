@@ -4,7 +4,7 @@ import { useEffect, Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
-import { APP_THEME_KEY, REGISTERED_VIA_KEY } from "@/lib/app-config";
+import { REGISTERED_VIA_KEY } from "@/lib/app-config";
 import { signInWithGoogle } from "@/lib/auth-utils";
 import { useAuthStore } from "@/store/useAuthStore";
 import type { RegisteredVia } from "@/lib/firestore-schema";
@@ -22,25 +22,11 @@ function JoinPageContent() {
     const registeredVia: RegisteredVia = source === "reception" ? "qr" : "google";
 
     useEffect(() => {
-        const root = document.documentElement;
-        root.classList.remove("dark");
-        return () => {
-            try {
-                const saved = localStorage.getItem(APP_THEME_KEY);
-                if (saved === "dark") root.classList.add("dark");
-                else root.classList.remove("dark");
-            } catch {
-                /* ignore */
-            }
-        };
-    }, []);
-
-    useEffect(() => {
         if (user?.phone) router.push("/");
     }, [user, router]);
 
     const primaryBtn =
-        "flex w-full items-center justify-center gap-3 rounded-2xl border border-neutral-200 bg-white py-4 pl-5 pr-6 text-sm font-semibold text-neutral-900 shadow-sm transition-all duration-200 hover:border-neutral-300 hover:bg-neutral-50 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50";
+        "flex w-full items-center justify-center gap-3 rounded-xl border border-border bg-card py-4 pl-5 pr-6 text-sm font-semibold text-foreground shadow-sm transition-all duration-200 hover:bg-muted active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50";
 
     const handleLogin = async () => {
         setError(null);
@@ -57,16 +43,16 @@ function JoinPageContent() {
     return (
         <AuthShell>
             <div className="mb-8 text-center">
-                <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+                <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
                     Добро пожаловать
                 </h1>
-                <p className="mt-3 text-sm leading-relaxed text-neutral-500">
+                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
                     Регистрация для вступительного тестирования в учебном центре Registan.
                 </p>
             </div>
 
             {error ? (
-                <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <div className="mb-4 rounded-xl bg-destructive/10 px-4 py-3 text-sm text-destructive">
                     {error}
                 </div>
             ) : null}
@@ -76,9 +62,9 @@ function JoinPageContent() {
                 {isLoading ? "Подключение…" : "Зарегистрироваться через Google"}
             </button>
 
-            <p className="mt-6 text-center text-sm text-neutral-500">
+            <p className="mt-6 text-center text-sm text-muted-foreground">
                 Уже есть аккаунт?{" "}
-                <Link href="/login" className="font-semibold text-neutral-900 hover:underline">
+                <Link href="/login" className="font-semibold text-foreground hover:underline">
                     Войти
                 </Link>
             </p>

@@ -25,9 +25,9 @@ export default function AdminDashboard() {
     }, []);
 
     const statCards = [
-        { label: "Доход (UZS)", value: overview?.revenue?.toLocaleString(), icon: Wallet, accent: "from-emerald-50 to-teal-50 text-emerald-600 dark:from-emerald-950/40 dark:to-teal-950/40" },
-        { label: "Учеников всего", value: overview?.students, icon: GraduationCap, accent: "from-blue-50 to-indigo-50 text-blue-600 dark:from-blue-950/40 dark:to-indigo-950/40" },
-        { label: "Оплатили и ждут тест", value: overview?.waitingForMock, icon: Clock, accent: "from-amber-50 to-orange-50 text-amber-600 dark:from-amber-950/40 dark:to-orange-950/40" },
+        { label: "Доход (UZS)", value: overview?.revenue?.toLocaleString(), icon: Wallet },
+        { label: "Учеников всего", value: overview?.students, icon: GraduationCap },
+        { label: "Оплатили и ждут тест", value: overview?.waitingForMock, icon: Clock },
     ];
 
     return (
@@ -39,35 +39,37 @@ export default function AdminDashboard() {
                 </p>
             </section>
 
-            <section className="grid grid-cols-1 gap-5 sm:grid-cols-3">
+            <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
                 {isLoading ? (
-                    [1, 2, 3].map((i) => (
-                        <div key={i} className="h-28 animate-pulse rounded-2xl border border-border bg-card" />
-                    ))
+                    <div className="grid grid-cols-1 sm:grid-cols-3 sm:divide-x sm:divide-border">
+                        {[1, 2, 3].map((i) => (
+                            <div key={i} className="h-28 animate-pulse bg-muted" />
+                        ))}
+                    </div>
                 ) : (
-                    statCards.map((card, idx) => (
-                        <div key={idx} className="flex items-center gap-4 rounded-2xl border border-border bg-card p-6 shadow-sm">
-                            <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${card.accent}`}>
-                                <card.icon size={22} />
+                    <div className="grid grid-cols-1 sm:grid-cols-3 sm:divide-x sm:divide-border">
+                        {statCards.map((card, idx) => (
+                            <div key={idx} className="p-6">
+                                <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-[hsl(var(--brand-blue-ink))]/10 text-[hsl(var(--brand-blue-ink))]">
+                                    <card.icon size={20} strokeWidth={1.75} />
+                                </div>
+                                <p className="text-xs text-muted-foreground">{card.label}</p>
+                                <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{card.value ?? 0}</p>
                             </div>
-                            <div className="min-w-0">
-                                <p className="truncate text-2xl font-extrabold tabular-nums text-foreground">{card.value ?? 0}</p>
-                                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{card.label}</p>
-                            </div>
-                        </div>
-                    ))
+                        ))}
+                    </div>
                 )}
             </section>
 
             <section className="rounded-2xl border border-border bg-card p-8">
                 <div className="mb-6 flex items-center justify-between">
                     <div>
-                        <h2 className="flex items-center gap-2 text-xl font-bold tracking-tight text-foreground">
+                        <h2 className="flex items-center gap-2 text-xl font-bold tracking-tight text-[hsl(var(--brand-blue-ink))]">
                             <CreditCard size={19} className="text-muted-foreground" /> Недавние транзакции
                         </h2>
                         <p className="mt-1 text-sm text-muted-foreground">Последние оплаты платных Mock-тестов.</p>
                     </div>
-                    <Link href="/admin/payments" className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600 hover:underline">
+                    <Link href="/admin/payments" className="inline-flex items-center gap-1.5 text-sm font-semibold text-[hsl(var(--brand-blue-ink))] hover:underline">
                         Все оплаты <ArrowRight size={14} />
                     </Link>
                 </div>

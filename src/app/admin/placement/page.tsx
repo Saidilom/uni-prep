@@ -176,7 +176,7 @@ export default function AdminPlacementPage() {
                         <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Проверка распознанного теста</h1>
                         <p className="mt-2 text-sm text-muted-foreground">Проверьте вопросы и правильные ответы перед публикацией в «Школа».</p>
                     </div>
-                    <button onClick={() => setDraft(null)} className="rounded-xl border border-border px-4 py-2.5 text-sm font-semibold hover:bg-muted transition-colors">Отмена</button>
+                    <button onClick={() => setDraft(null)} className="rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-muted transition-colors">Отмена</button>
                 </div>
 
                 <section className="rounded-2xl border border-border bg-card p-5 space-y-4">
@@ -206,7 +206,7 @@ export default function AdminPlacementPage() {
                     {draft.questions.map((q, index) => (
                         <article key={index} className={`rounded-2xl border bg-card p-5 shadow-sm ${!q.correctOptionId ? "border-amber-300" : "border-border"}`}>
                             <div className="mb-3 flex items-center gap-2">
-                                <span className="rounded-lg bg-foreground px-2.5 py-1 text-xs font-bold text-background">{q.number}</span>
+                                <span className="rounded-lg bg-primary px-2.5 py-1 text-xs font-bold text-primary-foreground">{q.number}</span>
                                 <span className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${q.confidence >= 0.85 ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>AI {Math.round(q.confidence * 100)}%</span>
                                 <button onClick={() => removeQuestion(index)} className="ml-auto rounded-lg p-1.5 text-muted-foreground hover:bg-red-50 hover:text-red-600" aria-label="Удалить вопрос"><Trash2 size={15} /></button>
                             </div>
@@ -248,7 +248,7 @@ export default function AdminPlacementPage() {
 
                 <div className="sticky bottom-3 flex items-center justify-between gap-4 rounded-2xl border border-border bg-background/95 p-4 shadow-xl backdrop-blur">
                     <p className="text-sm font-bold">{draft.title} · {draft.questions.length} вопросов</p>
-                    <button onClick={publish} disabled={publishing} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50">
+                    <button onClick={publish} disabled={publishing} className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-bold text-primary-foreground hover:opacity-90 disabled:opacity-50">
                         {publishing ? <Loader2 size={17} className="animate-spin" /> : <Check size={17} />}
                         {publishing ? "Публикация…" : "Опубликовать"}
                     </button>
@@ -300,7 +300,7 @@ export default function AdminPlacementPage() {
             <input ref={inputRef} type="file" accept="application/pdf,.pdf" hidden onChange={(e) => selectFile(e.target.files?.[0])} />
 
             <section>
-                <h2 className="mb-3 text-lg font-bold">Тесты «Школа»</h2>
+                <h2 className="mb-3 text-lg font-bold text-[hsl(var(--brand-blue-ink))]">Тесты «Школа»</h2>
                 {loading ? (
                     <div className="space-y-3">{[1, 2].map((n) => <div key={n} className="h-20 animate-pulse rounded-2xl border border-border bg-muted" />)}</div>
                 ) : tests.length === 0 ? (
@@ -320,7 +320,7 @@ export default function AdminPlacementPage() {
                                 </div>
                                 <div className="flex shrink-0 items-center gap-2">
                                     {!t.is_active && (
-                                        <button onClick={() => activate(t.id)} disabled={activating === t.id} className="inline-flex items-center gap-2 rounded-xl bg-foreground px-4 py-2 text-xs font-bold text-background disabled:opacity-50">
+                                        <button onClick={() => activate(t.id)} disabled={activating === t.id} className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground hover:opacity-90 disabled:opacity-50">
                                             {activating === t.id ? "…" : "Сделать активным"}
                                         </button>
                                     )}

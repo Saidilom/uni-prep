@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { Search, CreditCard, Wallet } from "lucide-react";
 import supabase from "@/lib/supabase/client";
 
 type PaymentRow = {
@@ -62,18 +62,26 @@ export default function AdminPaymentsPage() {
                 </p>
             </section>
 
-            <section className="grid grid-cols-2 gap-4">
-                <div className="rounded-2xl border border-border bg-card p-6">
-                    <div className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2">Оплат (по фильтру)</div>
-                    <div className="text-3xl font-bold tabular-nums text-foreground">{filtered.length}</div>
-                </div>
-                <div className="rounded-2xl border border-border bg-card p-6">
-                    <div className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2">Сумма (UZS)</div>
-                    <div className="text-3xl font-bold tabular-nums text-foreground">{totalAmount.toLocaleString()}</div>
+            <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-2 sm:divide-x sm:divide-border">
+                    <div className="p-6">
+                        <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-[hsl(var(--brand-blue-ink))]/10 text-[hsl(var(--brand-blue-ink))]">
+                            <CreditCard size={20} strokeWidth={1.75} />
+                        </div>
+                        <p className="text-xs text-muted-foreground">Оплат (по фильтру)</p>
+                        <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{filtered.length}</p>
+                    </div>
+                    <div className="p-6">
+                        <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-[hsl(var(--brand-blue-ink))]/10 text-[hsl(var(--brand-blue-ink))]">
+                            <Wallet size={20} strokeWidth={1.75} />
+                        </div>
+                        <p className="text-xs text-muted-foreground">Сумма (UZS)</p>
+                        <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{totalAmount.toLocaleString()}</p>
+                    </div>
                 </div>
             </section>
 
-            <section className="flex flex-col gap-3 rounded-3xl border border-border bg-card p-5 sm:flex-row sm:items-center sm:flex-wrap">
+            <section className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-5 sm:flex-row sm:items-center sm:flex-wrap">
                 <div className="flex flex-1 items-center gap-2 rounded-2xl border border-border bg-background px-4 py-2.5 min-w-[200px]">
                     <Search size={16} className="text-muted-foreground shrink-0" />
                     <input

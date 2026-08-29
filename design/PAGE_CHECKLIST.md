@@ -33,14 +33,14 @@
 
 ## Админ
 
-- [ ] `/admin` — `src/app/admin/page.tsx`
+- [x] `/admin` — `src/app/admin/page.tsx`
 - [ ] `/admin/users` — `src/app/admin/users/page.tsx`
-- [ ] `/admin/teachers` — только склонение поправлено (`pluralizeRu`) — `src/app/admin/teachers/page.tsx`
-- [ ] `/admin/classes` — только текст поправлен — `src/app/admin/classes/page.tsx`
-- [ ] `/admin/placement` — `src/app/admin/placement/page.tsx`
-- [ ] `/admin/placement/results` — `src/app/admin/placement/results/page.tsx`
+- [x] `/admin/teachers` — `src/app/admin/teachers/page.tsx`
+- [x] `/admin/classes` — `src/app/admin/classes/page.tsx`
+- [x] `/admin/placement` — `src/app/admin/placement/page.tsx` (блок загрузки/распознавания PDF не трогали по просьбе)
+- [x] `/admin/placement/results` — `src/app/admin/placement/results/page.tsx`
 - [x] `/admin/mock-tests` — `src/app/admin/mock-tests/page.tsx` + `src/components/mock-test-studio.tsx` (общий компонент с `/teacher/mock-tests`, переделан там же)
-- [ ] `/admin/payments` — `src/app/admin/payments/page.tsx`
+- [x] `/admin/payments` — `src/app/admin/payments/page.tsx`
 - [ ] `/admin/qr` — `src/app/admin/qr/page.tsx`
 
 ## Общие компоненты (уже на дизайн-системе, не нужно переделывать)

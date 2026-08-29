@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import supabase from "@/lib/supabase/client";
+import { accuracyColor } from "@/lib/status-colors";
 
 type PlacementResultRow = {
     id: string;
@@ -64,8 +65,8 @@ export default function AdminPlacementResultsPage() {
                                     <p className="mt-0.5 text-xs text-muted-foreground">{r.user_phone || "—"} • {r.test_title}</p>
                                     <p className="mt-0.5 text-xs text-muted-foreground">{fmtDate(r.completed_at)}</p>
                                 </div>
-                                <div className="text-right">
-                                    <p className="text-lg font-bold tabular-nums text-foreground">{r.accuracy}%</p>
+                                <div className="flex shrink-0 items-center gap-3 sm:flex-col sm:items-end sm:gap-1">
+                                    <span className={`rounded-xl px-3 py-1.5 text-sm font-extrabold tabular-nums ${accuracyColor(r.accuracy)}`}>{r.accuracy}%</span>
                                     <p className="text-xs text-muted-foreground">{r.correct_answers}/{r.total_questions} правильных</p>
                                 </div>
                             </div>

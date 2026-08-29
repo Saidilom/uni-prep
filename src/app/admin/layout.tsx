@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuthStore } from "@/store/useAuthStore";
+import { useSidebarStore } from "@/store/useSidebarStore";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import Link from "next/link";
@@ -18,10 +19,13 @@ import {
     FileText,
     CreditCard,
     QrCode,
+    PanelLeftClose,
+    PanelLeft,
 } from "lucide-react";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
     const { user, isLoading } = useAuthStore();
+    const { isCollapsed, toggleCollapsed } = useSidebarStore();
     const router = useRouter();
     const pathname = usePathname();
 
@@ -56,51 +60,70 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     return (
         <div className="flex min-h-screen bg-transparent">
             {/* Desktop sidebar */}
-            <aside className="hidden md:flex sticky top-0 h-screen w-64 flex-col border-r border-border bg-card shrink-0">
-                <div className="flex items-center gap-3 border-b border-border p-6">
+            <aside className={`hidden md:flex sticky top-0 h-screen flex-col bg-[hsl(var(--brand-olive))] shrink-0 transition-[width] duration-300 ease-in-out ${isCollapsed ? "w-16" : "w-64"}`}>
+                <div className={`flex items-center gap-3 border-b border-white/10 p-6 ${isCollapsed ? "flex-col justify-center gap-2 px-0" : ""}`}>
                     <div className="relative h-9 w-9 shrink-0">
-                        <Image src="/registan-logo.png" alt={APP_NAME} fill className="object-contain" priority />
+                        <Image src="/registan-logo.png" alt={APP_NAME} fill className="object-contain brightness-0 invert" priority />
                     </div>
-                    <div className="min-w-0">
-                        <p className="truncate font-bold tracking-tight text-foreground">{APP_NAME}</p>
-                        <p className="text-[11px] font-semibold uppercase tracking-widest text-blue-600">Super Admin</p>
-                    </div>
+                    {!isCollapsed && (
+                        <div className="min-w-0">
+                            <p className="truncate font-bold tracking-tight text-white">{APP_NAME}</p>
+                            <p className="text-[11px] font-semibold uppercase tracking-widest text-white/60">Super Admin</p>
+                        </div>
+                    )}
+                    <button
+                        onClick={toggleCollapsed}
+                        className={`rounded-lg p-1.5 hover:bg-white/10 transition-colors ${isCollapsed ? "" : "ml-auto"}`}
+                        aria-label={isCollapsed ? "Развернуть меню" : "Свернуть меню"}
+                        title={isCollapsed ? "Развернуть" : "Свернуть"}
+                    >
+                        {isCollapsed
+                            ? <PanelLeft size={16} className="text-white/70" />
+                            : <PanelLeftClose size={16} className="text-white/70" />
+                        }
+                    </button>
                 </div>
 
-                <nav className="mt-4 flex-1 space-y-1 overflow-y-auto p-4">
+                <nav className={`mt-4 flex-1 space-y-1 overflow-y-auto ${isCollapsed ? "px-2" : "p-4"}`}>
                     {menuItems.map((item) => {
                         const isActive = pathname === item.href;
                         return (
                             <Link
                                 key={item.href}
                                 href={item.href}
-                                className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all ${
+                                title={isCollapsed ? item.name : undefined}
+                                className={`flex items-center rounded-xl text-sm font-medium transition-all ${
+                                    isCollapsed ? "justify-center px-0 py-3" : "gap-3 px-4 py-3"
+                                } ${
                                     isActive
-                                        ? "bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-sm"
-                                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                                        ? "bg-white/15 text-white font-semibold"
+                                        : "text-white/65 hover:bg-white/10 hover:text-white"
                                 }`}
                             >
-                                <item.icon size={18} />
-                                {item.name}
+                                <item.icon size={18} className="shrink-0" />
+                                {!isCollapsed && item.name}
                             </Link>
                         );
                     })}
                 </nav>
 
-                <div className="border-t border-border p-4">
+                <div className={`border-t border-white/10 ${isCollapsed ? "px-2" : "p-4"} py-4`}>
                     <Link
                         href="/"
-                        className="flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium text-muted-foreground transition-all hover:bg-muted hover:text-foreground"
+                        title={isCollapsed ? "Вернуться" : undefined}
+                        className={`flex items-center rounded-lg text-sm font-medium text-white/65 transition-all hover:bg-white/10 hover:text-white ${
+                            isCollapsed ? "justify-center px-0 py-3" : "gap-3 px-4 py-3"
+                        }`}
                     >
-                        <ArrowLeft size={18} />
-                        Вернуться
+                        <ArrowLeft size={18} className="shrink-0" />
+                        {!isCollapsed && "Вернуться"}
                     </Link>
                 </div>
             </aside>
 
             <div className="flex-1 min-w-0 flex flex-col">
                 {/* Mobile horizontal tab bar */}
-                <div className="md:hidden border-b border-border bg-card shrink-0">
+                <div className="md:hidden bg-[hsl(var(--brand-olive))] shrink-0">
                     <div className="flex items-center gap-1 px-3 py-2 overflow-x-auto scrollbar-none">
                         {menuItems.map((item) => {
                             const isActive = pathname === item.href;
@@ -110,8 +133,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                                     href={item.href}
                                     className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-all shrink-0 ${
                                         isActive
-                                            ? "bg-gradient-to-br from-blue-600 to-indigo-700 text-white"
-                                            : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                                            ? "bg-white/15 text-white font-semibold"
+                                            : "text-white/65 hover:bg-white/10 hover:text-white"
                                     }`}
                                 >
                                     <item.icon size={14} />
@@ -121,7 +144,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                         })}
                         <Link
                             href="/"
-                            className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap text-muted-foreground hover:bg-muted hover:text-foreground transition-all shrink-0 ml-auto"
+                            className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap text-white/65 hover:bg-white/10 hover:text-white transition-all shrink-0 ml-auto"
                         >
                             <ArrowLeft size={14} />
                             Назад

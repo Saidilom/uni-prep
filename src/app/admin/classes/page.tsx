@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Users, User as UserIcon } from "lucide-react";
+import { Users, User as UserIcon, GraduationCap } from "lucide-react";
 import supabase from "@/lib/supabase/client";
+import { pluralizeRu } from "@/lib/pluralize-ru";
 
 type ClassRow = {
     id: string;
@@ -66,14 +67,19 @@ export default function AdminClassesPage() {
                     <div className="space-y-3">
                         {classes.map((c) => (
                             <div key={c.id} className="flex flex-col justify-between gap-3 rounded-2xl border border-border bg-card p-5 sm:flex-row sm:items-center">
-                                <div className="min-w-0">
-                                    <p className="truncate font-semibold text-foreground">{c.name}</p>
-                                    <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                                        <UserIcon size={12} /> {c.teacherName}
-                                    </p>
+                                <div className="flex min-w-0 items-center gap-4">
+                                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[hsl(var(--brand-blue-ink))]/10 text-[hsl(var(--brand-blue-ink))]">
+                                        <GraduationCap size={18} />
+                                    </span>
+                                    <div className="min-w-0">
+                                        <p className="truncate font-semibold text-foreground">{c.name}</p>
+                                        <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                                            <UserIcon size={12} /> {c.teacherName}
+                                        </p>
+                                    </div>
                                 </div>
                                 <span className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-xl border border-border bg-muted px-3 py-2 text-xs font-semibold text-muted-foreground sm:self-auto">
-                                    <Users size={13} /> {c.memberCount} {c.memberCount === 1 ? "ученик" : "учеников"}
+                                    <Users size={13} /> {c.memberCount} {pluralizeRu(c.memberCount, ["ученик", "ученика", "учеников"])}
                                 </span>
                             </div>
                         ))}

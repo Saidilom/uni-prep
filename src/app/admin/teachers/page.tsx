@@ -40,7 +40,7 @@ export default function AdminTeachersPage() {
                 <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Учителя</h1>
                 <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
                     Все пользователи с ролью «Учитель». Назначить роль можно на странице{" "}
-                    <Link href="/admin/users" className="font-semibold text-blue-600 hover:underline">Пользователи</Link>.
+                    <Link href="/admin/users" className="font-semibold text-[hsl(var(--brand-blue-ink))] hover:underline">Пользователи</Link>.
                 </p>
                 <div className="mt-6 flex items-center gap-2 rounded-2xl border border-border bg-background px-4 py-3">
                     <Search size={16} className="shrink-0 text-muted-foreground" />
@@ -75,7 +75,7 @@ export default function AdminTeachersPage() {
                         {filtered.map((t) => (
                             <div key={t.id} className="flex flex-col justify-between gap-4 rounded-2xl border border-border bg-card p-5 transition-all hover:bg-muted/40 sm:flex-row sm:items-center">
                                 <div className="flex items-center gap-4 min-w-0">
-                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-violet-200 bg-gradient-to-br from-violet-50 to-purple-50 font-bold text-violet-700 dark:from-violet-950/40 dark:to-purple-950/40">
+                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[hsl(var(--brand-blue-ink))]/10 font-bold text-[hsl(var(--brand-blue-ink))]">
                                         {t.name?.[0]?.toUpperCase() || "?"}
                                     </div>
                                     <div className="min-w-0">

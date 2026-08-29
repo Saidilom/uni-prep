@@ -49,7 +49,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       .eq("classes.teacher_id", user.id)
       .limit(1)
       .maybeSingle();
-    if (!membership) return NextResponse.json({ error: "Ученик не состоит в ваших классах" }, { status: 403 });
+    if (!membership) return NextResponse.json({ error: "Ученик не состоит в ваших группах" }, { status: 403 });
     const { error } = await client.from("mock_student_assignments").upsert(
       { mock_test_id: params.id, student_id: parsed.data.targetId, assigned_by: user.id },
       { onConflict: "mock_test_id,student_id", ignoreDuplicates: true },

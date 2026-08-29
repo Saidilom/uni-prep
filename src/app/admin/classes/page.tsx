@@ -43,9 +43,9 @@ export default function AdminClassesPage() {
     return (
         <div className="flex flex-col gap-10">
             <section>
-                <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Классы</h1>
+                <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Группы</h1>
                 <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-                    Все классы, созданные учителями. Управление — со стороны учителя, на странице класса.
+                    Все группы, созданные учителями. Управление — со стороны учителя, на странице группы.
                 </p>
             </section>
 
@@ -59,8 +59,8 @@ export default function AdminClassesPage() {
                 ) : classes.length === 0 ? (
                     <div className="rounded-2xl border border-border bg-muted/50 py-14 text-center dark:bg-muted/30">
                         <Users size={26} className="mx-auto mb-3 text-muted-foreground/50" />
-                        <p className="font-medium text-muted-foreground">Классов пока нет.</p>
-                        <p className="mt-1 text-sm text-muted-foreground/70">Появятся, когда учитель создаст первый класс.</p>
+                        <p className="font-medium text-muted-foreground">Групп пока нет.</p>
+                        <p className="mt-1 text-sm text-muted-foreground/70">Появятся, когда учитель создаст первую группу.</p>
                     </div>
                 ) : (
                     <div className="space-y-3">

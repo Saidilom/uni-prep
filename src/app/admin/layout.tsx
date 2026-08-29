@@ -45,7 +45,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         { name: "Панель", href: "/admin", icon: LayoutDashboard },
         { name: "Пользователи", href: "/admin/users", icon: Users },
         { name: "Учителя", href: "/admin/teachers", icon: GraduationCap },
-        { name: "Классы", href: "/admin/classes", icon: UsersRound },
+        { name: "Группы", href: "/admin/classes", icon: UsersRound },
         { name: "Школа", href: "/admin/placement", icon: ClipboardCheck },
         { name: "Результаты Школы", href: "/admin/placement/results", icon: ListChecks },
         { name: "Mock-тесты", href: "/admin/mock-tests", icon: FileText },

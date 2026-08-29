@@ -13,19 +13,20 @@ import {
     GraduationCap,
     FileText,
     BarChart3,
-    Settings,
+    Shield,
     X,
     PanelLeftClose,
     PanelLeft,
 } from "lucide-react";
 
-const mainLinks = (isTeacher: boolean) => [
+const mainLinks = (isTeacher: boolean, isAdmin: boolean) => [
     { name: "Главная", href: "/", icon: LayoutDashboard },
-    ...(isTeacher ? [{ name: "Мои классы", href: "/classes", icon: GraduationCap }] : []),
+    ...(isTeacher ? [{ name: "Мои группы", href: "/classes", icon: GraduationCap }] : []),
     ...(isTeacher ? [{ name: "Мои тесты", href: "/teacher/mock-tests", icon: FileText }] : []),
     { name: "Mock-тесты", href: "/mock", icon: FileText },
     { name: "Результаты", href: "/results", icon: BarChart3 },
     { name: "Профиль", href: "/profile", icon: CircleUserRound },
+    ...(isAdmin ? [{ name: "Админ-панель", href: "/admin", icon: Shield }] : []),
 ];
 
 function Sidebar() {
@@ -37,7 +38,7 @@ function Sidebar() {
 
     if (!user) return null;
 
-    const links = mainLinks(user.role === "teacher");
+    const links = mainLinks(user.role === "teacher", user.role === "admin");
 
     return (
         <>
@@ -132,13 +133,7 @@ function Sidebar() {
                             <p className="text-[12.5px] font-semibold text-foreground truncate leading-tight">
                                 {user.name} {user.surname || ""}
                             </p>
-                            <Link
-                                href="/settings"
-                                className="mt-1 inline-flex items-center gap-2 text-[11px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                            >
-                                <Settings size={12} className="text-muted-foreground" />
-                                Настройки
-                            </Link>
+                            <p className="mt-1 text-[11px] font-semibold text-muted-foreground truncate">{user.email}</p>
                         </div>
                     </div>
                 </div>

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Search, Mail, Phone, Users } from "lucide-react";
 import supabase from "@/lib/supabase/client";
 import { User as UserType } from "@/lib/firestore-schema";
+import { pluralizeRu } from "@/lib/pluralize-ru";
 
 type TeacherRow = UserType & { shortid?: string; classCount: number };
 
@@ -86,7 +87,7 @@ export default function AdminTeachersPage() {
                                     </div>
                                 </div>
                                 <span className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-xl border border-border bg-muted px-3 py-2 text-xs font-semibold text-muted-foreground sm:self-auto">
-                                    <Users size={13} /> {t.classCount} {t.classCount === 1 ? "класс" : "классов"}
+                                    <Users size={13} /> {t.classCount} {pluralizeRu(t.classCount, ["группа", "группы", "групп"])}
                                 </span>
                             </div>
                         ))}

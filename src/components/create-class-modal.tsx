@@ -36,12 +36,12 @@ export default function CreateClassModal({ isOpen, onClose, onCreated }: CreateC
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm dark:bg-black/70">
             <div className="relative w-full max-w-lg overflow-hidden rounded-3xl border border-border bg-card shadow-lg animate-in fade-in zoom-in duration-200">
                 <div className="p-8 md:p-10">
-                    <h2 className="mb-6 text-2xl font-bold tracking-tight text-foreground">Новый класс</h2>
+                    <h2 className="mb-6 text-2xl font-bold tracking-tight text-foreground">Новая группа</h2>
 
                     <form onSubmit={handleSubmit} className="space-y-7">
                         <div className="space-y-2">
                             <label className="ml-1 block text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground">
-                                Название класса
+                                Название группы
                             </label>
                             <input
                                 type="text"
@@ -94,7 +94,7 @@ export default function CreateClassModal({ isOpen, onClose, onCreated }: CreateC
                                 disabled={isSubmitting}
                                 className="flex-1 rounded-2xl bg-foreground py-3 text-sm font-semibold text-background transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-50"
                             >
-                                {isSubmitting ? "Создание..." : "Создать класс"}
+                                {isSubmitting ? "Создание..." : "Создать группу"}
                             </button>
                         </div>
                     </form>

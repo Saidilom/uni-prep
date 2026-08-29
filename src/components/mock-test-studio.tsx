@@ -399,7 +399,7 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "Ошибка назначения");
-      toast.success(targetType === "class" ? "Mock назначен всему классу" : "Mock назначен ученику");
+      toast.success(targetType === "class" ? "Mock назначен всей группе" : "Mock назначен ученику");
     } catch (error) {
       toast.error("Не удалось назначить", { description: error instanceof Error ? error.message : String(error) });
     } finally {
@@ -690,9 +690,9 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
             </div>
             <div className="max-h-[65vh] space-y-6 overflow-y-auto p-6">
               <div>
-                <h3 className="flex items-center gap-2 font-bold"><Users size={17} /> Весь класс</h3>
+                <h3 className="flex items-center gap-2 font-bold"><Users size={17} /> Вся группа</h3>
                 <div className="mt-3 space-y-2">
-                  {classes.length === 0 ? <p className="text-sm text-muted-foreground">Сначала создайте класс.</p> : classes.map((item) => (
+                  {classes.length === 0 ? <p className="text-sm text-muted-foreground">Сначала создайте группу.</p> : classes.map((item) => (
                     <div key={item.id} className="flex items-center justify-between rounded-xl border border-border px-4 py-3"><span className="font-medium">{item.name}</span><button onClick={() => assign("class", item.id)} disabled={assigning === `class:${item.id}`} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{assigning === `class:${item.id}` ? "Назначение…" : "Назначить всем"}</button></div>
                   ))}
                 </div>
@@ -700,7 +700,7 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
               <div>
                 <h3 className="font-bold">Выбранный ученик</h3>
                 <div className="mt-3 divide-y divide-border overflow-hidden rounded-xl border border-border">
-                  {students.length === 0 ? <p className="p-4 text-sm text-muted-foreground">В ваших классах пока нет учеников.</p> : students.map((student) => (
+                  {students.length === 0 ? <p className="p-4 text-sm text-muted-foreground">В ваших группах пока нет учеников.</p> : students.map((student) => (
                     <div key={student.id} className="flex items-center justify-between gap-3 px-4 py-3"><div className="min-w-0"><p className="truncate text-sm font-semibold">{student.name} {student.surname || ""}</p><p className="text-xs text-muted-foreground">{student.className} · ID {student.shortid || "—"}</p></div><button onClick={() => assign("student", student.id)} disabled={assigning === `student:${student.id}`} className="shrink-0 rounded-lg border border-border px-3 py-2 text-xs font-bold hover:bg-muted disabled:opacity-50">{assigning === `student:${student.id}` ? "…" : "Назначить"}</button></div>
                   ))}
                 </div>

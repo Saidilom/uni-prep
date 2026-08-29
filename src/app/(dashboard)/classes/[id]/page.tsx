@@ -92,7 +92,7 @@ export default function ClassDetailPage() {
             await addStudentToClass(classId, student.id);
             setSearchId("");
             setSearchResult(null);
-            toast.success(`${student.name} добавлен(а) в класс`);
+            toast.success(`${student.name} добавлен(а) в группу`);
             load();
         } catch (err) {
             toast.error("Не удалось добавить ученика", { description: String(err) });
@@ -100,10 +100,10 @@ export default function ClassDetailPage() {
     };
 
     const handleRemove = async (student: User) => {
-        if (!confirm(`Удалить ${student.name} ${student.surname || ""} из класса?`)) return;
+        if (!confirm(`Удалить ${student.name} ${student.surname || ""} из группы?`)) return;
         try {
             await removeStudentFromClass(classId, student.id);
-            toast.success("Ученик удалён из класса");
+            toast.success("Ученик удалён из группы");
             load();
         } catch (err) {
             toast.error("Не удалось удалить ученика", { description: String(err) });
@@ -111,13 +111,13 @@ export default function ClassDetailPage() {
     };
 
     const handleDeleteClass = async () => {
-        if (!confirm(`Удалить класс «${cls?.name}»? Это действие необратимо.`)) return;
+        if (!confirm(`Удалить группу «${cls?.name}»? Это действие необратимо.`)) return;
         try {
             await deleteClass(classId);
-            toast.success("Класс удалён");
+            toast.success("Группа удалена");
             router.push("/classes");
         } catch (err) {
-            toast.error("Не удалось удалить класс", { description: String(err) });
+            toast.error("Не удалось удалить группу", { description: String(err) });
         }
     };
 
@@ -140,7 +140,7 @@ export default function ClassDetailPage() {
         try {
             await assignMockToClass(test.id, classId);
             setAssigning(false);
-            toast.success(`«${test.title}» назначен классу`);
+            toast.success(`«${test.title}» назначен группе`);
             load();
         } catch (err) {
             toast.error("Не удалось назначить тест", { description: String(err) });
@@ -228,7 +228,7 @@ export default function ClassDetailPage() {
     if (!cls) {
         return (
             <div className="rounded-2xl border border-border bg-muted/50 py-14 text-center dark:bg-muted/30">
-                <p className="font-medium text-muted-foreground">Класс не найден.</p>
+                <p className="font-medium text-muted-foreground">Группа не найдена.</p>
             </div>
         );
     }
@@ -238,7 +238,7 @@ export default function ClassDetailPage() {
             <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <button onClick={() => router.push("/classes")} className="mb-2 inline-flex items-center gap-1.5 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground">
-                        <ArrowLeft size={14} /> Мои классы
+                        <ArrowLeft size={14} /> Мои группы
                     </button>
                     <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{cls.name}</h1>
                     <p className="mt-2 text-sm text-muted-foreground">{members.length} {members.length === 1 ? "ученик" : "учеников"}</p>
@@ -247,7 +247,7 @@ export default function ClassDetailPage() {
                     onClick={handleDeleteClass}
                     className="inline-flex shrink-0 items-center gap-2 self-start rounded-2xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-600 transition-colors hover:bg-red-100 dark:bg-red-950/30"
                 >
-                    <Trash2 size={16} /> Удалить класс
+                    <Trash2 size={16} /> Удалить группу
                 </button>
             </section>
 
@@ -284,7 +284,7 @@ export default function ClassDetailPage() {
                             <p className="text-xs text-muted-foreground">{searchResult.shortId}</p>
                         </div>
                         {members.some((m) => m.id === searchResult.id) ? (
-                            <span className="text-xs font-semibold text-muted-foreground">Уже в классе</span>
+                            <span className="text-xs font-semibold text-muted-foreground">Уже в группе</span>
                         ) : (
                             <button
                                 onClick={() => handleAdd(searchResult)}
@@ -298,7 +298,7 @@ export default function ClassDetailPage() {
 
                 {members.length === 0 ? (
                     <div className="rounded-2xl border border-border bg-muted/50 py-10 text-center dark:bg-muted/30">
-                        <p className="font-medium text-muted-foreground">В классе пока нет учеников.</p>
+                        <p className="font-medium text-muted-foreground">В группе пока нет учеников.</p>
                     </div>
                 ) : (
                     <div className="space-y-3">
@@ -347,11 +347,11 @@ export default function ClassDetailPage() {
 
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                     <div>
-                        <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">Всему классу</h3>
+                        <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">Всей группе</h3>
                         {assignments.length === 0 ? (
                             <div className="rounded-2xl border border-border bg-muted/50 py-10 text-center dark:bg-muted/30">
                                 <ClipboardList size={24} className="mx-auto mb-2 text-muted-foreground/50" />
-                                <p className="font-medium text-muted-foreground">Тесты этому классу ещё не назначены.</p>
+                                <p className="font-medium text-muted-foreground">Тесты этой группе ещё не назначены.</p>
                             </div>
                         ) : (
                             <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
@@ -418,14 +418,14 @@ export default function ClassDetailPage() {
                                 <button onClick={() => setAssignStudentTarget(null)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted"><ArrowLeft size={16} /></button>
                             )}
                             <h3 className="min-w-0 flex-1 truncate font-bold text-foreground">
-                                {assignStudentTarget ? `Ученику — ${assignStudentTarget.title}` : "Назначить тест классу"}
+                                {assignStudentTarget ? `Ученику — ${assignStudentTarget.title}` : "Назначить тест группе"}
                             </h3>
                             <button onClick={() => { setAssigning(false); setAssignStudentTarget(null); }} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted"><X size={18} /></button>
                         </div>
                         <div className="max-h-[60vh] overflow-y-auto p-4">
                             {assignStudentTarget ? (
                                 members.length === 0 ? (
-                                    <p className="px-2 py-6 text-center text-sm text-muted-foreground">В классе пока нет учеников.</p>
+                                    <p className="px-2 py-6 text-center text-sm text-muted-foreground">В группе пока нет учеников.</p>
                                 ) : (
                                     <div className="space-y-2">
                                         {members.map((student) => (
@@ -447,7 +447,7 @@ export default function ClassDetailPage() {
                                 )
                             ) : assignable.length === 0 ? (
                                 <p className="px-2 py-6 text-center text-sm text-muted-foreground">
-                                    Нет доступных тестов типа «Только для класса». Создайте такой тест в админ-панели.
+                                    Нет доступных тестов типа «Только для группы». Создайте такой тест в админ-панели.
                                 </p>
                             ) : (
                                 <div className="space-y-2">

@@ -282,7 +282,7 @@ export default function StudentProfilePage() {
                         </div>
                         <p className="text-xs leading-relaxed text-muted-foreground">
                             Ученик может самостоятельно изучать предметы, решать тесты и получать медали. Учителя видят
-                            этот прогресс в своих классах и личных кабинетах.
+                            этот прогресс в своих группах и личных кабинетах.
                         </p>
                     </div>
                 </div>

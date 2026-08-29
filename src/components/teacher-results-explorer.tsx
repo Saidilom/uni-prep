@@ -86,7 +86,7 @@ export default function TeacherResultsExplorer() {
                         <div className="flex items-center gap-4 rounded-3xl border border-border bg-card p-5 shadow-sm">
                             <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-950/40"><Trophy size={22} /></span>
                             <div className="min-w-0">
-                                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Топ класс</p>
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Топ группа</p>
                                 {overview?.topClass ? (
                                     <>
                                         <p className="truncate font-bold text-foreground">{overview.topClass.name}</p>
@@ -114,7 +114,7 @@ export default function TeacherResultsExplorer() {
                     </section>
 
                     <section>
-                        <h2 className="mb-5 text-xl font-bold tracking-tight text-foreground">Мои классы</h2>
+                        <h2 className="mb-5 text-xl font-bold tracking-tight text-foreground">Мои группы</h2>
                         {loadingOverview ? (
                             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                                 {[1, 2, 3].map((n) => <div key={n} className="h-28 animate-pulse rounded-2xl border border-border bg-muted" />)}
@@ -122,7 +122,7 @@ export default function TeacherResultsExplorer() {
                         ) : !overview || overview.classes.length === 0 ? (
                             <div className="rounded-2xl border border-border bg-muted/50 py-14 text-center dark:bg-muted/30">
                                 <Users size={26} className="mx-auto mb-3 text-muted-foreground/50" />
-                                <p className="font-medium text-muted-foreground">У вас пока нет классов.</p>
+                                <p className="font-medium text-muted-foreground">У вас пока нет групп.</p>
                             </div>
                         ) : (
                             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -149,7 +149,7 @@ export default function TeacherResultsExplorer() {
             {selectedClass && !selectedStudent && (
                 <section>
                     <button onClick={() => setSelectedClass(null)} className="mb-4 inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground">
-                        <ArrowLeft size={15} /> К классам
+                        <ArrowLeft size={15} /> К группам
                     </button>
                     <div className="mb-5 flex items-center justify-between">
                         <h2 className="text-xl font-bold tracking-tight text-foreground">{selectedClass.name}</h2>
@@ -159,7 +159,7 @@ export default function TeacherResultsExplorer() {
                         <div className="flex items-center justify-center py-16"><Loader2 className="animate-spin text-muted-foreground" /></div>
                     ) : students.length === 0 ? (
                         <div className="rounded-2xl border border-border bg-muted/50 py-14 text-center dark:bg-muted/30">
-                            <p className="font-medium text-muted-foreground">В этом классе пока нет учеников.</p>
+                            <p className="font-medium text-muted-foreground">В этой группе пока нет учеников.</p>
                         </div>
                     ) : (
                         <div className="space-y-3">
@@ -190,7 +190,7 @@ export default function TeacherResultsExplorer() {
             {selectedStudent && (
                 <section>
                     <button onClick={() => setSelectedStudent(null)} className="mb-4 inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground">
-                        <ArrowLeft size={15} /> К ученикам класса
+                        <ArrowLeft size={15} /> К ученикам группы
                     </button>
                     <div className="mb-5 flex items-center gap-4">
                         <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-border bg-muted text-xl font-bold text-foreground">

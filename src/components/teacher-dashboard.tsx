@@ -6,6 +6,7 @@ import { Plus, Users, GraduationCap, X, FileUp } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useToast } from "@/hooks/useToast";
 import { fetchTeacherClasses, createClass, ClassWithCount } from "@/lib/class-utils";
+import { pluralizeRu } from "@/lib/pluralize-ru";
 
 export default function TeacherDashboard() {
     const { user } = useAuthStore();
@@ -35,10 +36,10 @@ export default function TeacherDashboard() {
             await createClass(user.id, newName.trim());
             setNewName("");
             setCreating(false);
-            toast.success("Класс создан");
+            toast.success("Группа создана");
             load();
         } catch (err) {
-            toast.error("Не удалось создать класс", { description: String(err) });
+            toast.error("Не удалось создать группу", { description: String(err) });
         } finally {
             setSaving(false);
         }
@@ -62,16 +63,16 @@ export default function TeacherDashboard() {
                 <div className="relative">
                     <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">С возвращением, {user.name}</h1>
                     <p className="mt-2 max-w-md text-sm leading-relaxed text-blue-100">
-                        Управляйте классами, добавляйте учеников и назначайте им Mock-тесты.
+                        Управляйте группами, добавляйте учеников и назначайте им Mock-тесты.
                     </p>
                     <div className="mt-6 flex flex-wrap gap-6">
                         <div>
                             <p className="text-3xl font-extrabold tabular-nums">{classes.length}</p>
-                            <p className="text-xs text-blue-100">{classes.length === 1 ? "класс" : "классов"}</p>
+                            <p className="text-xs text-blue-100">{pluralizeRu(classes.length, ["группа", "группы", "групп"])}</p>
                         </div>
                         <div>
                             <p className="text-3xl font-extrabold tabular-nums">{totalStudents}</p>
-                            <p className="text-xs text-blue-100">{totalStudents === 1 ? "ученик" : "учеников"}</p>
+                            <p className="text-xs text-blue-100">{pluralizeRu(totalStudents, ["ученик", "ученика", "учеников"])}</p>
                         </div>
                     </div>
                 </div>
@@ -79,7 +80,7 @@ export default function TeacherDashboard() {
 
             <section>
                 <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-                    <h2 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">Мои классы</h2>
+                    <h2 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">Мои группы</h2>
                     <div className="flex flex-wrap gap-2">
                       <Link href="/teacher/mock-tests" className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-blue-700 active:scale-[0.97]">
                         <FileUp size={16} /> Создать Mock из PDF
@@ -89,7 +90,7 @@ export default function TeacherDashboard() {
                             onClick={() => setCreating(true)}
                             className="inline-flex items-center gap-2 rounded-2xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
                         >
-                            <Plus size={16} /> Создать класс
+                            <Plus size={16} /> Создать группу
                         </button>
                       )}
                     </div>
@@ -131,8 +132,8 @@ export default function TeacherDashboard() {
                 ) : classes.length === 0 ? (
                     <div className="rounded-2xl border border-border bg-muted/50 py-14 text-center dark:bg-muted/30">
                         <GraduationCap size={28} className="mx-auto mb-3 text-muted-foreground/50" />
-                        <p className="font-medium text-muted-foreground">У вас пока нет классов.</p>
-                        <p className="mt-1 text-sm text-muted-foreground/70">Создайте первый класс, чтобы добавить учеников.</p>
+                        <p className="font-medium text-muted-foreground">У вас пока нет групп.</p>
+                        <p className="mt-1 text-sm text-muted-foreground/70">Создайте первую группу, чтобы добавить учеников.</p>
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

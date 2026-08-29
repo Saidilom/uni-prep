@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, LogOut, User2, GraduationCap, Shield, Menu } from "lucide-react";
+import { ChevronDown, LogOut, GraduationCap, Menu } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useSidebarStore } from "@/store/useSidebarStore";
 import { logOut } from "@/lib/auth-utils";
@@ -12,9 +12,8 @@ import { APP_NAME } from "@/lib/app-config";
 
 type MenuItem = {
     label: string;
-    href?: string;
+    href: string;
     icon: React.ComponentType<{ className?: string }>;
-    onClick?: () => void;
     visible?: boolean;
 };
 
@@ -39,21 +38,12 @@ export default function Topbar() {
     }, [openUser]);
 
     const userMenu: MenuItem[] = [
-        { label: "Профиль", href: "/profile", icon: User2, visible: true },
-        { label: "Мои классы", href: "/classes", icon: GraduationCap, visible: user?.role === "teacher" },
-        { label: "Админ", href: "/admin", icon: Shield, visible: user?.role === "admin" },
-        {
-            label: "Выйти",
-            icon: LogOut,
-            visible: true,
-            onClick: async () => {
-                await logOut();
-                router.push("/login");
-            },
-        },
+        { label: "Мои группы", href: "/classes", icon: GraduationCap, visible: user?.role === "teacher" },
     ].filter((i) => i.visible);
 
     if (!user) return null;
+
+    const roleLabel = user.role === "admin" ? "Администратор" : user.role === "teacher" ? "Учитель" : "Ученик";
 
     return (
         <div className="sticky top-0 z-40 shrink-0 bg-background/80 backdrop-blur-md">
@@ -94,43 +84,54 @@ export default function Topbar() {
                     </button>
 
                     {openUser && (
-                        <div className="absolute right-0 mt-2 w-64 rounded-2xl border border-border bg-card shadow-sm overflow-hidden z-10">
-                            <div className="px-4 py-3 border-b border-border">
-                                <div className="text-sm font-bold text-foreground">
-                                    {user.name} {user.surname || ""}
+                        <div className="absolute right-0 mt-2 w-72 rounded-2xl border border-border bg-card shadow-lg overflow-hidden z-10 origin-top-right animate-in fade-in-0 zoom-in-95 duration-150">
+                            <div className="px-4 py-3.5 flex items-center gap-3 bg-muted/40">
+                                <div className="w-10 h-10 rounded-full bg-primary text-primary-foreground text-sm font-black flex items-center justify-center shrink-0">
+                                    {(user.name?.[0] || "U").toUpperCase()}
                                 </div>
+                                <div className="min-w-0 flex-1">
+                                    <div className="text-sm font-bold text-foreground truncate">
+                                        {user.name} {user.surname || ""}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground truncate">{user.email}</div>
+                                </div>
+                                <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-primary bg-primary/10 rounded-full px-2 py-1">
+                                    {roleLabel}
+                                </span>
                             </div>
-                            <div className="py-1">
-                                {userMenu.map((item) => {
-                                    const Icon = item.icon;
-                                    if (item.href) {
+
+                            {userMenu.length > 0 && (
+                                <div className="py-1.5 border-t border-border">
+                                    {userMenu.map((item) => {
+                                        const Icon = item.icon;
                                         return (
                                             <Link
                                                 key={item.label}
                                                 href={item.href}
                                                 onClick={() => setOpenUser(false)}
-                                                className="px-4 py-2.5 hover:bg-muted transition-colors flex items-center gap-3"
+                                                className="mx-1.5 px-3 py-2.5 rounded-xl hover:bg-muted transition-colors flex items-center gap-3"
                                             >
                                                 <Icon className="w-4 h-4 text-muted-foreground" />
                                                 <span className="text-sm font-semibold text-foreground">{item.label}</span>
                                             </Link>
                                         );
-                                    }
-                                    return (
-                                        <button
-                                            key={item.label}
-                                            type="button"
-                                            onClick={() => {
-                                                setOpenUser(false);
-                                                item.onClick?.();
-                                            }}
-                                            className="w-full px-4 py-2.5 hover:bg-muted transition-colors flex items-center gap-3 text-left"
-                                        >
-                                            <Icon className="w-4 h-4 text-muted-foreground" />
-                                            <span className="text-sm font-semibold text-foreground">{item.label}</span>
-                                        </button>
-                                    );
-                                })}
+                                    })}
+                                </div>
+                            )}
+
+                            <div className="py-1.5 border-t border-border">
+                                <button
+                                    type="button"
+                                    onClick={async () => {
+                                        setOpenUser(false);
+                                        await logOut();
+                                        router.push("/login");
+                                    }}
+                                    className="mx-1.5 px-3 py-2.5 rounded-xl hover:bg-destructive/10 transition-colors flex items-center gap-3 text-left"
+                                >
+                                    <LogOut className="w-4 h-4 text-destructive" />
+                                    <span className="text-sm font-semibold text-destructive">Выйти</span>
+                                </button>
                             </div>
                         </div>
                     )}

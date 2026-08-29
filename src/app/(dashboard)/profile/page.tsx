@@ -7,7 +7,7 @@ import { Class } from "@/lib/firestore-schema";
 import { fetchStudentClasses } from "@/lib/profile-utils";
 import { updateUserProfile } from "@/lib/auth-utils";
 import { APP_NAME } from "@/lib/app-config";
-import { ShieldCheck, Copy, Check, Settings2, X, Mail, Phone, Calendar, GraduationCap } from "lucide-react";
+import { ShieldCheck, Copy, Check, Settings2, X, Mail, Calendar, GraduationCap } from "lucide-react";
 
 export default function ProfilePage() {
     const { user, setUser } = useAuthStore();
@@ -67,11 +67,16 @@ export default function ProfilePage() {
 
     if (!user) return null;
 
+    const statusLabel =
+        user.role === "admin" ? "Администратор"
+        : user.role === "teacher" ? "Учитель"
+        : user.isRegistanStudent ? "Ученик Registan"
+        : "Обычный ученик";
+
     const infoTiles = [
         { icon: Mail, label: "Email", value: user.email },
-        { icon: Phone, label: "Телефон", value: user.phone || "Не указан" },
         { icon: Calendar, label: "В системе с", value: new Date(user.createdAt).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" }) },
-        { icon: GraduationCap, label: "Статус", value: user.role === "student" ? (user.isRegistanStudent ? "Ученик Registan" : "Обычный ученик") : "Учитель" },
+        { icon: GraduationCap, label: "Статус", value: statusLabel },
     ];
 
     return (
@@ -79,7 +84,7 @@ export default function ProfilePage() {
             <section>
                 <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Профиль</h1>
                 <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-                    Личные данные, ID для входа и ваши классы.
+                    Личные данные, ID для входа и ваши группы.
                 </p>
             </section>
 
@@ -102,7 +107,7 @@ export default function ProfilePage() {
                                 </h2>
                                 <span className="flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                                     <ShieldCheck size={11} />
-                                    {user.role === "teacher" ? "Учитель" : "Ученик"}
+                                    {user.role === "admin" ? "Администратор" : user.role === "teacher" ? "Учитель" : "Ученик"}
                                 </span>
                             </div>
 
@@ -164,7 +169,7 @@ export default function ProfilePage() {
                     {user.role === "student" && (
                         <section>
                             <div className="mb-5 flex items-center justify-between">
-                                <h2 className="text-xl font-bold tracking-tight text-foreground">Мои классы</h2>
+                                <h2 className="text-xl font-bold tracking-tight text-foreground">Мои группы</h2>
                                 <span className="text-sm text-muted-foreground">{classes.length} групп</span>
                             </div>
                             {isLoading ? (
@@ -182,7 +187,7 @@ export default function ProfilePage() {
                                 </div>
                             ) : (
                                 <div className="rounded-2xl border border-border bg-muted/50 p-12 text-center font-medium text-muted-foreground">
-                                    Вы еще не состоите ни в одном классе.
+                                    Вы еще не состоите ни в одной группе.
                                 </div>
                             )}
                         </section>

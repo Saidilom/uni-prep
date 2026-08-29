@@ -54,7 +54,7 @@ export default function TeacherHome() {
                 <div className="relative">
                     <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">С возвращением, {user.name}</h1>
                     <p className="mt-2 max-w-md text-sm leading-relaxed text-blue-100">
-                        Общая статистика по вашим классам и тестам.
+                        Общая статистика по вашим группам и тестам.
                     </p>
                 </div>
             </section>

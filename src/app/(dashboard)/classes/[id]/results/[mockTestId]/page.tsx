@@ -85,17 +85,17 @@ export default function ClassMockResultsPage() {
         <div className="flex flex-col gap-10 py-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
             <section>
                 <button onClick={() => router.push(`/classes/${classId}`)} className="mb-2 inline-flex items-center gap-1.5 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground">
-                    <ArrowLeft size={14} /> Назад к классу
+                    <ArrowLeft size={14} /> Назад к группе
                 </button>
                 <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{summary.mockTitle}</h1>
-                <p className="mt-2 text-sm text-muted-foreground">Результаты класса по этому Mock-тесту</p>
+                <p className="mt-2 text-sm text-muted-foreground">Результаты группы по этому Mock-тесту</p>
             </section>
 
             <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
                 <div className="rounded-2xl border border-border bg-card p-5">
                     <div className="flex items-center gap-2 text-muted-foreground"><CheckCircle2 size={15} /><span className="text-[10px] font-bold uppercase tracking-widest">Прошли</span></div>
                     <p className="mt-2 text-2xl font-extrabold tabular-nums text-foreground">{summary.completedCount}/{summary.totalCount}</p>
-                    <p className="text-xs text-muted-foreground">{completionRate}% класса</p>
+                    <p className="text-xs text-muted-foreground">{completionRate}% группы</p>
                 </div>
                 <div className="rounded-2xl border border-border bg-card p-5">
                     <div className="flex items-center gap-2 text-muted-foreground"><Trophy size={15} /><span className="text-[10px] font-bold uppercase tracking-widest">Средний</span></div>

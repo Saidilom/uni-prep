@@ -35,7 +35,7 @@ function TeacherMockAssignments() {
             <section>
                 <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Mock-тесты</h1>
                 <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-                    Кому назначен каждый из ваших тестов — классам и/или отдельным ученикам.
+                    Кому назначен каждый из ваших тестов — группам и/или отдельным ученикам.
                 </p>
             </section>
 
@@ -63,7 +63,7 @@ function TeacherMockAssignments() {
                                     <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                                         <div>
                                             <p className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                                                <GraduationCap size={12} /> Классам
+                                                <GraduationCap size={12} /> Группам
                                             </p>
                                             {s.classes.length === 0 ? (
                                                 <p className="text-xs text-muted-foreground">Не назначен</p>
@@ -136,6 +136,21 @@ function StudentMockCatalog() {
         return "locked";
     };
 
+    // Only show tests this student could actually ever unlock: paid tests are
+    // always actionable (they can buy access), and already-completed ones
+    // stay visible for review — but a "free" test gated to Registan students
+    // when this student isn't one, or a class_only test not assigned to
+    // their class, can never become available for them, so listing it as a
+    // permanently "Заблокирован" row is just noise, not something for the
+    // student to act on.
+    const visibleTests = tests.filter((test) => {
+        if (test.type === "paid") return true;
+        if (results.has(test.id)) return true;
+        if (test.type === "free") return user?.isRegistanStudent ?? false;
+        if (test.type === "class_only") return classAccessIds.has(test.id);
+        return true;
+    });
+
     const statusLabel: Record<string, { text: string; icon: typeof BookOpen; color: string }> = {
         available: { text: "Доступен", icon: Play, color: "text-emerald-600" },
         locked: { text: "Заблокирован", icon: Lock, color: "text-red-600" },
@@ -158,13 +173,13 @@ function StudentMockCatalog() {
                             <div key={n} className="h-32 animate-pulse rounded-2xl border border-border bg-muted" />
                         ))}
                     </div>
-                ) : tests.length === 0 ? (
+                ) : visibleTests.length === 0 ? (
                     <div className="rounded-2xl border border-border bg-muted/50 py-10 text-center dark:bg-muted/30">
                         <p className="font-medium text-muted-foreground">Нет доступных Mock-тестов.</p>
                     </div>
                 ) : (
                     <div className="space-y-3">
-                        {tests.map((test) => {
+                        {visibleTests.map((test) => {
                             const status = getStatus(test);
                             const StatusIcon = statusLabel[status].icon;
                             return (
@@ -191,7 +206,7 @@ function StudentMockCatalog() {
                                         </button>
                                     ) : status === "locked" ? (
                                         <span className="shrink-0 rounded-2xl border border-border bg-muted px-5 py-2.5 text-center text-sm font-semibold text-muted-foreground">
-                                            {test.type === "class_only" ? "Доступно только вашему классу" : "Только для учеников Registan"}
+                                            {test.type === "class_only" ? "Доступно только вашей группе" : "Только для учеников Registan"}
                                         </span>
                                     ) : (
                                         <Link

@@ -7,9 +7,12 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { useToast } from "@/hooks/useToast";
 import { fetchTeacherClasses, createClass, ClassWithCount } from "@/lib/class-utils";
 import { pluralizeRu } from "@/lib/pluralize-ru";
+import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 export default function TeacherDashboard() {
     const { user } = useAuthStore();
+    const { locale } = useLocale();
+    const t = useTranslations("teacherDashboard");
     const toast = useToast();
     const [classes, setClasses] = useState<ClassWithCount[]>([]);
     const [loading, setLoading] = useState(true);
@@ -36,10 +39,10 @@ export default function TeacherDashboard() {
             await createClass(user.id, newName.trim());
             setNewName("");
             setCreating(false);
-            toast.success("Группа создана");
+            toast.success(t("groupCreatedToast"));
             load();
         } catch (err) {
-            toast.error("Не удалось создать группу", { description: String(err) });
+            toast.error(t("groupCreateErrorToast"), { description: String(err) });
         } finally {
             setSaving(false);
         }
@@ -53,10 +56,10 @@ export default function TeacherDashboard() {
         <div className="flex flex-col gap-10 py-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
             <section className="rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8">
                 <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-                    С возвращением, <span className="font-medium text-muted-foreground">{user.name?.trim()}</span>
+                    {t("welcomeBack")} <span className="font-medium text-muted-foreground">{user.name?.trim()}</span>
                 </h1>
                 <p className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
-                    Управляйте группами, добавляйте учеников и назначайте им Mock-тесты.
+                    {t("subtitle")}
                 </p>
             </section>
 
@@ -66,14 +69,14 @@ export default function TeacherDashboard() {
                         <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                             <GraduationCap size={20} strokeWidth={1.75} />
                         </div>
-                        <p className="text-xs text-muted-foreground">{pluralizeRu(classes.length, ["Группа", "Группы", "Групп"])}</p>
+                        <p className="text-xs text-muted-foreground">{locale === "ru" ? pluralizeRu(classes.length, ["Группа", "Группы", "Групп"]) : t("groupsLabel")}</p>
                         <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{classes.length}</p>
                     </div>
                     <div className="p-6">
                         <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                             <Users size={20} strokeWidth={1.75} />
                         </div>
-                        <p className="text-xs text-muted-foreground">{pluralizeRu(totalStudents, ["Ученик", "Ученика", "Учеников"])}</p>
+                        <p className="text-xs text-muted-foreground">{locale === "ru" ? pluralizeRu(totalStudents, ["Ученик", "Ученика", "Учеников"]) : t("studentsLabel")}</p>
                         <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{totalStudents}</p>
                     </div>
                 </div>
@@ -81,17 +84,17 @@ export default function TeacherDashboard() {
 
             <section>
                 <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-                    <h2 className="text-xl font-bold tracking-tight text-[hsl(var(--brand-blue-ink))] sm:text-2xl">Мои группы</h2>
+                    <h2 className="text-xl font-bold tracking-tight text-[hsl(var(--brand-blue-ink))] sm:text-2xl">{t("myGroups")}</h2>
                     <div className="flex flex-wrap gap-2">
                       <Link href="/teacher/mock-tests" className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-muted">
-                        <FileUp size={16} /> Создать Mock из PDF
+                        <FileUp size={16} /> {t("createMockFromPdf")}
                       </Link>
                       {!creating && (
                         <button
                             onClick={() => setCreating(true)}
                             className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
                         >
-                            <Plus size={16} /> Создать группу
+                            <Plus size={16} /> {t("createGroup")}
                         </button>
                       )}
                     </div>
@@ -104,7 +107,7 @@ export default function TeacherDashboard() {
                             value={newName}
                             onChange={(e) => setNewName(e.target.value)}
                             onKeyDown={(e) => e.key === "Enter" && handleCreate()}
-                            placeholder="Например, 10-A"
+                            placeholder={t("groupNamePlaceholder")}
                             className="flex-1 rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15"
                         />
                         <button
@@ -112,12 +115,12 @@ export default function TeacherDashboard() {
                             disabled={saving || newName.trim().length < 1}
                             className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-all hover:opacity-90 disabled:opacity-50"
                         >
-                            {saving ? "Создание…" : "Создать"}
+                            {saving ? t("creating") : t("create")}
                         </button>
                         <button
                             onClick={() => { setCreating(false); setNewName(""); }}
                             className="rounded-xl p-2.5 text-muted-foreground transition-colors hover:bg-muted"
-                            aria-label="Отмена"
+                            aria-label={t("cancel")}
                         >
                             <X size={16} />
                         </button>
@@ -133,8 +136,8 @@ export default function TeacherDashboard() {
                 ) : classes.length === 0 ? (
                     <div className="rounded-2xl border border-border bg-muted/50 py-14 text-center dark:bg-muted/30">
                         <GraduationCap size={28} className="mx-auto mb-3 text-muted-foreground/50" />
-                        <p className="font-medium text-muted-foreground">У вас пока нет групп.</p>
-                        <p className="mt-1 text-sm text-muted-foreground/70">Создайте первую группу, чтобы добавить учеников.</p>
+                        <p className="font-medium text-muted-foreground">{t("noGroupsYet")}</p>
+                        <p className="mt-1 text-sm text-muted-foreground/70">{t("createFirstGroup")}</p>
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -148,7 +151,7 @@ export default function TeacherDashboard() {
                                     <p className="font-semibold text-foreground">{cls.name}</p>
                                     <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
                                         <Users size={12} />
-                                        {cls.memberCount} {pluralizeRu(cls.memberCount, ["ученик", "ученика", "учеников"])}
+                                        {cls.memberCount} {locale === "ru" ? pluralizeRu(cls.memberCount, ["ученик", "ученика", "учеников"]) : t("studentWord")}
                                     </p>
                                 </div>
                             </Link>

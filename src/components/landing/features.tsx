@@ -5,43 +5,23 @@ import Image from "next/image";
 import { motion, useMotionValue, useScroll, useSpring, useTransform, type MotionValue } from "framer-motion";
 import { ClipboardCheck, FileText, BarChart3, GraduationCap, Shield, type LucideIcon } from "lucide-react";
 import { APP_NAME } from "@/lib/app-config";
+import { useTranslations } from "@/lib/i18n/locale-provider";
 
 type Feature = { icon: LucideIcon; title: string; description: string; side: "left" | "right" };
 
-const features: Feature[] = [
-  {
-    icon: ClipboardCheck,
-    title: "Школа",
-    description: "Диагностический тест на старте — определяет уровень ученика ещё до первого занятия.",
-    side: "left",
-  },
-  {
-    icon: FileText,
-    title: "Mock-экзамены",
-    description: "Полноценные пробные экзамены в формате настоящего теста, с разбором после каждой попытки.",
-    side: "right",
-  },
-  {
-    icon: BarChart3,
-    title: "Результаты и прогресс",
-    description: "Ученик видит свою динамику, учитель — прогресс всей группы в реальном времени.",
-    side: "left",
-  },
-  {
-    icon: GraduationCap,
-    title: "Кабинет учителя",
-    description: "Группы, назначение тестов и результаты учеников — в одном месте.",
-    side: "right",
-  },
-  {
-    icon: Shield,
-    title: "Admin-панель",
-    description: "Пользователи, оплаты и QR-регистрация на ресепшене — под полным контролем.",
-    side: "left",
-  },
-];
+function useFeatures(): Feature[] {
+  const t = useTranslations("landingFeatures");
+  return [
+    { icon: ClipboardCheck, title: t("schoolTitle"), description: t("schoolDescription"), side: "left" },
+    { icon: FileText, title: t("mockTitle"), description: t("mockDescription"), side: "right" },
+    { icon: BarChart3, title: t("resultsTitle"), description: t("resultsDescription"), side: "left" },
+    { icon: GraduationCap, title: t("teacherTitle"), description: t("teacherDescription"), side: "right" },
+    { icon: Shield, title: t("adminTitle"), description: t("adminDescription"), side: "left" },
+  ];
+}
 
-const STEP = 1 / features.length;
+const FEATURES_COUNT = 5;
+const STEP = 1 / FEATURES_COUNT;
 // Cards used to take 80% of their slice to fully appear; shrinking the
 // window (and spring-smoothing the result below) makes each one snap in
 // sooner and less linearly — "faster and smoother" per user feedback.
@@ -116,6 +96,8 @@ function FeatureCard({ feature, index }: { feature: Feature; index: number }) {
 export default function LandingFeatures() {
   const targetRef = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({ target: targetRef, offset: ["start start", "end end"] });
+  const t = useTranslations("landingFeatures");
+  const features = useFeatures();
 
   const badgeY = useSpring(useTransform(scrollYProgress, [0, 1], [-30, 200]), SPRING);
 
@@ -137,7 +119,7 @@ export default function LandingFeatures() {
 
             <div className="flex flex-col items-center gap-6">
               <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
-                Возможности
+                {t("sectionLabel")}
               </span>
               <motion.div style={{ y: badgeY }} className="relative flex h-40 w-40 shrink-0 items-center justify-center">
                 <motion.span
@@ -171,10 +153,10 @@ export default function LandingFeatures() {
       <div className="mx-auto max-w-6xl px-6 py-16 sm:py-20 lg:hidden">
         <div className="max-w-xl">
           <h2 className="text-2xl font-bold tracking-tight text-[hsl(var(--brand-blue-ink))] sm:text-3xl">
-            Всё, что нужно для подготовки
+            {t("mobileTitle")}
           </h2>
           <p className="mt-3 text-sm leading-relaxed text-muted-foreground sm:text-base">
-            Одна платформа для ученика, учителя и администратора учебного центра.
+            {t("mobileSubtitle")}
           </p>
         </div>
         <div className="mt-10 grid grid-cols-1 gap-5 sm:grid-cols-2" style={{ perspective: 1000 }}>

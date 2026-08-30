@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Users, User as UserIcon, GraduationCap } from "lucide-react";
 import supabase from "@/lib/supabase/client";
 import { pluralizeRu } from "@/lib/pluralize-ru";
+import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 type ClassRow = {
     id: string;
@@ -17,6 +18,8 @@ type ClassRow = {
 export default function AdminClassesPage() {
     const [classes, setClasses] = useState<ClassRow[]>([]);
     const [loading, setLoading] = useState(true);
+    const { locale } = useLocale();
+    const t = useTranslations("adminClasses");
 
     useEffect(() => {
         (async () => {
@@ -44,9 +47,9 @@ export default function AdminClassesPage() {
     return (
         <div className="flex flex-col gap-10">
             <section>
-                <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Группы</h1>
+                <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{t("title")}</h1>
                 <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-                    Все группы, созданные учителями. Управление — со стороны учителя, на странице группы.
+                    {t("subtitle")}
                 </p>
             </section>
 
@@ -60,8 +63,8 @@ export default function AdminClassesPage() {
                 ) : classes.length === 0 ? (
                     <div className="rounded-2xl border border-border bg-muted/50 py-14 text-center dark:bg-muted/30">
                         <Users size={26} className="mx-auto mb-3 text-muted-foreground/50" />
-                        <p className="font-medium text-muted-foreground">Групп пока нет.</p>
-                        <p className="mt-1 text-sm text-muted-foreground/70">Появятся, когда учитель создаст первую группу.</p>
+                        <p className="font-medium text-muted-foreground">{t("noClassesYet")}</p>
+                        <p className="mt-1 text-sm text-muted-foreground/70">{t("noClassesHint")}</p>
                     </div>
                 ) : (
                     <div className="space-y-3">
@@ -79,7 +82,7 @@ export default function AdminClassesPage() {
                                     </div>
                                 </div>
                                 <span className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-xl border border-border bg-muted px-3 py-2 text-xs font-semibold text-muted-foreground sm:self-auto">
-                                    <Users size={13} /> {c.memberCount} {pluralizeRu(c.memberCount, ["ученик", "ученика", "учеников"])}
+                                    <Users size={13} /> {c.memberCount} {locale === "ru" ? pluralizeRu(c.memberCount, ["ученик", "ученика", "учеников"]) : t("studentWord")}
                                 </span>
                             </div>
                         ))}

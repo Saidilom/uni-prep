@@ -27,12 +27,15 @@ import {
     AssignablePlacementTest,
 } from "@/lib/class-utils";
 import { Class, User, MockTest } from "@/lib/firestore-schema";
+import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 export default function ClassDetailPage() {
     const { id } = useParams();
     const classId = id as string;
     const router = useRouter();
     const { user } = useAuthStore();
+    const { locale } = useLocale();
+    const t = useTranslations("classDetail");
     const toast = useToast();
 
     const [cls, setCls] = useState<Class | null>(null);
@@ -92,32 +95,32 @@ export default function ClassDetailPage() {
             await addStudentToClass(classId, student.id);
             setSearchId("");
             setSearchResult(null);
-            toast.success(`${student.name} добавлен(а) в группу`);
+            toast.success(t("studentAddedToast").replace("{name}", student.name));
             load();
         } catch (err) {
-            toast.error("Не удалось добавить ученика", { description: String(err) });
+            toast.error(t("addStudentFailed"), { description: String(err) });
         }
     };
 
     const handleRemove = async (student: User) => {
-        if (!confirm(`Удалить ${student.name} ${student.surname || ""} из группы?`)) return;
+        if (!confirm(t("removeConfirm").replace("{name}", `${student.name} ${student.surname || ""}`))) return;
         try {
             await removeStudentFromClass(classId, student.id);
-            toast.success("Ученик удалён из группы");
+            toast.success(t("studentRemovedToast"));
             load();
         } catch (err) {
-            toast.error("Не удалось удалить ученика", { description: String(err) });
+            toast.error(t("removeStudentFailed"), { description: String(err) });
         }
     };
 
     const handleDeleteClass = async () => {
-        if (!confirm(`Удалить группу «${cls?.name}»? Это действие необратимо.`)) return;
+        if (!confirm(t("deleteClassConfirm").replace("{name}", cls?.name ?? ""))) return;
         try {
             await deleteClass(classId);
-            toast.success("Группа удалена");
+            toast.success(t("classDeletedToast"));
             router.push("/classes");
         } catch (err) {
-            toast.error("Не удалось удалить группу", { description: String(err) });
+            toast.error(t("deleteClassFailed"), { description: String(err) });
         }
     };
 
@@ -140,10 +143,10 @@ export default function ClassDetailPage() {
         try {
             await assignMockToClass(test.id, classId);
             setAssigning(false);
-            toast.success(`«${test.title}» назначен группе`);
+            toast.success(t("assignedToClassToast").replace("{title}", test.title));
             load();
         } catch (err) {
-            toast.error("Не удалось назначить тест", { description: String(err) });
+            toast.error(t("assignTestFailed"), { description: String(err) });
         }
     };
 
@@ -156,37 +159,37 @@ export default function ClassDetailPage() {
                 body: JSON.stringify({ targetType: "student", targetId: student.id }),
             });
             const body = await response.json().catch(() => ({}));
-            if (!response.ok) throw new Error(body.error || "Не удалось назначить тест");
-            toast.success(`«${test.title}» назначен ${student.name}`);
+            if (!response.ok) throw new Error(body.error || t("assignTestFailed"));
+            toast.success(t("assignedToStudentToast").replace("{title}", test.title).replace("{name}", student.name));
             setAssigning(false);
             setAssignStudentTarget(null);
             load();
         } catch (err) {
-            toast.error("Не удалось назначить тест", { description: err instanceof Error ? err.message : String(err) });
+            toast.error(t("assignTestFailed"), { description: err instanceof Error ? err.message : String(err) });
         } finally {
             setAssigningToStudent(null);
         }
     };
 
     const handleUnassign = async (assignment: ClassMockAssignment) => {
-        if (!confirm(`Снять назначение «${assignment.title}»?`)) return;
+        if (!confirm(t("unassignConfirm").replace("{title}", assignment.title))) return;
         try {
             await unassignMockFromClass(assignment.id, classId);
-            toast.success("Назначение снято");
+            toast.success(t("unassignedToast"));
             load();
         } catch (err) {
-            toast.error("Не удалось снять назначение", { description: String(err) });
+            toast.error(t("unassignFailed"), { description: String(err) });
         }
     };
 
     const handleUnassignFromStudent = async (assignment: ClassStudentMockAssignment) => {
-        if (!confirm(`Снять «${assignment.title}» у ${assignment.studentName}?`)) return;
+        if (!confirm(t("unassignFromStudentConfirm").replace("{title}", assignment.title).replace("{student}", assignment.studentName))) return;
         try {
             await unassignMockFromStudent(assignment.id, classId);
-            toast.success("Назначение снято");
+            toast.success(t("unassignedToast"));
             load();
         } catch (err) {
-            toast.error("Не удалось снять назначение", { description: String(err) });
+            toast.error(t("unassignFailed"), { description: String(err) });
         }
     };
 
@@ -205,10 +208,10 @@ export default function ClassDetailPage() {
         setAssigningPlacement(true);
         try {
             await assignPlacementToStudent(test, placementTarget.id, user.id);
-            toast.success(`«${test.title}» назначен ${placementTarget.name}`);
+            toast.success(t("assignedToStudentToast").replace("{title}", test.title).replace("{name}", placementTarget.name));
             setPlacementTarget(null);
         } catch (err) {
-            toast.error("Не удалось назначить Школа", { description: String(err) });
+            toast.error(t("assignPlacementFailed"), { description: String(err) });
         } finally {
             setAssigningPlacement(false);
         }
@@ -228,7 +231,7 @@ export default function ClassDetailPage() {
     if (!cls) {
         return (
             <div className="rounded-2xl border border-border bg-muted/50 py-14 text-center dark:bg-muted/30">
-                <p className="font-medium text-muted-foreground">Группа не найдена.</p>
+                <p className="font-medium text-muted-foreground">{t("classNotFound")}</p>
             </div>
         );
     }
@@ -238,22 +241,22 @@ export default function ClassDetailPage() {
             <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <button onClick={() => router.push("/classes")} className="mb-2 inline-flex items-center gap-1.5 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground">
-                        <ArrowLeft size={14} /> Мои группы
+                        <ArrowLeft size={14} /> {t("myGroups")}
                     </button>
                     <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{cls.name}</h1>
-                    <p className="mt-2 text-sm text-muted-foreground">{members.length} {members.length === 1 ? "ученик" : "учеников"}</p>
+                    <p className="mt-2 text-sm text-muted-foreground">{members.length} {locale === "ru" ? (members.length === 1 ? t("studentWordSingular") : t("studentWordPlural")) : t("studentWordSingular")}</p>
                 </div>
                 <button
                     onClick={handleDeleteClass}
                     className="inline-flex shrink-0 items-center gap-2 self-start rounded-2xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-600 transition-colors hover:bg-red-100 dark:bg-red-950/30"
                 >
-                    <Trash2 size={16} /> Удалить группу
+                    <Trash2 size={16} /> {t("deleteGroup")}
                 </button>
             </section>
 
             {/* Students */}
             <section>
-                <h2 className="mb-5 text-xl font-bold tracking-tight text-foreground sm:text-2xl">Ученики</h2>
+                <h2 className="mb-5 text-xl font-bold tracking-tight text-foreground sm:text-2xl">{t("studentsSection")}</h2>
 
                 <div className="mb-4 flex items-center gap-3 rounded-2xl border border-border bg-card p-4">
                     <Search size={16} className="shrink-0 text-muted-foreground" />
@@ -261,7 +264,7 @@ export default function ClassDetailPage() {
                         value={searchId}
                         onChange={(e) => { setSearchId(e.target.value); setSearchResult(null); }}
                         onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                        placeholder="Student ID ученика (STU-XXXXXX)"
+                        placeholder={t("searchPlaceholder")}
                         className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
                     />
                     <button
@@ -269,13 +272,13 @@ export default function ClassDetailPage() {
                         disabled={searching || searchId.trim().length < 3}
                         className="inline-flex items-center gap-2 rounded-xl bg-foreground px-4 py-2 text-sm font-semibold text-background transition-all hover:opacity-90 disabled:opacity-50"
                     >
-                        {searching ? "Поиск…" : "Найти"}
+                        {searching ? t("searching") : t("find")}
                     </button>
                 </div>
 
                 {searchResult === "not_found" ? (
                     <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-                        Ученик с таким ID не найден.
+                        {t("studentNotFound")}
                     </div>
                 ) : searchResult ? (
                     <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 dark:bg-emerald-950/30">
@@ -284,13 +287,13 @@ export default function ClassDetailPage() {
                             <p className="text-xs text-muted-foreground">{searchResult.shortId}</p>
                         </div>
                         {members.some((m) => m.id === searchResult.id) ? (
-                            <span className="text-xs font-semibold text-muted-foreground">Уже в группе</span>
+                            <span className="text-xs font-semibold text-muted-foreground">{t("alreadyInGroup")}</span>
                         ) : (
                             <button
                                 onClick={() => handleAdd(searchResult)}
                                 className="inline-flex items-center gap-2 rounded-xl bg-foreground px-4 py-2 text-sm font-semibold text-background transition-all hover:opacity-90"
                             >
-                                <UserPlus size={14} /> Добавить
+                                <UserPlus size={14} /> {t("add")}
                             </button>
                         )}
                     </div>
@@ -298,7 +301,7 @@ export default function ClassDetailPage() {
 
                 {members.length === 0 ? (
                     <div className="rounded-2xl border border-border bg-muted/50 py-10 text-center dark:bg-muted/30">
-                        <p className="font-medium text-muted-foreground">В группе пока нет учеников.</p>
+                        <p className="font-medium text-muted-foreground">{t("noStudentsInGroup")}</p>
                     </div>
                 ) : (
                     <div className="space-y-3">
@@ -318,13 +321,13 @@ export default function ClassDetailPage() {
                                         onClick={() => openPlacementPicker(m)}
                                         className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted"
                                     >
-                                        <ClipboardCheck size={13} /> Школа
+                                        <ClipboardCheck size={13} /> {t("schoolLabel")}
                                     </button>
                                     <button
                                         onClick={() => handleRemove(m)}
                                         className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
                                     >
-                                        <UserMinus size={13} /> Удалить
+                                        <UserMinus size={13} /> {t("remove")}
                                     </button>
                                 </div>
                             </div>
@@ -336,22 +339,22 @@ export default function ClassDetailPage() {
             {/* Assigned mocks */}
             <section>
                 <div className="mb-5 flex items-center justify-between">
-                    <h2 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">Назначенные Mock-тесты</h2>
+                    <h2 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">{t("assignedMockTests")}</h2>
                     <button
                         onClick={openAssignPicker}
                         className="inline-flex items-center gap-2 rounded-2xl border border-border px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-muted"
                     >
-                        <Plus size={16} /> Назначить тест
+                        <Plus size={16} /> {t("assignTest")}
                     </button>
                 </div>
 
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                     <div>
-                        <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">Всей группе</h3>
+                        <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">{t("wholeGroup")}</h3>
                         {assignments.length === 0 ? (
                             <div className="rounded-2xl border border-border bg-muted/50 py-10 text-center dark:bg-muted/30">
                                 <ClipboardList size={24} className="mx-auto mb-2 text-muted-foreground/50" />
-                                <p className="font-medium text-muted-foreground">Тесты этой группе ещё не назначены.</p>
+                                <p className="font-medium text-muted-foreground">{t("noGroupTestsYet")}</p>
                             </div>
                         ) : (
                             <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
@@ -364,14 +367,14 @@ export default function ClassDetailPage() {
                                         <div className="min-w-0">
                                             <p className="truncate text-sm font-semibold text-foreground">{a.title}</p>
                                             <p className="mt-0.5 text-xs text-muted-foreground">
-                                                {a.durationMinutes} мин • {a.completedCount}/{members.length} прошли — результаты
+                                                {t("durationCompletedTemplate").replace("{duration}", String(a.durationMinutes)).replace("{completed}", String(a.completedCount)).replace("{total}", String(members.length))}
                                             </p>
                                         </div>
                                         <button
                                             onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleUnassign(a); }}
                                             className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
                                         >
-                                            <X size={13} /> Снять
+                                            <X size={13} /> {t("unassign")}
                                         </button>
                                     </Link>
                                 ))}
@@ -380,11 +383,11 @@ export default function ClassDetailPage() {
                     </div>
 
                     <div>
-                        <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">Отдельным ученикам</h3>
+                        <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">{t("individualStudents")}</h3>
                         {studentAssignments.length === 0 ? (
                             <div className="rounded-2xl border border-border bg-muted/50 py-10 text-center dark:bg-muted/30">
                                 <ClipboardList size={24} className="mx-auto mb-2 text-muted-foreground/50" />
-                                <p className="font-medium text-muted-foreground">Индивидуальных назначений пока нет.</p>
+                                <p className="font-medium text-muted-foreground">{t("noIndividualAssignments")}</p>
                             </div>
                         ) : (
                             <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
@@ -393,14 +396,14 @@ export default function ClassDetailPage() {
                                         <div className="min-w-0">
                                             <p className="truncate text-sm font-semibold text-foreground">{a.title}</p>
                                             <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                                                {a.studentName} • {a.durationMinutes} мин • {a.completed ? "прошёл(а)" : "не прошёл(а)"}
+                                                {t("studentDurationCompletedTemplate").replace("{student}", a.studentName).replace("{duration}", String(a.durationMinutes)).replace("{status}", a.completed ? t("completedWord") : t("notCompletedWord"))}
                                             </p>
                                         </div>
                                         <button
                                             onClick={() => handleUnassignFromStudent(a)}
                                             className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
                                         >
-                                            <X size={13} /> Снять
+                                            <X size={13} /> {t("unassign")}
                                         </button>
                                     </div>
                                 ))}
@@ -418,14 +421,14 @@ export default function ClassDetailPage() {
                                 <button onClick={() => setAssignStudentTarget(null)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted"><ArrowLeft size={16} /></button>
                             )}
                             <h3 className="min-w-0 flex-1 truncate font-bold text-foreground">
-                                {assignStudentTarget ? `Ученику — ${assignStudentTarget.title}` : "Назначить тест группе"}
+                                {assignStudentTarget ? t("assignToStudentModalTitle").replace("{title}", assignStudentTarget.title) : t("assignToGroupModalTitle")}
                             </h3>
                             <button onClick={() => { setAssigning(false); setAssignStudentTarget(null); }} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted"><X size={18} /></button>
                         </div>
                         <div className="max-h-[60vh] overflow-y-auto p-4">
                             {assignStudentTarget ? (
                                 members.length === 0 ? (
-                                    <p className="px-2 py-6 text-center text-sm text-muted-foreground">В группе пока нет учеников.</p>
+                                    <p className="px-2 py-6 text-center text-sm text-muted-foreground">{t("noStudentsInGroup")}</p>
                                 ) : (
                                     <div className="space-y-2">
                                         {members.map((student) => (
@@ -437,7 +440,7 @@ export default function ClassDetailPage() {
                                             >
                                                 <span className="text-sm font-semibold text-foreground">{student.name} {student.surname || ""}</span>
                                                 {assigningToStudent === student.id ? (
-                                                    <span className="shrink-0 text-xs font-semibold text-muted-foreground">Назначение…</span>
+                                                    <span className="shrink-0 text-xs font-semibold text-muted-foreground">{t("assigningLabel")}</span>
                                                 ) : (
                                                     <Plus size={16} className="shrink-0 text-muted-foreground" />
                                                 )}
@@ -447,17 +450,17 @@ export default function ClassDetailPage() {
                                 )
                             ) : assignable.length === 0 ? (
                                 <p className="px-2 py-6 text-center text-sm text-muted-foreground">
-                                    Нет доступных тестов типа «Только для группы». Создайте такой тест в админ-панели.
+                                    {t("noClassOnlyTests")}
                                 </p>
                             ) : (
                                 <div className="space-y-2">
-                                    {assignable.map((t) => (
-                                        <div key={t.id} className="flex items-center justify-between gap-2 rounded-xl border border-border p-3">
-                                            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">{t.title}</span>
+                                    {assignable.map((mockTest) => (
+                                        <div key={mockTest.id} className="flex items-center justify-between gap-2 rounded-xl border border-border p-3">
+                                            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">{mockTest.title}</span>
                                             <div className="flex shrink-0 items-center gap-2">
-                                                <button onClick={() => setAssignStudentTarget(t)} className="rounded-lg border border-border px-2.5 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted">Ученику</button>
-                                                <button onClick={() => handleAssign(t)} className="inline-flex items-center gap-1 rounded-lg bg-foreground px-2.5 py-1.5 text-xs font-semibold text-background transition-opacity hover:opacity-90">
-                                                    Всем <Plus size={14} />
+                                                <button onClick={() => setAssignStudentTarget(mockTest)} className="rounded-lg border border-border px-2.5 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted">{t("toStudentButton")}</button>
+                                                <button onClick={() => handleAssign(mockTest)} className="inline-flex items-center gap-1 rounded-lg bg-foreground px-2.5 py-1.5 text-xs font-semibold text-background transition-opacity hover:opacity-90">
+                                                    {t("toAllButton")} <Plus size={14} />
                                                 </button>
                                             </div>
                                         </div>
@@ -473,24 +476,24 @@ export default function ClassDetailPage() {
                 <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setPlacementTarget(null)}>
                     <div className="w-full max-w-md overflow-hidden rounded-3xl border border-border bg-card shadow-xl" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-between border-b border-border px-6 py-4">
-                            <h3 className="font-bold text-foreground">Назначить Школа — {placementTarget.name}</h3>
+                            <h3 className="font-bold text-foreground">{t("assignPlacementModalTitle").replace("{name}", placementTarget.name)}</h3>
                             <button onClick={() => setPlacementTarget(null)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted"><X size={18} /></button>
                         </div>
                         <div className="max-h-[60vh] overflow-y-auto p-4">
-                            {placementTests.filter((t) => !activePlacementIds.has(t.id)).length === 0 ? (
+                            {placementTests.filter((pt) => !activePlacementIds.has(pt.id)).length === 0 ? (
                                 <p className="px-2 py-6 text-center text-sm text-muted-foreground">
-                                    Нет доступных тестов «Школа» для назначения — либо их ещё не создали в админ-панели, либо у ученика уже есть активные назначения на все.
+                                    {t("noPlacementTestsAvailable")}
                                 </p>
                             ) : (
                                 <div className="space-y-2">
-                                    {placementTests.filter((t) => !activePlacementIds.has(t.id)).map((t) => (
+                                    {placementTests.filter((pt) => !activePlacementIds.has(pt.id)).map((pt) => (
                                         <button
-                                            key={t.id}
-                                            onClick={() => handleAssignPlacement(t)}
+                                            key={pt.id}
+                                            onClick={() => handleAssignPlacement(pt)}
                                             disabled={assigningPlacement}
                                             className="flex w-full items-center justify-between gap-3 rounded-xl border border-border p-3 text-left transition-colors hover:bg-muted disabled:opacity-50"
                                         >
-                                            <span className="text-sm font-semibold text-foreground">{t.title}</span>
+                                            <span className="text-sm font-semibold text-foreground">{pt.title}</span>
                                             <Plus size={16} className="shrink-0 text-muted-foreground" />
                                         </button>
                                     ))}

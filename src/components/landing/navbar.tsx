@@ -4,17 +4,20 @@ import Image from "next/image";
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { APP_NAME } from "@/lib/app-config";
-
-const NAV_LINKS = [
-  { label: "Возможности", id: "features" },
-  { label: "Как это работает", id: "how-it-works" },
-];
+import { useTranslations } from "@/lib/i18n/locale-provider";
+import LocaleSwitcher from "@/components/locale-switcher";
 
 function scrollToId(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 export default function LandingNavbar() {
+  const t = useTranslations("landingNav");
+  const NAV_LINKS = [
+    { label: t("features"), id: "features" },
+    { label: t("howItWorks"), id: "how-it-works" },
+  ];
+
   return (
     <div className="sticky top-4 z-50 px-4 sm:px-6">
       <header className="mx-auto flex max-w-5xl items-center justify-between gap-4 rounded-full border border-border bg-card/90 px-3 py-2 shadow-sm backdrop-blur">
@@ -39,17 +42,18 @@ export default function LandingNavbar() {
         </nav>
 
         <div className="flex items-center gap-2">
+          <LocaleSwitcher variant="light" className="hidden sm:inline-flex" />
           <Link
             href="/login"
             className="hidden rounded-full px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted sm:inline-block"
           >
-            Войти
+            {t("login")}
           </Link>
           <Link
             href="/join"
             className="group inline-flex items-center gap-2 rounded-full bg-[hsl(var(--brand-blue-ink))] py-1.5 pl-4 pr-1.5 text-sm font-semibold text-white shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
           >
-            Начать
+            {t("start")}
             <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-[hsl(var(--brand-blue-ink))] transition-transform duration-300 group-hover:rotate-45">
               <ArrowUpRight size={15} />
             </span>

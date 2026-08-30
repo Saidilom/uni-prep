@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, LogOut, GraduationCap, Menu, Search } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useSidebarStore } from "@/store/useSidebarStore";
 import { logOut } from "@/lib/auth-utils";
 import { APP_NAME } from "@/lib/app-config";
+import { useTranslations } from "@/lib/i18n/locale-provider";
 
 type MenuItem = {
     label: string;
@@ -18,24 +19,26 @@ type MenuItem = {
 
 type SearchablePage = { name: string; href: string };
 
-const STUDENT_PAGES: SearchablePage[] = [
-    { name: "Главная", href: "/" },
-    { name: "Mock-тесты", href: "/mock" },
-    { name: "Результаты", href: "/results" },
-    { name: "Школа", href: "/placement" },
-    { name: "Достижения", href: "/achievements" },
-    { name: "Профиль", href: "/profile" },
-];
-const TEACHER_PAGES: SearchablePage[] = [
-    { name: "Мои группы", href: "/classes" },
-    { name: "Мои тесты", href: "/teacher/mock-tests" },
-];
-const ADMIN_PAGES: SearchablePage[] = [{ name: "Админ-панель", href: "/admin" }];
-
 export default function Topbar() {
     const router = useRouter();
     const { user } = useAuthStore();
     const { toggle } = useSidebarStore();
+    const t = useTranslations("nav");
+    const tTopbar = useTranslations("topbar");
+
+    const STUDENT_PAGES: SearchablePage[] = [
+        { name: t("home"), href: "/" },
+        { name: t("mockTests"), href: "/mock" },
+        { name: t("results"), href: "/results" },
+        { name: t("school"), href: "/placement" },
+        { name: t("achievements"), href: "/achievements" },
+        { name: t("profile"), href: "/profile" },
+    ];
+    const TEACHER_PAGES: SearchablePage[] = [
+        { name: t("myClasses"), href: "/classes" },
+        { name: t("myTests"), href: "/teacher/mock-tests" },
+    ];
+    const ADMIN_PAGES: SearchablePage[] = [{ name: t("adminPanel"), href: "/admin" }];
 
     const [openUser, setOpenUser] = useState(false);
     const [query, setQuery] = useState("");
@@ -80,20 +83,16 @@ export default function Topbar() {
         return () => document.removeEventListener("keydown", handler);
     }, []);
 
-    const searchablePages = useMemo(() => {
-        if (!user) return [];
-        return [
-            ...STUDENT_PAGES,
-            ...(user.role === "teacher" ? TEACHER_PAGES : []),
-            ...(user.role === "admin" ? ADMIN_PAGES : []),
-        ];
-    }, [user]);
+    const searchablePages: SearchablePage[] = !user ? [] : [
+        ...STUDENT_PAGES,
+        ...(user.role === "teacher" ? TEACHER_PAGES : []),
+        ...(user.role === "admin" ? ADMIN_PAGES : []),
+    ];
 
-    const searchResults = useMemo(() => {
-        const q = query.trim().toLowerCase();
-        if (!q) return searchablePages;
-        return searchablePages.filter((p) => p.name.toLowerCase().includes(q));
-    }, [query, searchablePages]);
+    const searchQuery = query.trim().toLowerCase();
+    const searchResults = !searchQuery
+        ? searchablePages
+        : searchablePages.filter((p) => p.name.toLowerCase().includes(searchQuery));
 
     const goToPage = (href: string) => {
         setSearchOpen(false);
@@ -103,12 +102,12 @@ export default function Topbar() {
     };
 
     const userMenu: MenuItem[] = [
-        { label: "Мои группы", href: "/classes", icon: GraduationCap, visible: user?.role === "teacher" },
+        { label: t("myClasses"), href: "/classes", icon: GraduationCap, visible: user?.role === "teacher" },
     ].filter((i) => i.visible);
 
     if (!user) return null;
 
-    const roleLabel = user.role === "admin" ? "Администратор" : user.role === "teacher" ? "Учитель" : "Ученик";
+    const roleLabel = user.role === "admin" ? tTopbar("roleAdmin") : user.role === "teacher" ? tTopbar("roleTeacher") : tTopbar("roleStudent");
 
     return (
         <div className="sticky top-0 z-40 shrink-0 bg-background/80 backdrop-blur-md">
@@ -118,7 +117,7 @@ export default function Topbar() {
                 <button
                     onClick={toggle}
                     className="md:hidden p-2 -ml-1 rounded-lg hover:bg-muted transition-colors"
-                    aria-label="Открыть меню"
+                    aria-label={tTopbar("openMenu")}
                 >
                     <Menu className="w-5 h-5 text-foreground" />
                 </button>
@@ -140,7 +139,7 @@ export default function Topbar() {
                                 if (e.key === "Enter" && searchResults[0]) goToPage(searchResults[0].href);
                                 if (e.key === "Escape") { setSearchOpen(false); searchInputRef.current?.blur(); }
                             }}
-                            placeholder="Поиск по разделам…"
+                            placeholder={tTopbar("searchPlaceholder")}
                             className="h-10 w-full rounded-xl border border-border bg-muted/50 pl-10 pr-14 text-sm text-foreground placeholder:text-muted-foreground transition-colors focus:border-primary focus:bg-background focus:outline-none focus:ring-2 focus:ring-primary/15"
                         />
                         <span className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 items-center rounded-md border border-border bg-background px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground sm:flex">
@@ -151,7 +150,7 @@ export default function Topbar() {
                     {searchOpen && (
                         <div className="absolute left-0 right-0 mt-2 max-h-80 overflow-y-auto rounded-2xl border border-border bg-card shadow-lg z-10 origin-top animate-in fade-in-0 zoom-in-95 duration-150">
                             {searchResults.length === 0 ? (
-                                <p className="px-4 py-3 text-sm text-muted-foreground">Ничего не найдено</p>
+                                <p className="px-4 py-3 text-sm text-muted-foreground">{tTopbar("noResultsFound")}</p>
                             ) : (
                                 <div className="py-1.5">
                                     {searchResults.map((page) => (
@@ -237,7 +236,7 @@ export default function Topbar() {
                                     className="mx-1.5 px-3 py-2.5 rounded-xl hover:bg-destructive/10 transition-colors flex items-center gap-3 text-left"
                                 >
                                     <LogOut className="w-4 h-4 text-destructive" />
-                                    <span className="text-sm font-semibold text-destructive">Выйти</span>
+                                    <span className="text-sm font-semibold text-destructive">{tTopbar("logout")}</span>
                                 </button>
                             </div>
                         </div>

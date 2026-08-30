@@ -8,6 +8,8 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { APP_NAME } from "@/lib/app-config";
+import { useTranslations } from "@/lib/i18n/locale-provider";
+import LocaleSwitcher from "@/components/locale-switcher";
 import {
     LayoutDashboard,
     ArrowLeft,
@@ -28,6 +30,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const { isCollapsed, toggleCollapsed } = useSidebarStore();
     const router = useRouter();
     const pathname = usePathname();
+    const t = useTranslations("adminLayout");
 
     useEffect(() => {
         if (!isLoading && (!user || user.role !== "admin")) {
@@ -46,15 +49,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }
 
     const menuItems = [
-        { name: "Панель", href: "/admin", icon: LayoutDashboard },
-        { name: "Пользователи", href: "/admin/users", icon: Users },
-        { name: "Учителя", href: "/admin/teachers", icon: GraduationCap },
-        { name: "Группы", href: "/admin/classes", icon: UsersRound },
-        { name: "Школа", href: "/admin/placement", icon: ClipboardCheck },
-        { name: "Результаты Школы", href: "/admin/placement/results", icon: ListChecks },
-        { name: "Mock-тесты", href: "/admin/mock-tests", icon: FileText },
-        { name: "Оплаты", href: "/admin/payments", icon: CreditCard },
-        { name: "QR для ресепшена", href: "/admin/qr", icon: QrCode },
+        { name: t("navPanel"), href: "/admin", icon: LayoutDashboard },
+        { name: t("navUsers"), href: "/admin/users", icon: Users },
+        { name: t("navTeachers"), href: "/admin/teachers", icon: GraduationCap },
+        { name: t("navClasses"), href: "/admin/classes", icon: UsersRound },
+        { name: t("navSchool"), href: "/admin/placement", icon: ClipboardCheck },
+        { name: t("navSchoolResults"), href: "/admin/placement/results", icon: ListChecks },
+        { name: t("navMockTests"), href: "/admin/mock-tests", icon: FileText },
+        { name: t("navPayments"), href: "/admin/payments", icon: CreditCard },
+        { name: t("navQr"), href: "/admin/qr", icon: QrCode },
     ];
 
     return (
@@ -68,14 +71,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     {!isCollapsed && (
                         <div className="min-w-0">
                             <p className="truncate font-bold tracking-tight text-white">{APP_NAME}</p>
-                            <p className="text-[11px] font-semibold uppercase tracking-widest text-white/60">Super Admin</p>
+                            <p className="text-[11px] font-semibold uppercase tracking-widest text-white/60">{t("superAdmin")}</p>
                         </div>
                     )}
                     <button
                         onClick={toggleCollapsed}
                         className={`rounded-lg p-1.5 hover:bg-white/10 transition-colors ${isCollapsed ? "" : "ml-auto"}`}
-                        aria-label={isCollapsed ? "Развернуть меню" : "Свернуть меню"}
-                        title={isCollapsed ? "Развернуть" : "Свернуть"}
+                        aria-label={isCollapsed ? t("expandMenu") : t("collapseMenu")}
+                        title={isCollapsed ? t("expand") : t("collapse")}
                     >
                         {isCollapsed
                             ? <PanelLeft size={16} className="text-white/70" />
@@ -108,15 +111,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 </nav>
 
                 <div className={`border-t border-white/10 ${isCollapsed ? "px-2" : "p-4"} py-4`}>
+                    {!isCollapsed && (
+                        <div className="mb-3">
+                            <LocaleSwitcher />
+                        </div>
+                    )}
                     <Link
                         href="/"
-                        title={isCollapsed ? "Вернуться" : undefined}
+                        title={isCollapsed ? t("goBack") : undefined}
                         className={`flex items-center rounded-lg text-sm font-medium text-white/65 transition-all hover:bg-white/10 hover:text-white ${
                             isCollapsed ? "justify-center px-0 py-3" : "gap-3 px-4 py-3"
                         }`}
                     >
                         <ArrowLeft size={18} className="shrink-0" />
-                        {!isCollapsed && "Вернуться"}
+                        {!isCollapsed && t("goBack")}
                     </Link>
                 </div>
             </aside>
@@ -147,7 +155,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                             className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap text-white/65 hover:bg-white/10 hover:text-white transition-all shrink-0 ml-auto"
                         >
                             <ArrowLeft size={14} />
-                            Назад
+                            {t("backShort")}
                         </Link>
                     </div>
                 </div>

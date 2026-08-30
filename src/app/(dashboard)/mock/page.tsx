@@ -9,11 +9,13 @@ import { pageCache } from "@/lib/page-cache";
 import { MOCK_STATUS_COLOR } from "@/lib/status-colors";
 import Link from "next/link";
 import PaymentModal from "@/components/payment-modal";
+import { useTranslations } from "@/lib/i18n/locale-provider";
 
 type TeacherTestRow = { id: string; title: string; duration_minutes: number; status: string };
 
 function TeacherMockAssignments() {
     const { user } = useAuthStore();
+    const t = useTranslations("mockCatalog");
     const [tests, setTests] = useState<TeacherTestRow[]>([]);
     const [summary, setSummary] = useState<Record<string, TeacherMockAssignmentSummary>>({});
     const [loading, setLoading] = useState(true);
@@ -34,9 +36,9 @@ function TeacherMockAssignments() {
     return (
         <div className="flex flex-col gap-10">
             <section>
-                <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Mock-тесты</h1>
+                <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{t("title")}</h1>
                 <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-                    Кому назначен каждый из ваших тестов — группам и/или отдельным ученикам.
+                    {t("teacherSubtitle")}
                 </p>
             </section>
 
@@ -49,7 +51,7 @@ function TeacherMockAssignments() {
                     </div>
                 ) : tests.length === 0 ? (
                     <div className="rounded-2xl border border-border bg-muted/50 py-10 text-center dark:bg-muted/30">
-                        <p className="font-medium text-muted-foreground">У вас пока нет Mock-тестов. Создайте один на странице «Мои тесты».</p>
+                        <p className="font-medium text-muted-foreground">{t("noTeacherTests")}</p>
                     </div>
                 ) : (
                     <div className="space-y-3">
@@ -59,15 +61,15 @@ function TeacherMockAssignments() {
                                 <div key={test.id} className="rounded-2xl border border-border bg-card p-5">
                                     <div className="flex items-center justify-between gap-3">
                                         <p className="truncate font-semibold text-foreground">{test.title}</p>
-                                        <span className="shrink-0 text-xs text-muted-foreground">{test.duration_minutes} мин</span>
+                                        <span className="shrink-0 text-xs text-muted-foreground">{test.duration_minutes} {t("minutesSuffix")}</span>
                                     </div>
                                     <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                                         <div>
                                             <p className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                                                <GraduationCap size={12} /> Группам
+                                                <GraduationCap size={12} /> {t("toGroups")}
                                             </p>
                                             {s.classes.length === 0 ? (
-                                                <p className="text-xs text-muted-foreground">Не назначен</p>
+                                                <p className="text-xs text-muted-foreground">{t("notAssigned")}</p>
                                             ) : (
                                                 <div className="flex max-h-24 flex-wrap gap-1.5 overflow-y-auto pr-1">
                                                     {s.classes.map((c) => (
@@ -78,10 +80,10 @@ function TeacherMockAssignments() {
                                         </div>
                                         <div>
                                             <p className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                                                <Users size={12} /> Ученикам
+                                                <Users size={12} /> {t("toStudents")}
                                             </p>
                                             {s.students.length === 0 ? (
-                                                <p className="text-xs text-muted-foreground">Не назначен</p>
+                                                <p className="text-xs text-muted-foreground">{t("notAssigned")}</p>
                                             ) : (
                                                 <div className="flex max-h-24 flex-wrap gap-1.5 overflow-y-auto pr-1">
                                                     {s.students.map((st) => (
@@ -103,6 +105,7 @@ function TeacherMockAssignments() {
 
 function StudentMockCatalog() {
     const { user } = useAuthStore();
+    const t = useTranslations("mockCatalog");
     const [tests, setTests] = useState<MockTest[]>([]);
     const [accessList, setAccessList] = useState<MockAccess[]>([]);
     const [classAccessIds, setClassAccessIds] = useState<Set<string>>(new Set());
@@ -153,17 +156,17 @@ function StudentMockCatalog() {
     });
 
     const statusLabel: Record<string, { text: string; icon: typeof BookOpen; color: string }> = {
-        available: { text: "Доступен", icon: Play, color: MOCK_STATUS_COLOR.available },
-        locked: { text: "Заблокирован", icon: Lock, color: MOCK_STATUS_COLOR.locked },
-        completed: { text: "Пройден", icon: CheckCircle2, color: MOCK_STATUS_COLOR.completed },
+        available: { text: t("statusAvailable"), icon: Play, color: MOCK_STATUS_COLOR.available },
+        locked: { text: t("statusLocked"), icon: Lock, color: MOCK_STATUS_COLOR.locked },
+        completed: { text: t("statusCompleted"), icon: CheckCircle2, color: MOCK_STATUS_COLOR.completed },
     };
 
     return (
         <div className="flex flex-col gap-10">
             <section>
-                <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Mock-тесты</h1>
+                <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{t("title")}</h1>
                 <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-                    Официальные пробные экзамены. Пройдите тест и проверьте результат.
+                    {t("studentSubtitle")}
                 </p>
             </section>
 
@@ -176,7 +179,7 @@ function StudentMockCatalog() {
                     </div>
                 ) : visibleTests.length === 0 ? (
                     <div className="rounded-2xl border border-border bg-muted/50 py-10 text-center dark:bg-muted/30">
-                        <p className="font-medium text-muted-foreground">Нет доступных Mock-тестов.</p>
+                        <p className="font-medium text-muted-foreground">{t("noAvailableTests")}</p>
                     </div>
                 ) : (
                     <div className="space-y-3">
@@ -196,25 +199,25 @@ function StudentMockCatalog() {
                                                 {statusLabel[status].text}
                                             </span>
                                         </div>
-                                        <p className="mt-1 text-xs text-muted-foreground">{test.type === "paid" ? `Платный • ${test.price} UZS` : "Бесплатный"} • {(test as unknown as { duration_minutes?: number }).duration_minutes ?? test.durationMinutes ?? 0} мин</p>
+                                        <p className="mt-1 text-xs text-muted-foreground">{test.type === "paid" ? t("paidLabel").replace("{price}", String(test.price)) : t("freeLabel")} • {(test as unknown as { duration_minutes?: number }).duration_minutes ?? test.durationMinutes ?? 0} {t("minutesSuffix")}</p>
                                     </div>
                                     {status === "locked" && test.type === "paid" ? (
                                         <button
                                             onClick={() => setPayingFor(test)}
                                             className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-red-700 active:scale-[0.97]"
                                         >
-                                            Купить
+                                            {t("buy")}
                                         </button>
                                     ) : status === "locked" ? (
                                         <span className="shrink-0 rounded-xl border border-border bg-muted px-5 py-2.5 text-center text-sm font-semibold text-muted-foreground">
-                                            {test.type === "class_only" ? "Доступно только вашей группе" : "Только для учеников Registan"}
+                                            {test.type === "class_only" ? t("classOnlyLocked") : t("registanOnlyLocked")}
                                         </span>
                                     ) : (
                                         <Link
                                             href={`/mock/${test.id}`}
                                             className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
                                         >
-                                            {status === "completed" ? "Повторить" : "Начать"}
+                                            {status === "completed" ? t("repeat") : t("start")}
                                         </Link>
                                     )}
                                 </div>

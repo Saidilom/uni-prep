@@ -22,6 +22,7 @@ export interface User {
   createdAt: string | Date;
   updatedAt?: string | Date; // Дата последнего обновления
   avatar: string; // URL аватара
+  locale?: "ru" | "uz"; // Предпочитаемый язык интерфейса
 }
 
 export interface Subject {

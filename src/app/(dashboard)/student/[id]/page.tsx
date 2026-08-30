@@ -9,11 +9,14 @@ import { fetchUserGlobalStats, GlobalStats, fetchUserSubjectRatings, fetchUserBa
 import { SUBJECTS } from "@/lib/constants";
 import { Mail, Fingerprint, Award, Star, Medal as MedalIcon, Calendar, BookOpen, ChevronRight } from "lucide-react";
 import Link from "next/link";
+import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 export default function StudentProfilePage() {
     const { id } = useParams();
     const router = useRouter();
     const { user: currentUser } = useAuthStore();
+    const { locale } = useLocale();
+    const t = useTranslations("studentProfile");
     const [student, setStudent] = useState<User | null>(null);
     const [stats, setStats] = useState<GlobalStats | null>(null);
     const [ratings, setRatings] = useState<Record<string, number>>({});
@@ -94,12 +97,12 @@ export default function StudentProfilePage() {
         return (
             <div className="flex min-h-[60vh] items-center justify-center">
                 <div className="max-w-md rounded-3xl border border-border bg-card px-6 py-10 text-center shadow-sm">
-                    <h2 className="mb-3 text-2xl font-bold text-foreground">Ученик не найден</h2>
+                    <h2 className="mb-3 text-2xl font-bold text-foreground">{t("studentNotFound")}</h2>
                     <Link
                         href="/"
                         className="inline-flex items-center justify-center rounded-2xl bg-foreground px-6 py-3 text-sm font-semibold text-background transition-all hover:opacity-90 active:scale-[0.97]"
                     >
-                        На главную
+                        {t("toHome")}
                     </Link>
                 </div>
             </div>
@@ -110,7 +113,7 @@ export default function StudentProfilePage() {
         <div className="mx-auto flex max-w-5xl animate-in fade-in slide-in-from-bottom-4 flex-col gap-10 py-6 duration-700">
             <nav className="flex items-center gap-2 text-xs font-medium text-muted-foreground sm:text-sm">
                 <Link href="/classes" className="transition-colors hover:text-foreground">
-                    Классы
+                    {t("classesBreadcrumb")}
                 </Link>
                 <ChevronRight size={14} className="text-muted-foreground/60" />
                 <span className="text-foreground">{student.name}</span>
@@ -139,7 +142,7 @@ export default function StudentProfilePage() {
                             <div className="flex items-center gap-2 text-muted-foreground">
                                 <Calendar size={16} className="shrink-0" />
                                 <span className="font-medium italic text-foreground/90">
-                                    С нами с {new Date(student.createdAt).toLocaleDateString()}
+                                    {t("memberSince").replace("{date}", new Date(student.createdAt).toLocaleDateString(locale === "ru" ? "ru-RU" : "uz-UZ"))}
                                 </span>
                             </div>
                         </div>
@@ -152,7 +155,7 @@ export default function StudentProfilePage() {
                     <section>
                         <div className="mb-6 flex items-center gap-3">
                             <h2 className="text-lg font-bold tracking-tight text-foreground sm:text-xl">
-                                Прогресс по предметам
+                                {t("subjectProgress")}
                             </h2>
                             <div className="h-px flex-1 bg-border" />
                         </div>
@@ -187,7 +190,7 @@ export default function StudentProfilePage() {
                     <section>
                         <div className="mb-6 flex items-center gap-3">
                             <h2 className="text-lg font-bold tracking-tight text-foreground sm:text-xl">
-                                Достижения
+                                {t("achievements")}
                             </h2>
                             <div className="h-px flex-1 bg-border" />
                         </div>
@@ -204,10 +207,9 @@ export default function StudentProfilePage() {
                                         <div className="min-w-0">
                                             <h4 className="text-sm font-bold text-foreground">{badge.name}</h4>
                                             <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                                                Получено{" "}
-                                                {getUnlockedDate(badge.unlockedAt)
-                                                    ? getUnlockedDate(badge.unlockedAt)!.toLocaleDateString("ru-RU")
-                                                    : "Недавно"}
+                                                {t("earnedOn").replace("{date}", getUnlockedDate(badge.unlockedAt)
+                                                    ? getUnlockedDate(badge.unlockedAt)!.toLocaleDateString(locale === "ru" ? "ru-RU" : "uz-UZ")
+                                                    : t("recently"))}
                                             </p>
                                         </div>
                                     </div>
@@ -215,7 +217,7 @@ export default function StudentProfilePage() {
                             </div>
                         ) : (
                             <div className="rounded-2xl border border-border bg-muted/50 py-10 text-center dark:bg-muted/30">
-                                <p className="font-medium text-muted-foreground">У ученика пока нет достижений.</p>
+                                <p className="font-medium text-muted-foreground">{t("noAchievementsYet")}</p>
                             </div>
                         )}
                     </section>
@@ -224,7 +226,7 @@ export default function StudentProfilePage() {
                 <div className="space-y-8">
                     <div className="relative overflow-hidden rounded-3xl border border-border bg-card p-8 shadow-sm">
                         <h3 className="mb-6 text-xs font-bold uppercase tracking-[0.25em] text-muted-foreground">
-                            Общая статистика
+                            {t("overallStats")}
                         </h3>
 
                         <div className="space-y-8">
@@ -233,7 +235,7 @@ export default function StudentProfilePage() {
                                     {stats?.accuracy || 0}%
                                 </div>
                                 <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
-                                    Общая точность
+                                    {t("overallAccuracy")}
                                 </div>
                             </div>
 
@@ -243,7 +245,7 @@ export default function StudentProfilePage() {
                                         <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-800 dark:bg-emerald-500/30 dark:text-emerald-200">
                                             <MedalIcon size={16} />
                                         </div>
-                                        <span className="text-sm font-medium text-foreground">Зелёные</span>
+                                        <span className="text-sm font-medium text-foreground">{t("greenMedals")}</span>
                                     </div>
                                     <span className="text-lg font-bold tabular-nums text-foreground">
                                         {stats?.medals.green || 0}
@@ -254,7 +256,7 @@ export default function StudentProfilePage() {
                                         <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-muted text-muted-foreground">
                                             <MedalIcon size={16} />
                                         </div>
-                                        <span className="text-sm font-medium text-foreground">Серые</span>
+                                        <span className="text-sm font-medium text-foreground">{t("greyMedals")}</span>
                                     </div>
                                     <span className="text-lg font-bold tabular-nums text-foreground">
                                         {stats?.medals.grey || 0}
@@ -265,7 +267,7 @@ export default function StudentProfilePage() {
                                         <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-orange-500/20 text-orange-800 dark:bg-orange-500/30 dark:text-orange-200">
                                             <MedalIcon size={16} />
                                         </div>
-                                        <span className="text-sm font-medium text-foreground">Бронзовые</span>
+                                        <span className="text-sm font-medium text-foreground">{t("bronzeMedals")}</span>
                                     </div>
                                     <span className="text-lg font-bold tabular-nums text-foreground">
                                         {stats?.medals.bronze || 0}
@@ -278,11 +280,10 @@ export default function StudentProfilePage() {
                     <div className="rounded-3xl border border-border bg-muted/50 p-6 dark:bg-muted/30">
                         <div className="mb-4 flex items-center gap-2 text-foreground">
                             <Award size={18} />
-                            <h4 className="text-sm font-bold tracking-tight">Роль: Ученик</h4>
+                            <h4 className="text-sm font-bold tracking-tight">{t("roleStudentTitle")}</h4>
                         </div>
                         <p className="text-xs leading-relaxed text-muted-foreground">
-                            Ученик может самостоятельно изучать предметы, решать тесты и получать медали. Учителя видят
-                            этот прогресс в своих группах и личных кабинетах.
+                            {t("roleStudentDescription")}
                         </p>
                     </div>
                 </div>

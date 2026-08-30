@@ -1,7 +1,12 @@
+"use client";
+
 import Image from "next/image";
 import { APP_NAME } from "@/lib/app-config";
+import { useTranslations } from "@/lib/i18n/locale-provider";
 
 export default function LandingFooter() {
+  const t = useTranslations("landingFooter");
+
   return (
     <footer className="border-t border-border">
       <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 py-8 sm:flex-row">
@@ -12,7 +17,7 @@ export default function LandingFooter() {
           <span className="text-sm font-semibold text-foreground">{APP_NAME}</span>
         </div>
         <p className="text-xs text-muted-foreground">
-          © {new Date().getFullYear()} {APP_NAME}. Платформа для учеников, учителей и администраторов учебного центра.
+          © {new Date().getFullYear()} {APP_NAME}. {t("tagline")}
         </p>
       </div>
     </footer>

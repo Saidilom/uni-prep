@@ -9,11 +9,13 @@ import { signInWithGoogle } from "@/lib/auth-utils";
 import { useAuthStore } from "@/store/useAuthStore";
 import type { RegisteredVia } from "@/lib/firestore-schema";
 import AuthShell from "@/components/auth-shell";
+import { useTranslations } from "@/lib/i18n/locale-provider";
 
 function JoinPageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const { user } = useAuthStore();
+    const t = useTranslations("auth");
 
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
@@ -35,7 +37,7 @@ function JoinPageContent() {
             sessionStorage.setItem(REGISTERED_VIA_KEY, registeredVia);
             await signInWithGoogle();
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Ошибка при входе через Google");
+            setError(err instanceof Error ? err.message : t("googleLoginError"));
             setIsLoading(false);
         }
     };
@@ -44,10 +46,10 @@ function JoinPageContent() {
         <AuthShell>
             <div className="mb-8 text-center">
                 <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-                    Добро пожаловать
+                    {t("joinTitle")}
                 </h1>
                 <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-                    Регистрация для вступительного тестирования в учебном центре Registan.
+                    {t("joinSubtitle")}
                 </p>
             </div>
 
@@ -59,22 +61,27 @@ function JoinPageContent() {
 
             <button type="button" onClick={() => void handleLogin()} disabled={isLoading} className={primaryBtn}>
                 <Image src="/google.png" alt="" width={22} height={22} className="shrink-0" />
-                {isLoading ? "Подключение…" : "Зарегистрироваться через Google"}
+                {isLoading ? t("connecting") : t("registerWithGoogle")}
             </button>
 
             <p className="mt-6 text-center text-sm text-muted-foreground">
-                Уже есть аккаунт?{" "}
+                {t("alreadyHaveAccount")}{" "}
                 <Link href="/login" className="font-semibold text-foreground hover:underline">
-                    Войти
+                    {t("login")}
                 </Link>
             </p>
         </AuthShell>
     );
 }
 
+function JoinFallback() {
+    const t = useTranslations("auth");
+    return <div className="flex min-h-dvh items-center justify-center">{t("loadingEllipsis")}</div>;
+}
+
 export default function JoinPage() {
     return (
-        <Suspense fallback={<div className="flex min-h-dvh items-center justify-center">Загрузка…</div>}>
+        <Suspense fallback={<JoinFallback />}>
             <JoinPageContent />
         </Suspense>
     );

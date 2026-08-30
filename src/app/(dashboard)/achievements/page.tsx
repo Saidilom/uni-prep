@@ -4,9 +4,12 @@ import { useEffect, useState } from "react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { fetchUserBadges } from "@/lib/stats-utils";
 import { Trophy, Calendar } from "lucide-react";
+import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 export default function AchievementsPage() {
     const { user } = useAuthStore();
+    const { locale } = useLocale();
+    const t = useTranslations("achievements");
     const [badges, setBadges] = useState<
         Array<{
             id: string;
@@ -55,10 +58,10 @@ export default function AchievementsPage() {
         <div className="flex animate-in fade-in slide-in-from-bottom-4 flex-col gap-10 py-4 duration-700">
             <section>
                 <h1 className="text-4xl font-bold leading-tight tracking-tight text-foreground sm:text-5xl">
-                    Мои достижения
+                    {t("title")}
                 </h1>
                 <p className="mt-3 max-w-xl leading-relaxed text-muted-foreground">
-                    Ваши награды за идеальное прохождение учебников и другие успехи в обучении.
+                    {t("subtitle")}
                 </p>
             </section>
 
@@ -90,8 +93,8 @@ export default function AchievementsPage() {
                                     <Calendar size={12} />
                                     <span>
                                         {getUnlockedDate(badge.unlockedAt)
-                                            ? getUnlockedDate(badge.unlockedAt)!.toLocaleDateString("ru-RU")
-                                            : "Недавно"}
+                                            ? getUnlockedDate(badge.unlockedAt)!.toLocaleDateString(locale === "ru" ? "ru-RU" : "uz-UZ")
+                                            : t("recently")}
                                     </span>
                                 </div>
                             </div>
@@ -100,9 +103,9 @@ export default function AchievementsPage() {
                 ) : (
                     <div className="rounded-2xl border border-border bg-muted/50 py-24 text-center dark:bg-muted/30">
                         <Trophy size={48} className="mx-auto mb-5 text-muted-foreground" />
-                        <h3 className="text-lg font-bold text-foreground">Пока достижений нет</h3>
+                        <h3 className="text-lg font-bold text-foreground">{t("noAchievementsYet")}</h3>
                         <p className="mt-2 text-muted-foreground">
-                            Пройдите все темы любого учебника на 🟢 зелёную медаль!
+                            {t("completeAllTopics")}
                         </p>
                     </div>
                 )}

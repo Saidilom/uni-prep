@@ -8,6 +8,7 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { useToast } from "@/hooks/useToast";
 import supabase from "@/lib/supabase/client";
 import { pageCache } from "@/lib/page-cache";
+import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 type Question = {
     id: string;
@@ -48,6 +49,8 @@ export default function PlacementTestPage() {
     const { id } = useParams();
     const router = useRouter();
     const { user } = useAuthStore();
+    const { locale } = useLocale();
+    const t = useTranslations("placementRunner");
     const toast = useToast();
 
     const [assignment, setAssignment] = useState<Assignment | null>(null);
@@ -77,7 +80,7 @@ export default function PlacementTestPage() {
             });
 
             if (error) {
-                toast.error("Ошибка отправки", { description: error.message });
+                toast.error(t("submitError"), { description: error.message });
                 return;
             }
 
@@ -100,11 +103,11 @@ export default function PlacementTestPage() {
                 setAssignment((prev) => prev ? { ...prev, status: "completed" } : prev);
             }
         } catch (err) {
-            toast.error("Ошибка отправки", { description: String(err) });
+            toast.error(t("submitError"), { description: String(err) });
         } finally {
             setSubmitting(false);
         }
-    }, [id, submitting, assignment, result, timeLimitSeconds, timeLeft, answers, toast, user]);
+    }, [id, submitting, assignment, result, timeLimitSeconds, timeLeft, answers, toast, user, t]);
 
     const load = useCallback(async () => {
         if (!id || !user) return;
@@ -117,7 +120,7 @@ export default function PlacementTestPage() {
             .single();
 
         if (assignmentError || !assignmentData || assignmentData.user_id !== user.id) {
-            toast.error("Доступ запрещён", { description: "Это задание не принадлежит вашему аккаунту." });
+            toast.error(t("accessDenied"), { description: t("accessDeniedDesc") });
             router.push("/placement");
             return;
         }
@@ -125,7 +128,7 @@ export default function PlacementTestPage() {
         const assignmentRow = assignmentData as Assignment;
 
         if (!["assigned", "in_progress", "completed"].includes(assignmentRow.status)) {
-            toast.error("Тест недоступен", { description: "Это задание больше не активно." });
+            toast.error(t("testUnavailable"), { description: t("testUnavailableDesc") });
             router.push("/placement");
             return;
         }
@@ -200,13 +203,13 @@ export default function PlacementTestPage() {
         });
 
         if (questionsError) {
-            toast.error("Ошибка загрузки вопросов", { description: questionsError.message });
+            toast.error(t("questionsLoadError"), { description: questionsError.message });
         } else if (questionsData) {
             setQuestions(questionsData as Question[]);
         }
 
         setLoading(false);
-    }, [id, user, router, toast]);
+    }, [id, user, router, toast, t]);
 
     useEffect(() => { load(); }, [load]);
 
@@ -235,7 +238,7 @@ export default function PlacementTestPage() {
         return `${m}:${sec.toString().padStart(2, "0")}`;
     };
 
-    const fmtDate = (d: string) => new Date(d).toLocaleString("ru-RU");
+    const fmtDate = (d: string) => new Date(d).toLocaleString(locale === "ru" ? "ru-RU" : "uz-UZ");
 
     const timeSpentStr = result ? fmtTime(result.timeSpentSeconds) : "";
 
@@ -251,13 +254,13 @@ export default function PlacementTestPage() {
         return (
             <div className="flex min-h-[60vh] items-center justify-center">
                 <div className="max-w-md rounded-3xl border border-border bg-card px-6 py-10 text-center shadow-sm">
-                    <h2 className="mb-3 text-2xl font-bold text-foreground">Тест не найден</h2>
-                    <p className="text-sm text-muted-foreground">Проверьте ссылку — задание не найдено или недоступно.</p>
+                    <h2 className="mb-3 text-2xl font-bold text-foreground">{t("testNotFoundTitle")}</h2>
+                    <p className="text-sm text-muted-foreground">{t("testNotFoundDesc")}</p>
                     <button
                         onClick={() => router.push("/placement")}
                         className="mt-6 inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-sm hover:opacity-90"
                     >
-                        <ArrowLeft size={18} /> К списку тестов
+                        <ArrowLeft size={18} /> {t("toTestList")}
                     </button>
                 </div>
             </div>
@@ -274,7 +277,7 @@ export default function PlacementTestPage() {
                             <Trophy size={24} />
                         </div>
                         <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-                            {passed ? "Тест пройден!" : "Тест не пройден"}
+                            {passed ? t("passedTitle") : t("failedTitle")}
                         </h1>
                     </div>
 
@@ -282,20 +285,20 @@ export default function PlacementTestPage() {
 
                     <p className={`mt-4 text-base font-medium ${passed ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground"}`}>
                         {passed
-                            ? "Поздравляем! Вы успешно прошли вступительный тест. Результат сохранён — администратор увидит его в системе."
+                            ? t("passedMessage")
                             : passingScore > 0
-                                ? `К сожалению, проходной балл (${passingScore}%) не достигнут. Свяжитесь с администратором для дальнейших шагов.`
-                                : "Тест завершён. Результат сохранён — администратор увидит его в системе."}
+                                ? t("failedWithScoreMessage").replace("{score}", String(passingScore))
+                                : t("completedNoPassingScoreMessage")}
                     </p>
 
                     <div className="mt-8">
                         <div className="text-6xl font-extrabold tabular-nums text-foreground">{result.percentage}%</div>
                         <p className="mt-2 text-sm text-muted-foreground">
-                            {result.correctAnswers} / {result.total} правильных ответов
+                            {t("correctAnswersOf").replace("{correct}", String(result.correctAnswers)).replace("{total}", String(result.total))}
                         </p>
                         {passingScore > 0 && (
                             <p className={`mt-1 text-xs font-semibold ${passed ? "text-emerald-600" : "text-red-600"}`}>
-                                Проходной балл: {passingScore}% — {passed ? "пройдено" : "не пройдено"}
+                                {t("passingScoreStatus").replace("{score}", String(passingScore)).replace("{status}", passed ? t("statusPassed") : t("statusFailed"))}
                             </p>
                         )}
                     </div>
@@ -313,7 +316,7 @@ export default function PlacementTestPage() {
                         onClick={() => router.push("/placement")}
                         className="mt-6 inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
                     >
-                        <ArrowLeft size={18} /> К списку тестов
+                        <ArrowLeft size={18} /> {t("toTestList")}
                     </button>
                 </div>
             </div>
@@ -324,13 +327,13 @@ export default function PlacementTestPage() {
         return (
             <div className="flex min-h-[60vh] items-center justify-center">
                 <div className="max-w-md rounded-3xl border border-border bg-card px-6 py-10 text-center shadow-sm">
-                    <h2 className="mb-3 text-2xl font-bold text-foreground">Вопросы не найдены</h2>
-                    <p className="text-sm text-muted-foreground">В этом тесте пока нет вопросов. Обратитесь к администратору.</p>
+                    <h2 className="mb-3 text-2xl font-bold text-foreground">{t("questionsNotFoundTitle")}</h2>
+                    <p className="text-sm text-muted-foreground">{t("questionsNotFoundDesc")}</p>
                     <button
                         onClick={() => router.push("/placement")}
                         className="mt-6 inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-sm hover:opacity-90"
                     >
-                        <ArrowLeft size={18} /> К списку тестов
+                        <ArrowLeft size={18} /> {t("toTestList")}
                     </button>
                 </div>
             </div>
@@ -346,7 +349,7 @@ export default function PlacementTestPage() {
             <div className="flex items-center justify-between gap-4">
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">{assignment.test_title}</h1>
-                    <p className="mt-1 text-xs text-muted-foreground">Вопрос {currentQ + 1} из {questions.length}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{t("questionOf").replace("{current}", String(currentQ + 1)).replace("{total}", String(questions.length))}</p>
                 </div>
                 {timeLeft !== null && (
                     <div className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-bold tabular-nums ${timeLeft < 60 ? "border-red-200 bg-red-50 text-red-700 dark:bg-red-950/40" : "border-border bg-muted text-foreground"}`}>
@@ -392,14 +395,14 @@ export default function PlacementTestPage() {
                     disabled={currentQ === 0}
                     className="inline-flex items-center gap-2 rounded-xl border border-border px-6 py-3 text-sm font-semibold hover:bg-muted transition-colors disabled:opacity-50"
                 >
-                    <ArrowLeft size={18} /> Назад
+                    <ArrowLeft size={18} /> {t("back")}
                 </button>
                 {isLast ? (
                     <button
                         onClick={() => {
                             if (unansweredCount > 0) {
                                 const ok = window.confirm(
-                                    `Не отвечено вопросов: ${unansweredCount}. Завершить тест?`
+                                    t("confirmUnanswered").replace("{count}", String(unansweredCount))
                                 );
                                 if (!ok) return;
                             }
@@ -408,14 +411,14 @@ export default function PlacementTestPage() {
                         disabled={submitting}
                         className="inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-50"
                     >
-                        {submitting ? "Проверка…" : "Завершить"}
+                        {submitting ? t("checking") : t("finish")}
                     </button>
                 ) : (
                     <button
                         onClick={() => setCurrentQ((c) => Math.min(questions.length - 1, c + 1))}
                         className="inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
                     >
-                        Далее <ArrowLeft size={18} className="rotate-180" />
+                        {t("next")} <ArrowLeft size={18} className="rotate-180" />
                     </button>
                 )}
             </div>

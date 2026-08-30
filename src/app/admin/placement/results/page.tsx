@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import supabase from "@/lib/supabase/client";
 import { accuracyColor } from "@/lib/status-colors";
+import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 type PlacementResultRow = {
     id: string;
@@ -21,6 +22,8 @@ type PlacementResultRow = {
 export default function AdminPlacementResultsPage() {
     const [results, setResults] = useState<PlacementResultRow[]>([]);
     const [loading, setLoading] = useState(true);
+    const { locale } = useLocale();
+    const t = useTranslations("adminPlacementResults");
 
     const load = async () => {
         setLoading(true);
@@ -31,14 +34,14 @@ export default function AdminPlacementResultsPage() {
 
     useEffect(() => { load(); }, []);
 
-    const fmtDate = (d: string) => new Date(d).toLocaleString("ru-RU");
+    const fmtDate = (d: string) => new Date(d).toLocaleString(locale === "ru" ? "ru-RU" : "uz-UZ");
 
     return (
         <div className="flex flex-col gap-10">
             <section>
-                <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Результаты Школы</h1>
+                <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{t("title")}</h1>
                 <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-                    Все прохождения вступительного тестирования.
+                    {t("subtitle")}
                 </p>
             </section>
 
@@ -51,7 +54,7 @@ export default function AdminPlacementResultsPage() {
                     </div>
                 ) : results.length === 0 ? (
                     <div className="rounded-2xl border border-border bg-muted/50 py-10 text-center dark:bg-muted/30">
-                        <p className="font-medium text-muted-foreground">Пока нет результатов.</p>
+                        <p className="font-medium text-muted-foreground">{t("noResultsYet")}</p>
                     </div>
                 ) : (
                     <div className="space-y-3">
@@ -67,7 +70,7 @@ export default function AdminPlacementResultsPage() {
                                 </div>
                                 <div className="flex shrink-0 items-center gap-3 sm:flex-col sm:items-end sm:gap-1">
                                     <span className={`rounded-xl px-3 py-1.5 text-sm font-extrabold tabular-nums ${accuracyColor(r.accuracy)}`}>{r.accuracy}%</span>
-                                    <p className="text-xs text-muted-foreground">{r.correct_answers}/{r.total_questions} правильных</p>
+                                    <p className="text-xs text-muted-foreground">{r.correct_answers}/{r.total_questions} {t("correctSuffix")}</p>
                                 </div>
                             </div>
                         ))}

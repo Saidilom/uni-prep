@@ -5,6 +5,8 @@ import supabase from "@/lib/supabase/client";
 import { useAuthStore } from "../store/useAuthStore";
 import { getUserProfile } from "../lib/auth-utils";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { useLocale } from "@/lib/i18n/locale-provider";
+import { isLocale } from "@/lib/i18n/config";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -38,6 +40,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     const router = useRouter();
     const pathname = usePathname();
     const searchParams = useSearchParams();
+    const { locale, setLocale } = useLocale();
 
     // Read via refs inside the auth-event handler below instead of listing
     // pathname/searchParams as effect deps. Supabase fires INITIAL_SESSION
@@ -51,6 +54,10 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     const searchParamsRef = useRef(searchParams);
     pathnameRef.current = pathname;
     searchParamsRef.current = searchParams;
+    const localeRef = useRef(locale);
+    localeRef.current = locale;
+    const setLocaleRef = useRef(setLocale);
+    setLocaleRef.current = setLocale;
 
     useEffect(() => {
         setLoading(true);
@@ -82,6 +89,9 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
                 }
                 if (profile) {
                     setUser(profile);
+                    if (isLocale(profile.locale) && profile.locale !== localeRef.current) {
+                        setLocaleRef.current(profile.locale);
+                    }
                     if (profile.phone && (currentPathname === "/login" || currentPathname === "/onboarding")) {
                         router.replace(redirectTarget ? decodeURIComponent(redirectTarget) : "/");
                     } else if (!profile.phone && currentPathname !== "/onboarding" && isFreshSignIn) {

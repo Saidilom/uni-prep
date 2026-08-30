@@ -8,12 +8,14 @@ import { signInWithGoogle } from "@/lib/auth-utils";
 import { useAuthStore } from "@/store/useAuthStore";
 import supabase from "@/lib/supabase/client";
 import AuthShell from "@/components/auth-shell";
+import { useTranslations } from "@/lib/i18n/locale-provider";
 
 export default function LoginPage() {
     const [error, setError] = useState<string | null>(null);
     const { isLoading } = useAuthStore();
     const router = useRouter();
     const searchParams = useSearchParams();
+    const t = useTranslations("auth");
 
     useEffect(() => {
         const redirectTarget = searchParams.get("redirectTo");
@@ -56,7 +58,7 @@ export default function LoginPage() {
             setError(null);
             await signInWithGoogle();
         } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : "Ошибка при входе через Google";
+            const errorMessage = err instanceof Error ? err.message : t("googleLoginError");
             setError(errorMessage);
         }
     };
@@ -65,10 +67,10 @@ export default function LoginPage() {
         <AuthShell>
             <div className="mb-8 text-center">
                 <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-                    С возвращением
+                    {t("loginTitle")}
                 </h1>
                 <p className="mt-3 text-sm leading-relaxed text-muted-foreground sm:text-base">
-                    Войдите через Google, чтобы продолжить занятия и смотреть прогресс на главной.
+                    {t("loginSubtitle")}
                 </p>
             </div>
 
@@ -88,13 +90,13 @@ export default function LoginPage() {
                 className="flex w-full items-center justify-center gap-3 rounded-xl border border-border bg-card py-4 pl-5 pr-6 text-sm font-semibold text-foreground shadow-sm transition-all duration-200 hover:bg-muted active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
             >
                 <Image src="/google.png" alt="" width={22} height={22} className="shrink-0" />
-                {isLoading ? "Подключение…" : "Войти через Google"}
+                {isLoading ? t("connecting") : t("loginWithGoogle")}
             </button>
 
             <p className="mt-6 text-center text-sm text-muted-foreground">
-                Ещё нет аккаунта?{" "}
+                {t("noAccountYet")}{" "}
                 <Link href="/join" className="font-semibold text-foreground hover:underline">
-                    Зарегистрироваться
+                    {t("register")}
                 </Link>
             </p>
         </AuthShell>

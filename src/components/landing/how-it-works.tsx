@@ -2,31 +2,21 @@
 
 import { useEffect, useRef, useState } from "react";
 import { motion, useScroll, useTransform } from "framer-motion";
+import { useTranslations } from "@/lib/i18n/locale-provider";
 
-const steps = [
-  {
-    number: "01",
-    title: "Регистрация через Google",
-    description: "Быстрый вход без паролей — понадобится только аккаунт Google.",
-  },
-  {
-    number: "02",
-    title: "Пройдите «Школа»",
-    description: "Короткий диагностический тест определяет стартовый уровень ученика.",
-  },
-  {
-    number: "03",
-    title: "Решайте Mock-тесты",
-    description: "Тренируйтесь в формате настоящего экзамена, в своём темпе.",
-  },
-  {
-    number: "04",
-    title: "Смотрите прогресс",
-    description: "Результаты и статистика доступны сразу после завершения теста.",
-  },
-];
+function useSteps() {
+  const t = useTranslations("landingHowItWorks");
+  return [
+    { number: "01", title: t("step1Title"), description: t("step1Description") },
+    { number: "02", title: t("step2Title"), description: t("step2Description") },
+    { number: "03", title: t("step3Title"), description: t("step3Description") },
+    { number: "04", title: t("step4Title"), description: t("step4Description") },
+  ];
+}
 
-function StepCard({ step }: { step: (typeof steps)[number] }) {
+type Step = ReturnType<typeof useSteps>[number];
+
+function StepCard({ step }: { step: Step }) {
   return (
     <div className="flex h-[280px] w-[260px] shrink-0 flex-col justify-between rounded-2xl border border-border bg-card p-6 shadow-sm sm:h-[300px] sm:w-[300px]">
       <span className="text-3xl font-extrabold tabular-nums text-[hsl(var(--brand-blue-ink))]/25">{step.number}</span>
@@ -39,17 +29,18 @@ function StepCard({ step }: { step: (typeof steps)[number] }) {
 }
 
 function IntroPanel() {
+  const t = useTranslations("landingHowItWorks");
   return (
     <div className="w-[220px] sm:w-[300px]">
       <span className="text-[11px] font-bold uppercase tracking-widest text-[hsl(var(--brand-blue-ink))]">
-        Путь ученика
+        {t("eyebrow")}
       </span>
       <h2 className="mt-3 text-2xl font-bold leading-tight tracking-tight text-foreground sm:text-3xl">
-        Как это
-        <br /> работает
+        {t("titleLine1")}
+        <br /> {t("titleLine2")}
       </h2>
       <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-        От регистрации до первого результата — четыре простых шага.
+        {t("subtitle")}
       </p>
     </div>
   );
@@ -60,6 +51,7 @@ export default function LandingHowItWorks() {
   const laneRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const [scrollDistance, setScrollDistance] = useState(0);
+  const steps = useSteps();
 
   useEffect(() => {
     function measure() {

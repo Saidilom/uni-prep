@@ -4,6 +4,8 @@ import localFont from "next/font/local";
 import { Golos_Text } from "next/font/google";
 import AuthProvider from "@/components/auth-provider";
 import { APP_NAME, APP_DESCRIPTION } from "@/lib/app-config";
+import { LocaleProvider } from "@/lib/i18n/locale-provider";
+import { getServerLocale } from "@/lib/i18n/get-locale";
 import "./globals.css";
 import "katex/dist/katex.min.css";
 
@@ -43,8 +45,10 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const locale = getServerLocale();
+
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang={locale} suppressHydrationWarning>
       <head>
         <link rel="icon" type="image/png" sizes="512x512" href="/gogg.png" />
         <link rel="icon" type="image/png" sizes="256x256" href="/gogg.png" />
@@ -58,9 +62,11 @@ export default function RootLayout({
         className={`${golosText.variable} ${geistSans.variable} ${geistMono.variable} antialiased min-h-screen relative app-bg`}
       >
         <div className="relative z-10 min-h-screen">
-          <Suspense fallback={null}>
-            <AuthProvider>{children}</AuthProvider>
-          </Suspense>
+          <LocaleProvider initialLocale={locale}>
+            <Suspense fallback={null}>
+              <AuthProvider>{children}</AuthProvider>
+            </Suspense>
+          </LocaleProvider>
         </div>
       </body>
     </html>

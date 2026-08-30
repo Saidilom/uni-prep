@@ -5,6 +5,7 @@ import { School, Users, FileText } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { fetchTeacherClasses } from "@/lib/class-utils";
 import supabase from "@/lib/supabase/client";
+import { useTranslations } from "@/lib/i18n/locale-provider";
 
 // Stats-only overview for the teacher's home screen — "Создать Mock" /
 // "Создать класс" live on /teacher/mock-tests and /classes (both already
@@ -12,6 +13,7 @@ import supabase from "@/lib/supabase/client";
 // those actions, only show where things stand.
 export default function TeacherHome() {
     const { user } = useAuthStore();
+    const t = useTranslations("teacherDashboard");
     const [loading, setLoading] = useState(true);
     const [classCount, setClassCount] = useState(0);
     const [studentCount, setStudentCount] = useState(0);
@@ -33,9 +35,9 @@ export default function TeacherHome() {
     }, [user]);
 
     const statCards = [
-        { label: "Классов", value: classCount, icon: School },
-        { label: "Учеников", value: studentCount, icon: Users },
-        { label: "Mock-тестов создано", value: mockCount, icon: FileText },
+        { label: t("classesCountLabel"), value: classCount, icon: School },
+        { label: t("studentsCountLabel"), value: studentCount, icon: Users },
+        { label: t("mocksCreatedLabel"), value: mockCount, icon: FileText },
     ];
 
     if (!user) return null;
@@ -44,10 +46,10 @@ export default function TeacherHome() {
         <div className="flex flex-col gap-10 py-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
             <section className="rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8">
                 <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-                    С возвращением, <span className="font-medium text-muted-foreground">{user.name?.trim()}</span>
+                    {t("welcomeBack")} <span className="font-medium text-muted-foreground">{user.name?.trim()}</span>
                 </h1>
                 <p className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
-                    Общая статистика по вашим группам и тестам.
+                    {t("statsSubtitle")}
                 </p>
             </section>
 

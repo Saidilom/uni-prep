@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Phone, Mail, Calendar, UserCheck, IdCard } from "lucide-react";
 import { User as UserType } from "@/lib/firestore-schema";
 import supabase from "@/lib/supabase/client";
+import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 type AdminUser = UserType & { registeredVia?: string; shortid?: string };
 
@@ -19,6 +20,8 @@ export default function AdminUsersPage() {
     const [users, setUsers] = useState<AdminUser[]>([]);
     const [search, setSearch] = useState("");
     const [loading, setLoading] = useState(true);
+    const { locale } = useLocale();
+    const t = useTranslations("adminUsers");
 
     const load = async () => {
         setLoading(true);
@@ -52,16 +55,16 @@ export default function AdminUsersPage() {
     return (
         <div className="flex flex-col gap-10">
             <section>
-                <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Пользователи</h1>
+                <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{t("title")}</h1>
                 <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-                    Все зарегистрированные пользователи. Поиск по имени, email, телефону или Student ID.
+                    {t("subtitle")}
                 </p>
                 <div className="mt-6">
                     <input
                         type="text"
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        placeholder="Поиск по ФИО, email, телефону, Student ID…"
+                        placeholder={t("searchPlaceholder")}
                         className="w-full rounded-2xl border border-border bg-background py-3 pl-4 pr-4 text-foreground placeholder:text-muted-foreground transition-colors focus:border-border focus:outline-none focus:ring-2 focus:ring-ring/25"
                     />
                 </div>
@@ -76,7 +79,7 @@ export default function AdminUsersPage() {
                     </div>
                 ) : filtered.length === 0 ? (
                     <div className="rounded-2xl border border-border bg-muted/50 py-10 text-center dark:bg-muted/30">
-                        <p className="font-medium text-muted-foreground">Пользователи ещё не зарегистрировались.</p>
+                        <p className="font-medium text-muted-foreground">{t("noUsersYet")}</p>
                     </div>
                 ) : (
                     <div className="space-y-3">
@@ -97,7 +100,7 @@ export default function AdminUsersPage() {
                                             {studentId(u) && <span className="flex items-center gap-1 font-mono font-semibold"><IdCard size={12} />{studentId(u)}</span>}
                                             {u.email && <span className="flex items-center gap-1"><Mail size={12} />{u.email}</span>}
                                             {u.phone && <span className="flex items-center gap-1"><Phone size={12} />{u.phone}</span>}
-                                            <span className="flex items-center gap-1"><Calendar size={12} />{new Date(u.createdAt).toLocaleDateString()}</span>
+                                            <span className="flex items-center gap-1"><Calendar size={12} />{new Date(u.createdAt).toLocaleDateString(locale === "ru" ? "ru-RU" : "uz-UZ")}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -108,14 +111,14 @@ export default function AdminUsersPage() {
                                         className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-all ${u.isRegistanStudent ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40" : "border-border bg-card text-muted-foreground hover:text-foreground"}`}
                                     >
                                         <UserCheck size={14} />
-                                        {u.isRegistanStudent ? "Registan" : "Обычный"}
+                                        {u.isRegistanStudent ? t("registanBadge") : t("regularBadge")}
                                     </button>
                                     {u.id === PERMANENT_SUPER_ADMIN_ID ? (
                                         <span
-                                            title="Постоянный Super Admin — роль защищена на уровне базы данных, изменить или удалить нельзя"
+                                            title={t("permanentSuperAdminTitle")}
                                             className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700 dark:bg-amber-950/40"
                                         >
-                                            Главный Super Admin
+                                            {t("mainSuperAdmin")}
                                         </span>
                                     ) : (
                                         <select
@@ -129,9 +132,9 @@ export default function AdminUsersPage() {
                                                     : "border-border bg-card text-muted-foreground"
                                             }`}
                                         >
-                                            <option value="student">Ученик</option>
-                                            <option value="teacher">Учитель</option>
-                                            <option value="admin">Super Admin</option>
+                                            <option value="student">{t("roleStudent")}</option>
+                                            <option value="teacher">{t("roleTeacher")}</option>
+                                            <option value="admin">{t("roleAdmin")}</option>
                                         </select>
                                     )}
                                 </div>

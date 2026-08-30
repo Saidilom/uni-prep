@@ -6,11 +6,14 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { fetchUserMockResults, MockResultRow } from "@/lib/registan-utils";
 import { accuracyColor } from "@/lib/status-colors";
 import TeacherResultsExplorer from "@/components/teacher-results-explorer";
+import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 type ResultRow = MockResultRow;
 
 export default function ResultsPage() {
     const { user } = useAuthStore();
+    const { locale } = useLocale();
+    const t = useTranslations("results");
     const [results, setResults] = useState<ResultRow[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -33,16 +36,16 @@ export default function ResultsPage() {
         <div className="flex flex-col gap-10 py-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
             <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Результаты</h1>
+                    <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{t("title")}</h1>
                     <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-                        История пройденных Mock-тестов.
+                        {t("subtitle")}
                     </p>
                 </div>
                 {avgScore !== null ? (
                     <div className="flex items-center gap-3 self-start rounded-2xl border border-border bg-muted/50 px-5 py-3 dark:bg-muted/30">
                         <Trophy size={18} className="text-primary" />
                         <div>
-                            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Средний балл</p>
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{t("averageScore")}</p>
                             <p className="text-xl font-extrabold tabular-nums text-foreground">{avgScore}%</p>
                         </div>
                     </div>
@@ -59,8 +62,8 @@ export default function ResultsPage() {
                 ) : results.length === 0 ? (
                     <div className="rounded-2xl border border-border bg-muted/50 py-14 text-center dark:bg-muted/30">
                         <Trophy size={28} className="mx-auto mb-3 text-muted-foreground/50" />
-                        <p className="font-medium text-muted-foreground">Пока нет пройденных тестов.</p>
-                        <p className="mt-1 text-sm text-muted-foreground/70">Результаты появятся здесь после первого Mock-теста.</p>
+                        <p className="font-medium text-muted-foreground">{t("noResultsYet")}</p>
+                        <p className="mt-1 text-sm text-muted-foreground/70">{t("resultsWillAppear")}</p>
                     </div>
                 ) : (
                     <div className="space-y-3">
@@ -74,11 +77,11 @@ export default function ResultsPage() {
                                     <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                                         <span className="flex items-center gap-1">
                                             <Calendar size={12} />
-                                            {new Date(r.completed_at).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })}
+                                            {new Date(r.completed_at).toLocaleDateString(locale === "ru" ? "ru-RU" : "uz-UZ", { day: "numeric", month: "long", year: "numeric" })}
                                         </span>
                                         <span className="flex items-center gap-1">
                                             <Clock size={12} />
-                                            {r.correct_answers}/{r.total_questions} верно
+                                            {r.correct_answers}/{r.total_questions} {t("correctSuffix")}
                                         </span>
                                     </div>
                                 </div>

@@ -10,9 +10,12 @@ import { APP_NAME } from "@/lib/app-config";
 import { ShieldCheck, Copy, Check, Settings2, X, Mail, Calendar, GraduationCap } from "lucide-react";
 import HeroBanner from "@/components/hero-banner";
 import { pluralizeRu } from "@/lib/pluralize-ru";
+import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 export default function ProfilePage() {
     const { user, setUser } = useAuthStore();
+    const { locale } = useLocale();
+    const t = useTranslations("profile");
 
     const [classes, setClasses] = useState<Class[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -61,7 +64,7 @@ export default function ProfilePage() {
             setUser(updatedUser);
             setIsEditModalOpen(false);
         } catch {
-            alert("Ошибка при обновлении профиля");
+            alert(t("updateError"));
         } finally {
             setIsUpdating(false);
         }
@@ -70,23 +73,23 @@ export default function ProfilePage() {
     if (!user) return null;
 
     const statusLabel =
-        user.role === "admin" ? "Администратор"
-        : user.role === "teacher" ? "Учитель"
-        : user.isRegistanStudent ? "Ученик Registan"
-        : "Обычный ученик";
+        user.role === "admin" ? t("roleAdmin")
+        : user.role === "teacher" ? t("roleTeacher")
+        : user.isRegistanStudent ? t("roleRegistanStudent")
+        : t("roleStudent");
 
     const infoTiles = [
-        { icon: Mail, label: "Email", value: user.email },
-        { icon: Calendar, label: "В системе с", value: new Date(user.createdAt).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" }) },
-        { icon: GraduationCap, label: "Статус", value: statusLabel },
+        { icon: Mail, label: t("emailLabel"), value: user.email },
+        { icon: Calendar, label: t("memberSinceLabel"), value: new Date(user.createdAt).toLocaleDateString(locale === "ru" ? "ru-RU" : "uz-UZ", { day: "numeric", month: "long", year: "numeric" }) },
+        { icon: GraduationCap, label: t("statusLabel"), value: statusLabel },
     ];
 
     return (
         <div className="flex flex-col gap-8 py-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
             <section>
-                <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Профиль</h1>
+                <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{t("title")}</h1>
                 <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-                    Личные данные, ID для входа и ваши группы.
+                    {t("subtitle")}
                 </p>
             </section>
 
@@ -109,13 +112,13 @@ export default function ProfilePage() {
                                 </h2>
                                 <span className="flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                                     <ShieldCheck size={11} />
-                                    {user.role === "admin" ? "Администратор" : user.role === "teacher" ? "Учитель" : "Ученик"}
+                                    {user.role === "admin" ? t("roleAdmin") : user.role === "teacher" ? t("roleTeacher") : t("roleBadgeStudent")}
                                 </span>
                             </div>
 
                             <button onClick={() => setIsEditModalOpen(true)} className="flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted active:scale-[0.98]">
                                 <Settings2 size={14} />
-                                Изменить профиль
+                                {t("editProfileButton")}
                             </button>
                         </div>
                     </div>
@@ -124,7 +127,7 @@ export default function ProfilePage() {
                         <div className="flex items-center justify-between">
                             <span className="text-xs font-bold uppercase tracking-widest text-white/70">{APP_NAME}</span>
                             <span className="text-[10px] font-bold uppercase tracking-wider text-white/70">
-                                {user.role === "teacher" ? "ID учителя" : "ID ученика"}
+                                {user.role === "teacher" ? t("teacherIdLabel") : t("studentIdLabel")}
                             </span>
                         </div>
                         <div className="mt-5 flex items-end justify-between gap-4">
@@ -135,7 +138,7 @@ export default function ProfilePage() {
                             {qrDataUrl ? (
                                 <div className="shrink-0 rounded-xl bg-white p-1.5 shadow-sm">
                                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                                    <img src={qrDataUrl} alt="QR-код Student ID" width={64} height={64} />
+                                    <img src={qrDataUrl} alt={t("qrAlt")} width={64} height={64} />
                                 </div>
                             ) : null}
                         </div>
@@ -144,7 +147,7 @@ export default function ProfilePage() {
 
                 <main className="flex flex-col gap-8">
                     <section>
-                        <h2 className="mb-5 text-xl font-bold tracking-tight text-[hsl(var(--brand-blue-ink))]">Аккаунт</h2>
+                        <h2 className="mb-5 text-xl font-bold tracking-tight text-[hsl(var(--brand-blue-ink))]">{t("accountSection")}</h2>
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                             {infoTiles.map(({ icon: Icon, label, value }) => (
                                 <div key={label} className="flex items-start gap-3 rounded-2xl border border-border bg-card p-4">
@@ -163,8 +166,8 @@ export default function ProfilePage() {
                     {user.role === "student" && (
                         <section>
                             <div className="mb-5 flex items-center justify-between">
-                                <h2 className="text-xl font-bold tracking-tight text-[hsl(var(--brand-blue-ink))]">Мои группы</h2>
-                                <span className="text-sm text-muted-foreground">{classes.length} {pluralizeRu(classes.length, ["группа", "группы", "групп"])}</span>
+                                <h2 className="text-xl font-bold tracking-tight text-[hsl(var(--brand-blue-ink))]">{t("myGroupsSection")}</h2>
+                                <span className="text-sm text-muted-foreground">{classes.length} {locale === "ru" ? pluralizeRu(classes.length, ["группа", "группы", "групп"]) : t("groupWord")}</span>
                             </div>
                             {isLoading ? (
                                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -183,7 +186,7 @@ export default function ProfilePage() {
                                 </div>
                             ) : (
                                 <div className="rounded-2xl border border-border bg-muted/50 p-12 text-center font-medium text-muted-foreground">
-                                    Вы еще не состоите ни в одной группе.
+                                    {t("notInAnyGroup")}
                                 </div>
                             )}
                         </section>
@@ -196,22 +199,22 @@ export default function ProfilePage() {
                     <div className="w-full max-w-md bg-card border border-border rounded-3xl shadow-xl overflow-hidden animate-in zoom-in-95 duration-200">
                         <div className="p-8">
                             <div className="flex items-center justify-between mb-8">
-                                <h2 className="text-2xl font-bold text-foreground tracking-tight">Редактировать профиль</h2>
+                                <h2 className="text-2xl font-bold text-foreground tracking-tight">{t("editProfileModalTitle")}</h2>
                                 <button onClick={() => setIsEditModalOpen(false)} className="text-muted-foreground hover:text-foreground transition-colors"><X size={24} /></button>
                             </div>
                             <form onSubmit={handleUpdateProfile} className="space-y-6">
                                 <div className="space-y-2">
-                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest ml-1">Имя</label>
-                                    <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} className="w-full p-4 bg-muted/50 border border-border rounded-2xl focus:border-ring focus:ring-1 focus:ring-ring/25 focus:outline-none transition-colors font-medium text-foreground placeholder:text-muted-foreground/70" placeholder="Иван" required />
+                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest ml-1">{t("nameLabel")}</label>
+                                    <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} className="w-full p-4 bg-muted/50 border border-border rounded-2xl focus:border-ring focus:ring-1 focus:ring-ring/25 focus:outline-none transition-colors font-medium text-foreground placeholder:text-muted-foreground/70" placeholder={t("namePlaceholder")} required />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest ml-1">Фамилия</label>
-                                    <input type="text" value={newSurname} onChange={(e) => setNewSurname(e.target.value)} className="w-full p-4 bg-muted/50 border border-border rounded-2xl focus:border-ring focus:ring-1 focus:ring-ring/25 focus:outline-none transition-colors font-medium text-foreground placeholder:text-muted-foreground/70" placeholder="Петров" />
+                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest ml-1">{t("surnameLabel")}</label>
+                                    <input type="text" value={newSurname} onChange={(e) => setNewSurname(e.target.value)} className="w-full p-4 bg-muted/50 border border-border rounded-2xl focus:border-ring focus:ring-1 focus:ring-ring/25 focus:outline-none transition-colors font-medium text-foreground placeholder:text-muted-foreground/70" placeholder={t("surnamePlaceholder")} />
                                 </div>
                                 <div className="flex gap-4 pt-4">
-                                    <button type="button" onClick={() => setIsEditModalOpen(false)} className="flex-1 py-4 border border-border text-muted-foreground rounded-xl font-bold hover:bg-muted/50 transition-all">Отмена</button>
+                                    <button type="button" onClick={() => setIsEditModalOpen(false)} className="flex-1 py-4 border border-border text-muted-foreground rounded-xl font-bold hover:bg-muted/50 transition-all">{t("cancel")}</button>
                                     <button type="submit" disabled={isUpdating || newName.length < 2} className="flex-1 py-4 bg-primary text-primary-foreground rounded-xl font-bold hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50">
-                                        {isUpdating ? "Сохранение..." : "Сохранить"}
+                                        {isUpdating ? t("saving") : t("save")}
                                     </button>
                                 </div>
                             </form>

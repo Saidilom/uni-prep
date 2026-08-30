@@ -18,6 +18,7 @@ import supabase from "@/lib/supabase/client";
 import SafeMathText from "@/components/safe-math-text";
 import { useAuthStore } from "@/store/useAuthStore";
 import { invalidateStudentMockCaches } from "@/lib/registan-utils";
+import { useTranslations } from "@/lib/i18n/locale-provider";
 
 type AnswerValue = string | string[] | Record<string, string>;
 type Question = {
@@ -61,6 +62,7 @@ export default function MockTestPage() {
   const searchParams = useSearchParams();
   const isPreview = searchParams.get("preview") === "1";
   const { user } = useAuthStore();
+  const t = useTranslations("mockRunner");
   const [title, setTitle] = useState("");
   const [subject, setSubject] = useState<string | null>(null);
   const [sections, setSections] = useState<Section[]>([]);
@@ -81,7 +83,7 @@ export default function MockTestPage() {
     setError(null);
     const { data: allowed, error: accessError } = await supabase.rpc("can_access_mock", { p_mock_test_id: id });
     if (accessError || !allowed) {
-      setError("Этот Mock-тест вам не назначен или ещё не опубликован.");
+      setError(t("notAssigned"));
       setLoading(false);
       return;
     }
@@ -92,7 +94,7 @@ export default function MockTestPage() {
       .eq("id", id)
       .single();
     if (testError || !test) {
-      setError("Тест не найден.");
+      setError(t("testNotFound"));
       setLoading(false);
       return;
     }
@@ -139,7 +141,7 @@ export default function MockTestPage() {
     }
     setSections(loaded);
     setLoading(false);
-  }, [id, user, isPreview]);
+  }, [id, user, isPreview, t]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
@@ -247,11 +249,11 @@ export default function MockTestPage() {
         setResult((current) => (current ? { ...current, cefrScore: cefrRow.cefr_score, cefrBand: cefrRow.cefr_band } : current));
       }
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Не удалось отправить ответы");
+      setError(submitError instanceof Error ? submitError.message : t("submitFailed"));
     } finally {
       setSubmitting(false);
     }
-  }, [answers, durationSeconds, id, result, submitting, user, isPreview]);
+  }, [answers, durationSeconds, id, result, submitting, user, isPreview, t]);
 
   useEffect(() => {
     if (isPreview) return;
@@ -266,30 +268,30 @@ export default function MockTestPage() {
 
   if (loading) return <div className="flex min-h-screen items-center justify-center bg-muted/40"><Loader2 className="animate-spin text-primary" size={30} /></div>;
   if (error && sections.length === 0) return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/40 p-5"><div className="max-w-md rounded-3xl border border-border bg-background p-8 text-center"><AlertCircle className="mx-auto text-red-500" /><h1 className="mt-4 text-xl font-bold">Тест недоступен</h1><p className="mt-2 text-sm text-muted-foreground">{error}</p><button onClick={() => router.back()} className="mt-6 rounded-xl bg-primary px-5 py-3 text-sm font-bold text-primary-foreground">Вернуться</button></div></div>
+    <div className="flex min-h-screen items-center justify-center bg-muted/40 p-5"><div className="max-w-md rounded-3xl border border-border bg-background p-8 text-center"><AlertCircle className="mx-auto text-red-500" /><h1 className="mt-4 text-xl font-bold">{t("testUnavailable")}</h1><p className="mt-2 text-sm text-muted-foreground">{error}</p><button onClick={() => router.back()} className="mt-6 rounded-xl bg-primary px-5 py-3 text-sm font-bold text-primary-foreground">{t("goBack")}</button></div></div>
   );
 
   if (result) return (
     <div className="flex min-h-screen items-center justify-center bg-muted/40 p-5">
       <div className="w-full max-w-xl rounded-3xl border border-border bg-background p-8 text-center shadow-sm">
         <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[hsl(var(--brand-blue-soft))] text-[hsl(var(--brand-blue-ink))]"><Trophy size={27} /></span>
-        <h1 className="mt-5 text-3xl font-bold">Тест завершён</h1>
+        <h1 className="mt-5 text-3xl font-bold">{t("testCompleted")}</h1>
         <p className="mt-2 text-sm text-muted-foreground">{title}</p>
         <p className="mt-8 text-6xl font-black tabular-nums">{result.percentage}%</p>
-        <p className="mt-2 text-sm text-muted-foreground">Автоматически верно: {result.score} · полей ответа: {result.total}</p>
+        <p className="mt-2 text-sm text-muted-foreground">{t("autoScoreSummary").replace("{score}", String(result.score)).replace("{total}", String(result.total))}</p>
         {result.cefrBand && (
           <div className="mx-auto mt-4 inline-flex items-center gap-2 rounded-2xl border border-[hsl(var(--brand-blue))]/20 bg-[hsl(var(--brand-blue-soft))] px-4 py-2">
             <span className="text-lg font-black text-[hsl(var(--brand-blue-ink))]">{result.cefrBand}</span>
-            <span className="text-xs font-semibold text-[hsl(var(--brand-blue-ink))]/70">{result.cefrScore} / 75 по официальной шкале</span>
+            <span className="text-xs font-semibold text-[hsl(var(--brand-blue-ink))]/70">{result.cefrScore} {t("cefrScaleSuffix")}</span>
           </div>
         )}
         {grading && (
           <p className="mt-5 flex items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-semibold text-violet-800">
-            <Loader2 size={15} className="animate-spin" /> ИИ анализирует развёрнутые ответы…
+            <Loader2 size={15} className="animate-spin" /> {t("aiGrading")}
           </p>
         )}
-        {!grading && result.hasPendingReview && <p className="mt-5 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-800">Развёрнутые ответы не удалось оценить автоматически. Итоговый балл обновится после проверки учителем.</p>}
-        <button onClick={() => router.push("/results")} disabled={grading} className="mt-7 rounded-xl bg-primary px-6 py-3 text-sm font-bold text-primary-foreground disabled:opacity-50">К результатам</button>
+        {!grading && result.hasPendingReview && <p className="mt-5 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-800">{t("pendingReviewNotice")}</p>}
+        <button onClick={() => router.push("/results")} disabled={grading} className="mt-7 rounded-xl bg-primary px-6 py-3 text-sm font-bold text-primary-foreground disabled:opacity-50">{t("toResults")}</button>
       </div>
     </div>
   );
@@ -299,21 +301,21 @@ export default function MockTestPage() {
       <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3 sm:px-6">
           <button onClick={() => router.back()} className="flex h-10 w-10 items-center justify-center rounded-xl border border-border hover:bg-muted"><ArrowLeft size={18} /></button>
-          <div className="min-w-0 flex-1"><h1 className="truncate font-bold">{title}</h1><p className="text-xs text-muted-foreground">{subject || "Mock"} · отвечено {answeredCount}/{questions.length}</p></div>
+          <div className="min-w-0 flex-1"><h1 className="truncate font-bold">{title}</h1><p className="text-xs text-muted-foreground">{subject || "Mock"} · {t("answeredStatus").replace("{answered}", String(answeredCount)).replace("{total}", String(questions.length))}</p></div>
           {isPreview ? (
-            <div className="flex items-center gap-2 rounded-xl border border-[hsl(var(--brand-blue))]/20 bg-[hsl(var(--brand-blue-soft))] px-3 py-2 text-sm font-bold text-[hsl(var(--brand-blue-ink))]"><Sparkles size={16} /> Предпросмотр</div>
+            <div className="flex items-center gap-2 rounded-xl border border-[hsl(var(--brand-blue))]/20 bg-[hsl(var(--brand-blue-soft))] px-3 py-2 text-sm font-bold text-[hsl(var(--brand-blue-ink))]"><Sparkles size={16} /> {t("previewBadge")}</div>
           ) : (
             <>
               <div className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-bold tabular-nums ${timeLeft < 300 ? "border-red-200 bg-red-50 text-red-700" : "border-border"}`}><Clock size={16} /> {formatTime(timeLeft)}</div>
               <button onClick={() => {
                 const missing = questions.length - answeredCount;
-                if (missing > 0 && !window.confirm(`Не отвечено: ${missing}. Всё равно завершить?`)) return;
+                if (missing > 0 && !window.confirm(t("confirmMissingAnswers").replace("{missing}", String(missing)))) return;
                 submit();
-              }} disabled={submitting} className="hidden items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-50 sm:inline-flex">{submitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} Завершить</button>
+              }} disabled={submitting} className="hidden items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-50 sm:inline-flex">{submitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} {t("finish")}</button>
             </>
           )}
         </div>
-        {isPreview && <div className="border-t border-[hsl(var(--brand-blue))]/15 bg-[hsl(var(--brand-blue-soft))] px-4 py-2 text-center text-xs font-semibold text-[hsl(var(--brand-blue-ink))] sm:px-6">Это предпросмотр теста — ответы не сохраняются и не отправляются</div>}
+        {isPreview && <div className="border-t border-[hsl(var(--brand-blue))]/15 bg-[hsl(var(--brand-blue-soft))] px-4 py-2 text-center text-xs font-semibold text-[hsl(var(--brand-blue-ink))] sm:px-6">{t("previewNotice")}</div>}
         {!isPreview && <div className="h-1 bg-muted"><div className="h-full bg-primary transition-all" style={{ width: `${questions.length ? answeredCount / questions.length * 100 : 0}%` }} /></div>}
       </header>
 
@@ -321,7 +323,7 @@ export default function MockTestPage() {
         <main className="overflow-hidden rounded-2xl border border-border bg-background shadow-sm">
           {sections.map((section) => (
             <section key={section.id}>
-              <div className="border-b border-border bg-muted/40 px-5 py-4 sm:px-8"><p className="text-xs font-bold uppercase tracking-widest text-primary">Раздел</p><h2 className="mt-1 text-xl font-bold">{section.title}</h2></div>
+              <div className="border-b border-border bg-muted/40 px-5 py-4 sm:px-8"><p className="text-xs font-bold uppercase tracking-widest text-primary">{t("sectionLabel")}</p><h2 className="mt-1 text-xl font-bold">{section.title}</h2></div>
               <div className="divide-y divide-border">
                 {section.questions.map((question, questionIndex) => {
                   const previous = section.questions[questionIndex - 1];
@@ -334,12 +336,12 @@ export default function MockTestPage() {
                         <div className="min-w-0 flex-1">
                           {showShared && <SafeMathText content={question.content.sharedStimulus || ""} className="mb-5 rounded-xl border border-border bg-muted/30 p-4 text-sm" />}
                           <SafeMathText content={question.text} className="text-[15px] font-semibold sm:text-base" />
-                          {question.points > 0 && <p className="mt-1 text-xs text-muted-foreground">{question.points} балл.</p>}
+                          {question.points > 0 && <p className="mt-1 text-xs text-muted-foreground">{t("pointsSuffix").replace("{points}", String(question.points))}</p>}
 
                           {question.content?.needsSourceImage && question.source_page && (
                             <details className="mt-4 overflow-hidden rounded-xl border border-[hsl(var(--brand-blue))]/20 bg-[hsl(var(--brand-blue-soft))]/60" open>
-                              <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm font-bold text-[hsl(var(--brand-blue-ink))]"><Eye size={16} /> Рисунок / таблица из PDF · стр. {question.source_page}</summary>
-                              <iframe title={`Источник задания ${question.content.number || ""}`} src={`/api/mock-tests/${id}/source?page=${question.source_page}`} className="h-[520px] w-full border-t border-[hsl(var(--brand-blue))]/20 bg-white" />
+                              <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm font-bold text-[hsl(var(--brand-blue-ink))]"><Eye size={16} /> {t("sourceImageLabel").replace("{page}", String(question.source_page))}</summary>
+                              <iframe title={t("sourceIframeTitle").replace("{number}", question.content.number || "")} src={`/api/mock-tests/${id}/source?page=${question.source_page}`} className="h-[520px] w-full border-t border-[hsl(var(--brand-blue))]/20 bg-white" />
                             </details>
                           )}
 
@@ -365,11 +367,11 @@ export default function MockTestPage() {
                           )}
 
                           {["short_text", "numeric", "math_expression", "ordering", "table_completion"].includes(question.question_type) && (
-                            <input value={typeof selected === "string" ? selected : ""} onChange={(event) => setAnswer(question.id, event.target.value)} placeholder={question.question_type === "math_expression" ? "Введите выражение" : "Введите ответ"} className="mt-5 w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/15" />
+                            <input value={typeof selected === "string" ? selected : ""} onChange={(event) => setAnswer(question.id, event.target.value)} placeholder={question.question_type === "math_expression" ? t("mathExpressionPlaceholder") : t("answerPlaceholder")} className="mt-5 w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/15" />
                           )}
 
                           {question.question_type === "essay" && (
-                            <textarea value={typeof selected === "string" ? selected : ""} onChange={(event) => setAnswer(question.id, event.target.value)} rows={10} placeholder="Напишите развёрнутый ответ…" className="mt-5 w-full resize-y rounded-xl border border-border bg-background px-4 py-3 text-sm leading-relaxed outline-none focus:border-primary focus:ring-2 focus:ring-primary/15" />
+                            <textarea value={typeof selected === "string" ? selected : ""} onChange={(event) => setAnswer(question.id, event.target.value)} rows={10} placeholder={t("essayPlaceholder")} className="mt-5 w-full resize-y rounded-xl border border-border bg-background px-4 py-3 text-sm leading-relaxed outline-none focus:border-primary focus:ring-2 focus:ring-primary/15" />
                           )}
                         </div>
                       </div>
@@ -383,15 +385,15 @@ export default function MockTestPage() {
 
         <aside className="hidden lg:block">
           <div className="sticky top-24 rounded-2xl border border-border bg-background p-4 shadow-sm">
-            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Навигация</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{t("navigationLabel")}</p>
             <div className="mt-3 grid grid-cols-5 gap-2">{questions.map((question, index) => <a key={question.id} href={`#question-${question.id}`} className={`flex h-8 items-center justify-center rounded-lg text-xs font-bold ${isAnswered(answers[question.id]) ? "bg-emerald-600 text-white" : "bg-muted hover:bg-muted/70"}`}>{question.content?.number || index + 1}</a>)}</div>
-            {!isPreview && <button onClick={() => submit()} disabled={submitting} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground disabled:opacity-50">{submitting ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Завершить</button>}
+            {!isPreview && <button onClick={() => submit()} disabled={submitting} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground disabled:opacity-50">{submitting ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} {t("finish")}</button>}
             {error && <p className="mt-3 text-xs text-red-600">{error}</p>}
           </div>
         </aside>
       </div>
 
-      {!isPreview && <div className="sticky bottom-0 z-30 border-t border-border bg-background p-3 sm:hidden"><button onClick={() => submit()} disabled={submitting} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground">{submitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} Завершить тест</button></div>}
+      {!isPreview && <div className="sticky bottom-0 z-30 border-t border-border bg-background p-3 sm:hidden"><button onClick={() => submit()} disabled={submitting} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground">{submitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} {t("finishTest")}</button></div>}
     </div>
   );
 }

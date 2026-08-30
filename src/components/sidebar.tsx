@@ -7,6 +7,8 @@ import { usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useSidebarStore } from "@/store/useSidebarStore";
 import { APP_NAME } from "@/lib/app-config";
+import { useTranslations } from "@/lib/i18n/locale-provider";
+import LocaleSwitcher from "@/components/locale-switcher";
 import {
     LayoutDashboard,
     CircleUserRound,
@@ -19,26 +21,27 @@ import {
     PanelLeft,
 } from "lucide-react";
 
-const mainLinks = (isTeacher: boolean, isAdmin: boolean) => [
-    { name: "Главная", href: "/", icon: LayoutDashboard },
-    ...(isTeacher ? [{ name: "Мои группы", href: "/classes", icon: GraduationCap }] : []),
-    ...(isTeacher ? [{ name: "Мои тесты", href: "/teacher/mock-tests", icon: FileText }] : []),
-    { name: "Mock-тесты", href: "/mock", icon: FileText },
-    { name: "Результаты", href: "/results", icon: BarChart3 },
-    { name: "Профиль", href: "/profile", icon: CircleUserRound },
-    ...(isAdmin ? [{ name: "Админ-панель", href: "/admin", icon: Shield }] : []),
-];
-
 function Sidebar() {
     const { user } = useAuthStore();
     const { isOpen, isCollapsed, close, toggleCollapsed } = useSidebarStore();
     const pathname = usePathname();
+    const t = useTranslations("nav");
 
     useEffect(() => { close(); }, [pathname, close]);
 
     if (!user) return null;
 
-    const links = mainLinks(user.role === "teacher", user.role === "admin");
+    const isTeacher = user.role === "teacher";
+    const isAdmin = user.role === "admin";
+    const links = [
+        { name: t("home"), href: "/", icon: LayoutDashboard },
+        ...(isTeacher ? [{ name: t("myClasses"), href: "/classes", icon: GraduationCap }] : []),
+        ...(isTeacher ? [{ name: t("myTests"), href: "/teacher/mock-tests", icon: FileText }] : []),
+        { name: t("mockTests"), href: "/mock", icon: FileText },
+        { name: t("results"), href: "/results", icon: BarChart3 },
+        { name: t("profile"), href: "/profile", icon: CircleUserRound },
+        ...(isAdmin ? [{ name: t("admin"), href: "/admin", icon: Shield }] : []),
+    ];
 
     return (
         <>
@@ -76,7 +79,7 @@ function Sidebar() {
                     )}
 
                     {/* Mobile: close drawer */}
-                    <button onClick={close} className="md:hidden p-1.5 rounded-lg hover:bg-white/10 transition-colors" aria-label="Закрыть меню">
+                    <button onClick={close} className="md:hidden p-1.5 rounded-lg hover:bg-white/10 transition-colors" aria-label={t("closeMenu")}>
                         <X size={18} className="text-white/70" />
                     </button>
 
@@ -84,8 +87,8 @@ function Sidebar() {
                     <button
                         onClick={toggleCollapsed}
                         className="hidden md:flex p-1.5 rounded-lg hover:bg-white/10 transition-colors"
-                        aria-label={isCollapsed ? "Развернуть меню" : "Свернуть меню"}
-                        title={isCollapsed ? "Развернуть" : "Свернуть"}
+                        aria-label={isCollapsed ? t("expandMenu") : t("collapseMenu")}
+                        title={isCollapsed ? t("expand") : t("collapse")}
                     >
                         {isCollapsed
                             ? <PanelLeft size={16} className="text-white/70" />
@@ -122,6 +125,11 @@ function Sidebar() {
 
                 {/* ── User ── */}
                 <div className={`pt-2 pb-4 border-t border-white/10 mt-auto flex-1 flex flex-col justify-end ${isCollapsed ? "md:px-2 px-3" : "px-3"}`}>
+                    {!isCollapsed && (
+                        <div className="px-3 pb-3">
+                            <LocaleSwitcher />
+                        </div>
+                    )}
                     <div className={`flex items-center rounded-lg py-2 ${isCollapsed ? "md:justify-center md:px-0 px-3 gap-3" : "px-3 gap-3"}`}>
                         <div
                             className="w-7 h-7 rounded-full bg-white text-[hsl(var(--brand-olive-ink))] flex items-center justify-center text-[11px] font-bold flex-shrink-0"

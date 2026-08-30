@@ -9,6 +9,7 @@ import { fetchUserPlacementAssignments } from "@/lib/registan-utils";
 import { markPlacementAssignmentsSeen } from "@/hooks/usePlacementNotifications";
 import { pageCache } from "@/lib/page-cache";
 import supabase from "@/lib/supabase/client";
+import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 // Raw row shape as Postgres/PostgREST actually returns it (snake_case) —
 // NOT the camelCase `PlacementAssignment` type from firestore-schema.ts.
@@ -27,11 +28,7 @@ type AssignmentRow = {
 };
 
 type StatusTab = "assigned" | "in_progress" | "completed";
-const STATUS_TABS: Array<{ id: StatusTab; label: string }> = [
-    { id: "assigned", label: "Новые" },
-    { id: "in_progress", label: "В процессе" },
-    { id: "completed", label: "Пройдены" },
-];
+const STATUS_TAB_IDS: StatusTab[] = ["assigned", "in_progress", "completed"];
 
 type ResultSummary = {
     percentage: number;
@@ -43,8 +40,15 @@ type ResultSummary = {
 
 export default function PlacementPage() {
     const { user } = useAuthStore();
+    const { locale } = useLocale();
+    const t = useTranslations("placementList");
     const toast = useToast();
     const router = useRouter();
+    const STATUS_TABS: Array<{ id: StatusTab; label: string }> = [
+        { id: "assigned", label: t("tabNew") },
+        { id: "in_progress", label: t("tabInProgress") },
+        { id: "completed", label: t("tabCompleted") },
+    ];
     const [assignments, setAssignments] = useState<AssignmentRow[]>([]);
     const [results, setResults] = useState<Record<string, ResultSummary>>({});
     const [loading, setLoading] = useState(true);
@@ -135,8 +139,8 @@ export default function PlacementPage() {
             setAssignments(enriched);
             setActiveTab((current) => {
                 if (current) return current;
-                const firstNonEmpty = STATUS_TABS.find((tab) => enriched.some((a) => a.status === tab.id));
-                return firstNonEmpty?.id ?? "assigned";
+                const firstNonEmpty = STATUS_TAB_IDS.find((tabId) => enriched.some((a) => a.status === tabId));
+                return firstNonEmpty ?? "assigned";
             });
 
             const completedIds = enriched.filter((a) => a.status === "completed").map((a) => a.id);
@@ -164,28 +168,28 @@ export default function PlacementPage() {
                 markPlacementAssignmentsSeen(assignedIds);
             }
         } catch (err) {
-            toast.error("Ошибка загрузки", { description: String(err) });
+            toast.error(t("loadError"), { description: String(err) });
         } finally {
             setLoading(false);
         }
-    }, [user, toast, ensureActiveAssignment]);
+    }, [user, toast, ensureActiveAssignment, t]);
 
     useEffect(() => { load(); }, [load]);
 
     const getStatusLabel = (status: string) => {
         switch (status) {
             case "assigned":
-                return { text: "Назначен", icon: AlertCircle, color: "text-amber-600" };
+                return { text: t("statusAssigned"), icon: AlertCircle, color: "text-amber-600" };
             case "in_progress":
-                return { text: "В процессе", icon: Play, color: "text-primary" };
+                return { text: t("statusInProgress"), icon: Play, color: "text-primary" };
             case "completed":
-                return { text: "Пройден", icon: CheckCircle2, color: "text-emerald-600" };
+                return { text: t("statusCompleted"), icon: CheckCircle2, color: "text-emerald-600" };
             default:
                 return { text: status, icon: AlertCircle, color: "text-muted-foreground" };
         }
     };
 
-    const fmtDate = (d: string) => new Date(d).toLocaleString("ru-RU");
+    const fmtDate = (d: string) => new Date(d).toLocaleString(locale === "ru" ? "ru-RU" : "uz-UZ");
 
     if (!user) return null;
 
@@ -200,9 +204,9 @@ export default function PlacementPage() {
                         <ClipboardList className="h-5 w-5 text-[hsl(var(--brand-blue))]" />
                     </div>
                     <div>
-                        <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Школа</h1>
+                        <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{t("title")}</h1>
                         <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-                            Ваш вступительный тест. Нажмите «Начать», время пойдёт сразу.
+                            {t("subtitle")}
                         </p>
                     </div>
                 </div>
@@ -241,17 +245,16 @@ export default function PlacementPage() {
                             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted/50">
                                 <AlertCircle className="h-7 w-7 text-muted-foreground" />
                             </div>
-                            <h2 className="text-xl font-bold text-foreground">Тест пока недоступен</h2>
+                            <h2 className="text-xl font-bold text-foreground">{t("testUnavailableTitle")}</h2>
                             <p className="max-w-sm text-sm text-muted-foreground">
-                                Администратор ещё не опубликовал активный тест «Школа».
-                                Как только он появится, вы сможете начать сразу.
+                                {t("testUnavailableBody")}
                             </p>
                         </div>
                     </div>
                 ) : visibleAssignments.length === 0 ? (
                     <div className="rounded-2xl border border-border bg-muted/50 py-14 text-center dark:bg-muted/30">
                         <p className="font-medium text-muted-foreground">
-                            Нет тестов в статусе «{STATUS_TABS.find((t) => t.id === activeTab)?.label}».
+                            {t("noTestsInStatus").replace("{status}", STATUS_TABS.find((tab) => tab.id === activeTab)?.label ?? "")}
                         </p>
                     </div>
                 ) : (
@@ -275,17 +278,17 @@ export default function PlacementPage() {
                                 >
                                     <div>
                                         <p className="truncate text-lg font-bold text-foreground">{a.test_title}</p>
-                                        <p className="mt-1 text-xs text-muted-foreground">Назначен {fmtDate(a.assigned_at)}</p>
+                                        <p className="mt-1 text-xs text-muted-foreground">{t("assignedOn").replace("{date}", fmtDate(a.assigned_at))}</p>
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-3">
                                         <div className="rounded-xl border border-border bg-muted/40 px-4 py-3">
-                                            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Вопросов</p>
+                                            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{t("questionsLabel")}</p>
                                             <p className="mt-1 text-xl font-extrabold tabular-nums text-foreground">{a.questionCount || "—"}</p>
                                         </div>
                                         <div className="rounded-xl border border-border bg-muted/40 px-4 py-3">
-                                            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Время</p>
-                                            <p className="mt-1 text-xl font-extrabold tabular-nums text-foreground">{a.timeLimitMinutes ? `${a.timeLimitMinutes} мин` : "—"}</p>
+                                            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{t("timeLabel")}</p>
+                                            <p className="mt-1 text-xl font-extrabold tabular-nums text-foreground">{a.timeLimitMinutes ? `${a.timeLimitMinutes} ${t("minutesSuffix")}` : "—"}</p>
                                         </div>
                                     </div>
 
@@ -304,11 +307,11 @@ export default function PlacementPage() {
                                         </div>
                                         {isCompleted && result && (
                                             <p className="mt-2 text-xs text-muted-foreground">
-                                                {result.score}/{result.total} правильных • {fmtDate(result.completed_at)}
+                                                {t("correctOf").replace("{score}", String(result.score)).replace("{total}", String(result.total)).replace("{date}", fmtDate(result.completed_at))}
                                             </p>
                                         )}
                                         {a.passingScore > 0 && !isCompleted && (
-                                            <p className="mt-2 text-xs text-muted-foreground">Проходной балл: {a.passingScore}%</p>
+                                            <p className="mt-2 text-xs text-muted-foreground">{t("passingScoreLabel").replace("{score}", String(a.passingScore))}</p>
                                         )}
                                     </div>
 
@@ -318,7 +321,7 @@ export default function PlacementPage() {
                                             className="mt-auto inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-bold text-primary-foreground shadow-sm transition-all hover:opacity-90 active:scale-[0.98]"
                                         >
                                             <Play size={16} />
-                                            {isAssigned ? "Начать" : "Продолжить"}
+                                            {isAssigned ? t("start") : t("continueLabel")}
                                         </button>
                                     ) : isCompleted ? (
                                         <button
@@ -326,7 +329,7 @@ export default function PlacementPage() {
                                             className="mt-auto inline-flex w-full items-center justify-center gap-2 rounded-xl border border-border px-5 py-3 text-sm font-bold hover:bg-muted transition-colors"
                                         >
                                             <CheckCircle2 size={16} />
-                                            Результат
+                                            {t("result")}
                                         </button>
                                     ) : null}
                                 </div>

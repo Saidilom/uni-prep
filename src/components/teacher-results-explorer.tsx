@@ -13,9 +13,12 @@ import {
 import { fetchUserMockResults, MockResultRow } from "@/lib/registan-utils";
 import { accuracyColor } from "@/lib/status-colors";
 import { pluralizeRu } from "@/lib/pluralize-ru";
+import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 export default function TeacherResultsExplorer() {
     const { user } = useAuthStore();
+    const { locale } = useLocale();
+    const t = useTranslations("teacherResults");
     const [overview, setOverview] = useState<TeacherResultsOverview | null>(null);
     const [loadingOverview, setLoadingOverview] = useState(true);
 
@@ -61,7 +64,7 @@ export default function TeacherResultsExplorer() {
         <div className="flex flex-col gap-8 py-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
             <section className="flex flex-wrap items-center gap-2 text-sm">
                 <button onClick={() => { setSelectedClass(null); setSelectedStudent(null); }} className={`font-bold tracking-tight ${!selectedClass ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
-                    Результаты учеников
+                    {t("studentResults")}
                 </button>
                 {selectedClass && (
                     <>
@@ -85,35 +88,35 @@ export default function TeacherResultsExplorer() {
                         <div className="flex items-center gap-4 rounded-2xl border border-border bg-card p-5 shadow-sm">
                             <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[hsl(var(--brand-blue-soft))] text-[hsl(var(--brand-blue-ink))]"><Trophy size={22} /></span>
                             <div className="min-w-0">
-                                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Топ группа</p>
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{t("topClassLabel")}</p>
                                 {overview?.topClass ? (
                                     <>
                                         <p className="truncate font-bold text-foreground">{overview.topClass.name}</p>
-                                        <p className="text-sm text-muted-foreground">{overview.topClass.avgAccuracy}% средний результат</p>
+                                        <p className="text-sm text-muted-foreground">{t("avgResultSuffix").replace("{score}", String(overview.topClass.avgAccuracy))}</p>
                                     </>
                                 ) : (
-                                    <p className="text-sm text-muted-foreground">Пока нет пройденных тестов</p>
+                                    <p className="text-sm text-muted-foreground">{t("noCompletedTestsYet")}</p>
                                 )}
                             </div>
                         </div>
                         <div className="flex items-center gap-4 rounded-2xl border border-border bg-card p-5 shadow-sm">
                             <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 dark:bg-amber-950/40"><Award size={22} /></span>
                             <div className="min-w-0">
-                                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Топ ученик</p>
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{t("topStudentLabel")}</p>
                                 {overview?.topStudent ? (
                                     <>
                                         <p className="truncate font-bold text-foreground">{overview.topStudent.student.name} {overview.topStudent.student.surname || ""}</p>
                                         <p className="text-sm text-muted-foreground">{overview.topStudent.avgAccuracy}% • {overview.topStudent.className}</p>
                                     </>
                                 ) : (
-                                    <p className="text-sm text-muted-foreground">Пока нет пройденных тестов</p>
+                                    <p className="text-sm text-muted-foreground">{t("noCompletedTestsYet")}</p>
                                 )}
                             </div>
                         </div>
                     </section>
 
                     <section>
-                        <h2 className="mb-5 text-xl font-bold tracking-tight text-[hsl(var(--brand-blue-ink))]">Мои группы</h2>
+                        <h2 className="mb-5 text-xl font-bold tracking-tight text-[hsl(var(--brand-blue-ink))]">{t("myGroups")}</h2>
                         {loadingOverview ? (
                             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                                 {[1, 2, 3].map((n) => <div key={n} className="h-28 animate-pulse rounded-2xl border border-border bg-muted" />)}
@@ -121,7 +124,7 @@ export default function TeacherResultsExplorer() {
                         ) : !overview || overview.classes.length === 0 ? (
                             <div className="rounded-2xl border border-border bg-muted/50 py-14 text-center dark:bg-muted/30">
                                 <Users size={26} className="mx-auto mb-3 text-muted-foreground/50" />
-                                <p className="font-medium text-muted-foreground">У вас пока нет групп.</p>
+                                <p className="font-medium text-muted-foreground">{t("noGroupsYet")}</p>
                             </div>
                         ) : (
                             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -132,10 +135,10 @@ export default function TeacherResultsExplorer() {
                                             <ChevronRight size={16} className="mt-0.5 shrink-0 text-muted-foreground" />
                                         </div>
                                         <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                                            <Users size={12} /> {cls.memberCount} {pluralizeRu(cls.memberCount, ["ученик", "ученика", "учеников"])}
+                                            <Users size={12} /> {cls.memberCount} {locale === "ru" ? pluralizeRu(cls.memberCount, ["ученик", "ученика", "учеников"]) : t("studentWord")}
                                         </p>
                                         <span className={`inline-flex w-fit items-center rounded-lg px-2.5 py-1 text-xs font-extrabold tabular-nums ${accuracyColor(cls.avgAccuracy)}`}>
-                                            {cls.avgAccuracy !== null ? `${cls.avgAccuracy}% средний результат` : "Нет попыток"}
+                                            {cls.avgAccuracy !== null ? t("avgResultSuffix").replace("{score}", String(cls.avgAccuracy)) : t("noAttemptsLabel")}
                                         </span>
                                     </button>
                                 ))}
@@ -148,17 +151,17 @@ export default function TeacherResultsExplorer() {
             {selectedClass && !selectedStudent && (
                 <section>
                     <button onClick={() => setSelectedClass(null)} className="mb-4 inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground">
-                        <ArrowLeft size={15} /> К группам
+                        <ArrowLeft size={15} /> {t("backToGroups")}
                     </button>
                     <div className="mb-5 flex items-center justify-between">
                         <h2 className="text-xl font-bold tracking-tight text-foreground">{selectedClass.name}</h2>
-                        <span className="text-sm text-muted-foreground">{students.length} {pluralizeRu(students.length, ["ученик", "ученика", "учеников"])}</span>
+                        <span className="text-sm text-muted-foreground">{students.length} {locale === "ru" ? pluralizeRu(students.length, ["ученик", "ученика", "учеников"]) : t("studentWord")}</span>
                     </div>
                     {loadingStudents ? (
                         <div className="flex items-center justify-center py-16"><Loader2 className="animate-spin text-muted-foreground" /></div>
                     ) : students.length === 0 ? (
                         <div className="rounded-2xl border border-border bg-muted/50 py-14 text-center dark:bg-muted/30">
-                            <p className="font-medium text-muted-foreground">В этой группе пока нет учеников.</p>
+                            <p className="font-medium text-muted-foreground">{t("noStudentsInGroup")}</p>
                         </div>
                     ) : (
                         <div className="space-y-3">
@@ -170,7 +173,7 @@ export default function TeacherResultsExplorer() {
                                         </span>
                                         <div className="min-w-0">
                                             <p className="truncate text-sm font-semibold text-foreground">{s.student.name} {s.student.surname || ""}</p>
-                                            <p className="text-xs text-muted-foreground">{s.attemptCount > 0 ? `${s.attemptCount} ${pluralizeRu(s.attemptCount, ["попытка", "попытки", "попыток"])}` : "Ещё не проходил тесты"}</p>
+                                            <p className="text-xs text-muted-foreground">{s.attemptCount > 0 ? `${s.attemptCount} ${locale === "ru" ? pluralizeRu(s.attemptCount, ["попытка", "попытки", "попыток"]) : t("attemptWord")}` : t("neverTakenTests")}</p>
                                         </div>
                                     </div>
                                     <div className="flex shrink-0 items-center gap-3">
@@ -189,7 +192,7 @@ export default function TeacherResultsExplorer() {
             {selectedStudent && (
                 <section>
                     <button onClick={() => setSelectedStudent(null)} className="mb-4 inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground">
-                        <ArrowLeft size={15} /> К ученикам группы
+                        <ArrowLeft size={15} /> {t("backToGroupStudents")}
                     </button>
                     <div className="mb-5 flex items-center gap-4">
                         <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-border bg-muted text-xl font-bold text-foreground">
@@ -204,7 +207,7 @@ export default function TeacherResultsExplorer() {
                         <div className="flex items-center justify-center py-16"><Loader2 className="animate-spin text-muted-foreground" /></div>
                     ) : attempts.length === 0 ? (
                         <div className="rounded-2xl border border-border bg-muted/50 py-14 text-center dark:bg-muted/30">
-                            <p className="font-medium text-muted-foreground">Этот ученик ещё не проходил Mock-тесты.</p>
+                            <p className="font-medium text-muted-foreground">{t("studentNeverTakenMock")}</p>
                         </div>
                     ) : (
                         <div className="space-y-3">
@@ -213,8 +216,8 @@ export default function TeacherResultsExplorer() {
                                     <div className="min-w-0">
                                         <p className="truncate font-semibold text-foreground">{a.mock_test_title}</p>
                                         <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                                            <span className="flex items-center gap-1"><Calendar size={12} /> {new Date(a.completed_at).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })}</span>
-                                            <span>{a.correct_answers}/{a.total_questions} верно</span>
+                                            <span className="flex items-center gap-1"><Calendar size={12} /> {new Date(a.completed_at).toLocaleDateString(locale === "ru" ? "ru-RU" : "uz-UZ", { day: "numeric", month: "long", year: "numeric" })}</span>
+                                            <span>{a.correct_answers}/{a.total_questions} {t("correctSuffix")}</span>
                                         </div>
                                     </div>
                                     <span className={`shrink-0 self-start rounded-xl px-4 py-2 text-sm font-extrabold tabular-nums sm:self-auto ${accuracyColor(a.accuracy)}`}>

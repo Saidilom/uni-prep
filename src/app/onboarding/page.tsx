@@ -10,8 +10,10 @@ import { APP_NAME, REGISTERED_VIA_KEY } from "@/lib/app-config";
 import RegistanLogo from "@/components/registan-logo";
 import { isValidUzPhone, formatPhoneDisplay, normalizePhone } from "@/lib/phone-utils";
 import type { RegisteredVia } from "@/lib/firestore-schema";
+import { useTranslations } from "@/lib/i18n/locale-provider";
 
 export default function OnboardingPage() {
+    const t = useTranslations("onboarding");
     const [name, setName] = useState("");
     const [surname, setSurname] = useState("");
     const [phone, setPhone] = useState("");
@@ -42,11 +44,11 @@ export default function OnboardingPage() {
     const handleFinish = async () => {
         setError(null);
         if (name.length < 2) {
-            setError("Введите имя (минимум 2 символа)");
+            setError(t("nameInvalid"));
             return;
         }
         if (!isValidUzPhone(phone)) {
-            setError("Введите номер в формате +998 XX XXX XX XX");
+            setError(t("phoneInvalid"));
             return;
         }
 
@@ -70,7 +72,7 @@ export default function OnboardingPage() {
             setStudentId(updatedProfile.shortId);
         } catch (err) {
             console.error("Error saving profile:", err);
-            setError("Ошибка при сохранении профиля.");
+            setError(t("saveError"));
         } finally {
             setIsSubmitting(false);
         }
@@ -106,10 +108,10 @@ export default function OnboardingPage() {
                         {studentId ? (
                             <div className="px-6 py-8 text-center sm:px-8 sm:py-9">
                                 <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-                                    Готово!
+                                    {t("done")}
                                 </h1>
                                 <p className="mt-2 text-sm text-muted-foreground">
-                                    Это ваш ID ученика — сохраните его, он понадобится учителю
+                                    {t("doneSubtitle")}
                                 </p>
                                 <button
                                     type="button"
@@ -128,7 +130,7 @@ export default function OnboardingPage() {
                                     onClick={() => router.push("/")}
                                     className={`${primaryBtnClass} mt-8`}
                                 >
-                                    <span>Продолжить</span>
+                                    <span>{t("continueLabel")}</span>
                                     <ArrowRight className="h-4 w-4" strokeWidth={2} />
                                 </button>
                             </div>
@@ -136,41 +138,41 @@ export default function OnboardingPage() {
                             <div className="px-6 py-8 sm:px-8 sm:py-9">
                                 <div className="mb-8 text-center">
                                     <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-                                        Ваш профиль
+                                        {t("profileTitle")}
                                     </h1>
                                     <p className="mt-2 text-sm text-muted-foreground">
-                                        Администратор увидит вас в панели и назначит тест
+                                        {t("profileSubtitle")}
                                     </p>
                                 </div>
                                 <div className="mb-8 space-y-4">
                                     <div className="space-y-1.5">
                                         <label className="ml-0.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                            Имя
+                                            {t("nameLabel")}
                                         </label>
                                         <input
                                             type="text"
                                             value={name}
                                             onChange={(e) => setName(e.target.value)}
-                                            placeholder="Ваше имя"
+                                            placeholder={t("namePlaceholder")}
                                             className="w-full rounded-xl border border-border bg-card p-4 text-foreground placeholder:text-muted-foreground transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15"
                                             required
                                         />
                                     </div>
                                     <div className="space-y-1.5">
                                         <label className="ml-0.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                            Фамилия
+                                            {t("surnameLabel")}
                                         </label>
                                         <input
                                             type="text"
                                             value={surname}
                                             onChange={(e) => setSurname(e.target.value)}
-                                            placeholder="По желанию"
+                                            placeholder={t("surnamePlaceholder")}
                                             className="w-full rounded-xl border border-border bg-card p-4 text-foreground placeholder:text-muted-foreground transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15"
                                         />
                                     </div>
                                     <div className="space-y-1.5">
                                         <label className="ml-0.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                            Номер телефона
+                                            {t("phoneLabel")}
                                         </label>
                                         <input
                                             type="tel"
@@ -199,7 +201,7 @@ export default function OnboardingPage() {
                                     disabled={!isNameValid || !isPhoneValid || isSubmitting}
                                     className={primaryBtnClass}
                                 >
-                                    <span>{isSubmitting ? "Сохранение…" : "Начать работу"}</span>
+                                    <span>{isSubmitting ? t("saving") : t("start")}</span>
                                     {!isSubmitting ? (
                                         <ArrowRight className="h-4 w-4" strokeWidth={2} />
                                     ) : null}

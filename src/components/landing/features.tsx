@@ -30,7 +30,8 @@ const SPRING = { stiffness: 260, damping: 30, mass: 0.5 };
 
 function FeatureBlock({ feature, order, progress }: { feature: Feature; order: number; progress: MotionValue<number> }) {
   const start = order * STEP;
-  const end = start + STEP * REVEAL_FRACTION;
+  const end = start + STEP * REVEAL_FRACTION
+  
   const opacity = useSpring(useTransform(progress, [start, end], [0, 1]), SPRING);
   const x = useSpring(useTransform(progress, [start, end], [feature.side === "left" ? -56 : 56, 0]), SPRING);
 

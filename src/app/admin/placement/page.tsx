@@ -10,7 +10,6 @@ import { useTranslations } from "@/lib/i18n/locale-provider";
 type TestRow = {
     id: string;
     title: string;
-    passing_score: number;
     time_limit_minutes: number | null;
     is_active: boolean;
     question_count: number;
@@ -34,7 +33,7 @@ export default function AdminPlacementPage() {
         setLoading(true);
         const { data: rows } = await supabase
             .from("placement_tests")
-            .select("id, title, passing_score, time_limit_minutes, is_active")
+            .select("id, title, time_limit_minutes, is_active")
             .order("created_at", { ascending: false });
         const list = (rows || []) as Omit<TestRow, "question_count">[];
         const counts = await Promise.all(
@@ -119,7 +118,6 @@ export default function AdminPlacementPage() {
                 id: testId,
                 title: draft.title,
                 description: draft.description,
-                passing_score: draft.passingScore,
                 time_limit_minutes: draft.durationMinutes,
             });
             if (testError) throw testError;
@@ -190,10 +188,6 @@ export default function AdminPlacementPage() {
                         <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                             {t("timeMinutesLabel")}
                             <input type="number" min={1} value={draft.durationMinutes} onChange={(e) => setDraft({ ...draft, durationMinutes: Number(e.target.value) })} className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3 text-foreground" />
-                        </label>
-                        <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                            {t("passingScoreLabel")}
-                            <input type="number" min={0} max={100} value={draft.passingScore} onChange={(e) => setDraft({ ...draft, passingScore: Number(e.target.value) })} className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3 text-foreground" />
                         </label>
                     </div>
                     {draft.warnings.length > 0 && (
@@ -318,7 +312,7 @@ export default function AdminPlacementPage() {
                                         <p className="truncate font-semibold text-foreground">{test.title}</p>
                                         {test.is_active && <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:bg-emerald-950/40"><Star size={10} /> {t("activeLabel")}</span>}
                                     </div>
-                                    <p className="mt-0.5 text-xs text-muted-foreground">{t("statsLineTemplate").replace("{count}", String(test.question_count)).replace("{score}", String(test.passing_score)).replace("{minutes}", String(test.time_limit_minutes ?? "—"))}</p>
+                                    <p className="mt-0.5 text-xs text-muted-foreground">{t("statsLineTemplate").replace("{count}", String(test.question_count)).replace("{minutes}", String(test.time_limit_minutes ?? "—"))}</p>
                                 </div>
                                 <div className="flex shrink-0 items-center gap-2">
                                     {!test.is_active && (

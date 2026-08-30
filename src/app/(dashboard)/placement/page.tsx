@@ -22,7 +22,6 @@ type AssignmentRow = {
     test_title: string;
     status: string;
     assigned_at: string;
-    passingScore: number;
     timeLimitMinutes?: number | null;
     questionCount: number;
 };
@@ -111,15 +110,14 @@ export default function PlacementPage() {
                 if (a.test_id) testIds.add(a.test_id);
             }
 
-            const testMap: Record<string, { passingScore: number; durationMinutes: number; questionCount: number }> = {};
+            const testMap: Record<string, { durationMinutes: number; questionCount: number }> = {};
             await Promise.all(
                 Array.from(testIds).map(async (tid) => {
                     const [{ data: td }, { count }] = await Promise.all([
-                        supabase.from("placement_tests").select("passing_score, time_limit_minutes").eq("id", tid).single(),
+                        supabase.from("placement_tests").select("time_limit_minutes").eq("id", tid).single(),
                         supabase.from("placement_questions").select("id", { count: "exact", head: true }).eq("test_id", tid),
                     ]);
                     testMap[tid] = {
-                        passingScore: Number(td?.passing_score ?? 0),
                         durationMinutes: Number(td?.time_limit_minutes ?? 0),
                         questionCount: count ?? 0,
                     };
@@ -130,7 +128,6 @@ export default function PlacementPage() {
                 const test = testMap[a.test_id];
                 enriched.push({
                     ...a,
-                    passingScore: test?.passingScore || 0,
                     timeLimitMinutes: test?.durationMinutes ?? null,
                     questionCount: test?.questionCount || 0,
                 });
@@ -309,9 +306,6 @@ export default function PlacementPage() {
                                             <p className="mt-2 text-xs text-muted-foreground">
                                                 {t("correctOf").replace("{score}", String(result.score)).replace("{total}", String(result.total)).replace("{date}", fmtDate(result.completed_at))}
                                             </p>
-                                        )}
-                                        {a.passingScore > 0 && !isCompleted && (
-                                            <p className="mt-2 text-xs text-muted-foreground">{t("passingScoreLabel").replace("{score}", String(a.passingScore))}</p>
                                         )}
                                     </div>
 

@@ -62,7 +62,6 @@ export default function PlacementTestPage() {
     const [timeLeft, setTimeLeft] = useState<number | null>(null);
     const [timeLimitSeconds, setTimeLimitSeconds] = useState<number | null>(null);
     const [currentQ, setCurrentQ] = useState(0);
-    const [passingScore, setPassingScore] = useState(0);
     const autoSubmittedRef = useRef(false);
 
     const handleSubmit = useCallback(async () => {
@@ -137,12 +136,11 @@ export default function PlacementTestPage() {
 
         const { data: testData } = await supabase
             .from("placement_tests")
-            .select("passing_score, time_limit_minutes")
+            .select("time_limit_minutes")
             .eq("id", assignmentRow.test_id)
             .single();
 
         const limitMinutes = testData?.time_limit_minutes ?? null;
-        setPassingScore(testData?.passing_score || 0);
 
         if (assignmentRow.status === "completed") {
             const { data: resultData } = await supabase
@@ -244,7 +242,7 @@ export default function PlacementTestPage() {
 
     if (loading) {
         return (
-            <div className="flex min-h-[60vh] items-center justify-center">
+            <div className="flex min-h-screen items-center justify-center bg-muted/40">
                 <div className="h-10 w-28 animate-pulse rounded-3xl border border-border bg-muted" />
             </div>
         );
@@ -252,8 +250,8 @@ export default function PlacementTestPage() {
 
     if (!assignment) {
         return (
-            <div className="flex min-h-[60vh] items-center justify-center">
-                <div className="max-w-md rounded-3xl border border-border bg-card px-6 py-10 text-center shadow-sm">
+            <div className="flex min-h-screen items-center justify-center bg-muted/40 p-5">
+                <div className="max-w-md rounded-3xl border border-border bg-background px-6 py-10 text-center shadow-sm">
                     <h2 className="mb-3 text-2xl font-bold text-foreground">{t("testNotFoundTitle")}</h2>
                     <p className="text-sm text-muted-foreground">{t("testNotFoundDesc")}</p>
                     <button
@@ -268,56 +266,48 @@ export default function PlacementTestPage() {
     }
 
     if (result) {
-        const passed = result.percentage >= passingScore;
         return (
-            <div className="mx-auto flex max-w-2xl animate-in fade-in slide-in-from-bottom-4 flex-col gap-8 py-6 duration-700">
-                <div className="rounded-3xl border border-border bg-card p-8 text-center shadow-sm">
-                    <div className="flex items-center justify-center gap-3 mb-4">
-                        <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${passed ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-950/40" : "bg-red-100 text-red-600 dark:bg-red-950/30"}`}>
-                            <Trophy size={24} />
+            <div className="min-h-screen bg-muted/40 px-4 py-10 sm:px-6">
+                <div className="mx-auto flex max-w-2xl animate-in fade-in slide-in-from-bottom-4 flex-col gap-8 duration-700">
+                    <div className="rounded-3xl border border-border bg-background p-8 text-center shadow-sm">
+                        <div className="flex items-center justify-center gap-3 mb-4">
+                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[hsl(var(--brand-blue-soft))] text-[hsl(var(--brand-blue-ink))]">
+                                <Trophy size={24} />
+                            </div>
+                            <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+                                {t("resultTitle")}
+                            </h1>
                         </div>
-                        <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-                            {passed ? t("passedTitle") : t("failedTitle")}
-                        </h1>
-                    </div>
 
-                    <p className="mt-2 text-sm text-muted-foreground">{result.testTitle}</p>
+                        <p className="mt-2 text-sm text-muted-foreground">{result.testTitle}</p>
 
-                    <p className={`mt-4 text-base font-medium ${passed ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground"}`}>
-                        {passed
-                            ? t("passedMessage")
-                            : passingScore > 0
-                                ? t("failedWithScoreMessage").replace("{score}", String(passingScore))
-                                : t("completedNoPassingScoreMessage")}
-                    </p>
-
-                    <div className="mt-8">
-                        <div className="text-6xl font-extrabold tabular-nums text-foreground">{result.percentage}%</div>
-                        <p className="mt-2 text-sm text-muted-foreground">
-                            {t("correctAnswersOf").replace("{correct}", String(result.correctAnswers)).replace("{total}", String(result.total))}
+                        <p className="mt-4 text-base font-medium text-muted-foreground">
+                            {t("resultMessage")}
                         </p>
-                        {passingScore > 0 && (
-                            <p className={`mt-1 text-xs font-semibold ${passed ? "text-emerald-600" : "text-red-600"}`}>
-                                {t("passingScoreStatus").replace("{score}", String(passingScore)).replace("{status}", passed ? t("statusPassed") : t("statusFailed"))}
+
+                        <div className="mt-8">
+                            <div className="text-6xl font-extrabold tabular-nums text-foreground">{result.percentage}%</div>
+                            <p className="mt-2 text-sm text-muted-foreground">
+                                {t("correctAnswersOf").replace("{correct}", String(result.correctAnswers)).replace("{total}", String(result.total))}
                             </p>
-                        )}
-                    </div>
-
-                    <div className="mt-6 flex flex-col gap-2 text-xs text-muted-foreground">
-                        <div className="flex items-center justify-center gap-4">
-                            <span className="inline-flex items-center gap-1"><Calendar size={12} /> {fmtDate(result.completedAt)}</span>
-                            {result.timeSpentSeconds > 0 && (
-                                <span className="inline-flex items-center gap-1"><Timer size={12} /> {timeSpentStr}</span>
-                            )}
                         </div>
-                    </div>
 
-                    <button
-                        onClick={() => router.push("/placement")}
-                        className="mt-6 inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
-                    >
-                        <ArrowLeft size={18} /> {t("toTestList")}
-                    </button>
+                        <div className="mt-6 flex flex-col gap-2 text-xs text-muted-foreground">
+                            <div className="flex items-center justify-center gap-4">
+                                <span className="inline-flex items-center gap-1"><Calendar size={12} /> {fmtDate(result.completedAt)}</span>
+                                {result.timeSpentSeconds > 0 && (
+                                    <span className="inline-flex items-center gap-1"><Timer size={12} /> {timeSpentStr}</span>
+                                )}
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={() => router.push("/placement")}
+                            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
+                        >
+                            <ArrowLeft size={18} /> {t("toTestList")}
+                        </button>
+                    </div>
                 </div>
             </div>
         );
@@ -325,8 +315,8 @@ export default function PlacementTestPage() {
 
     if (questions.length === 0) {
         return (
-            <div className="flex min-h-[60vh] items-center justify-center">
-                <div className="max-w-md rounded-3xl border border-border bg-card px-6 py-10 text-center shadow-sm">
+            <div className="flex min-h-screen items-center justify-center bg-muted/40 p-5">
+                <div className="max-w-md rounded-3xl border border-border bg-background px-6 py-10 text-center shadow-sm">
                     <h2 className="mb-3 text-2xl font-bold text-foreground">{t("questionsNotFoundTitle")}</h2>
                     <p className="text-sm text-muted-foreground">{t("questionsNotFoundDesc")}</p>
                     <button
@@ -345,82 +335,89 @@ export default function PlacementTestPage() {
     const unansweredCount = questions.filter((question) => !answers[question.id]).length;
 
     return (
-        <div className="mx-auto flex max-w-2xl animate-in fade-in slide-in-from-bottom-4 flex-col gap-8 py-6 duration-700">
-            <div className="flex items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">{assignment.test_title}</h1>
-                    <p className="mt-1 text-xs text-muted-foreground">{t("questionOf").replace("{current}", String(currentQ + 1)).replace("{total}", String(questions.length))}</p>
-                </div>
-                {timeLeft !== null && (
-                    <div className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-bold tabular-nums ${timeLeft < 60 ? "border-red-200 bg-red-50 text-red-700 dark:bg-red-950/40" : "border-border bg-muted text-foreground"}`}>
-                        <Clock size={16} /> {fmtTime(timeLeft)}
+        <div className="min-h-screen bg-muted/40 px-4 py-10 sm:px-6">
+            <div className="mx-auto flex max-w-2xl animate-in fade-in slide-in-from-bottom-4 flex-col gap-8 duration-700">
+                <div className="flex items-center justify-between gap-4">
+                    <div className="flex min-w-0 items-center gap-3">
+                        <button onClick={() => router.back()} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-background hover:bg-muted"><ArrowLeft size={18} /></button>
+                        <div className="min-w-0">
+                            <h1 className="truncate text-2xl font-bold tracking-tight text-foreground sm:text-3xl">{assignment.test_title}</h1>
+                            <p className="mt-1 text-xs text-muted-foreground">{t("questionOf").replace("{current}", String(currentQ + 1)).replace("{total}", String(questions.length))}</p>
+                        </div>
                     </div>
-                )}
-            </div>
-
-            <div className="h-2 rounded-full bg-muted overflow-hidden border border-border">
-                <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${((currentQ + 1) / questions.length) * 100}%` }} />
-            </div>
-
-            {q && (
-                <div className="rounded-3xl border border-border bg-card p-8 shadow-sm space-y-6">
-                    {q.image_url && (
-                        <Image src={q.image_url} alt="" width={600} height={320} className="max-h-72 w-auto rounded-2xl border border-border object-contain" />
-                    )}
-                    <p className="text-lg font-semibold text-foreground">{q.text}</p>
-                    <div className="grid grid-cols-1 gap-3">
-                        {["a", "b", "c", "d"].map((key) => {
-                            const selected = answers[q.id] === key;
-                            return q.options[key] && (
-                                <button
-                                    key={key}
-                                    onClick={() => setAnswers((prev) => ({ ...prev, [q.id]: key }))}
-                                    className={`flex items-center gap-4 rounded-xl border p-5 text-left transition-all duration-200 ${selected ? "border-primary bg-[hsl(var(--brand-blue-soft))] ring-1 ring-primary" : "border-border bg-card hover:bg-muted/50"}`}
-                                >
-                                    <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-bold ${selected ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"}`}>
-                                        {key.toUpperCase()}
-                                    </span>
-                                    <span className="text-sm font-medium text-foreground">{q.options[key]}</span>
-                                    {selected && <CheckCircle2 className="ml-auto h-5 w-5 shrink-0 text-primary" strokeWidth={2} />}
-                                </button>
-                            );
-                        })}
+                    <div className="flex shrink-0 items-center gap-2">
+                        {timeLeft !== null && (
+                            <div className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-bold tabular-nums ${timeLeft < 60 ? "border-red-200 bg-red-50 text-red-700 dark:bg-red-950/40" : "border-border bg-muted text-foreground"}`}>
+                                <Clock size={16} /> {fmtTime(timeLeft)}
+                            </div>
+                        )}
                     </div>
                 </div>
-            )}
 
-            <div className="flex items-center justify-between">
-                <button
-                    onClick={() => setCurrentQ((c) => Math.max(0, c - 1))}
-                    disabled={currentQ === 0}
-                    className="inline-flex items-center gap-2 rounded-xl border border-border px-6 py-3 text-sm font-semibold hover:bg-muted transition-colors disabled:opacity-50"
-                >
-                    <ArrowLeft size={18} /> {t("back")}
-                </button>
-                {isLast ? (
-                    <button
-                        onClick={() => {
-                            if (unansweredCount > 0) {
-                                const ok = window.confirm(
-                                    t("confirmUnanswered").replace("{count}", String(unansweredCount))
+                <div className="h-2 rounded-full bg-muted overflow-hidden border border-border">
+                    <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${((currentQ + 1) / questions.length) * 100}%` }} />
+                </div>
+
+                {q && (
+                    <div className="rounded-3xl border border-border bg-background p-8 shadow-sm space-y-6">
+                        {q.image_url && (
+                            <Image src={q.image_url} alt="" width={600} height={320} className="max-h-72 w-auto rounded-2xl border border-border object-contain" />
+                        )}
+                        <p className="text-lg font-semibold text-foreground">{q.text}</p>
+                        <div className="grid grid-cols-1 gap-3">
+                            {["a", "b", "c", "d"].map((key) => {
+                                const selected = answers[q.id] === key;
+                                return q.options[key] && (
+                                    <button
+                                        key={key}
+                                        onClick={() => setAnswers((prev) => ({ ...prev, [q.id]: key }))}
+                                        className={`flex items-center gap-4 rounded-xl border p-5 text-left transition-all duration-200 ${selected ? "border-primary bg-[hsl(var(--brand-blue-soft))] ring-1 ring-primary" : "border-border bg-background hover:bg-muted/50"}`}
+                                    >
+                                        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-bold ${selected ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"}`}>
+                                            {key.toUpperCase()}
+                                        </span>
+                                        <span className="text-sm font-medium text-foreground">{q.options[key]}</span>
+                                        {selected && <CheckCircle2 className="ml-auto h-5 w-5 shrink-0 text-primary" strokeWidth={2} />}
+                                    </button>
                                 );
-                                if (!ok) return;
-                            }
-                            handleSubmit();
-                        }}
-                        disabled={submitting}
-                        className="inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-50"
-                    >
-                        {submitting ? t("checking") : t("finish")}
-                    </button>
-                ) : (
-                    <button
-                        onClick={() => setCurrentQ((c) => Math.min(questions.length - 1, c + 1))}
-                        className="inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
-                    >
-                        {t("next")} <ArrowLeft size={18} className="rotate-180" />
-                    </button>
+                            })}
+                        </div>
+                    </div>
                 )}
+
+                <div className="flex items-center justify-between">
+                    <button
+                        onClick={() => setCurrentQ((c) => Math.max(0, c - 1))}
+                        disabled={currentQ === 0}
+                        className="inline-flex items-center gap-2 rounded-xl border border-border px-6 py-3 text-sm font-semibold hover:bg-muted transition-colors disabled:opacity-50"
+                    >
+                        <ArrowLeft size={18} /> {t("back")}
+                    </button>
+                    {isLast ? (
+                        <button
+                            onClick={() => {
+                                if (unansweredCount > 0) {
+                                    const ok = window.confirm(
+                                        t("confirmUnanswered").replace("{count}", String(unansweredCount))
+                                    );
+                                    if (!ok) return;
+                                }
+                                handleSubmit();
+                            }}
+                            disabled={submitting}
+                            className="inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-50"
+                        >
+                            {submitting ? t("checking") : t("finish")}
+                        </button>
+                    ) : (
+                        <button
+                            onClick={() => setCurrentQ((c) => Math.min(questions.length - 1, c + 1))}
+                            className="inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
+                        >
+                            {t("next")} <ArrowLeft size={18} className="rotate-180" />
+                        </button>
+                    )}
+                </div>
             </div>
         </div>
     );

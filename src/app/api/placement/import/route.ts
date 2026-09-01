@@ -128,7 +128,7 @@ export async function POST(req: NextRequest) {
 
   const { data: profile } = await supabaseServer.from("users").select("role").eq("id", authUser.id).single();
   if (profile?.role !== "admin") {
-    return NextResponse.json({ error: "Импорт Школы доступен только Super Admin" }, { status: 403 });
+    return NextResponse.json({ error: "Импорт «Вступительных тестов» доступен только Super Admin" }, { status: 403 });
   }
 
   if (!process.env.GEMINI_API_KEY) {

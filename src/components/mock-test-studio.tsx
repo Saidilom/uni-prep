@@ -181,7 +181,7 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
       if (raw) {
         const saved = JSON.parse(raw) as { draft: ImportedMock; importResult: MockImportResponse; price: number };
         if (saved?.draft && saved?.importResult) {
-          setDraft(saved.draft);
+          setDraft(normalizeDraftPoints(saved.draft));
           setImportResult(saved.importResult);
           if (typeof saved.price === "number") setPrice(saved.price);
         }
@@ -337,29 +337,36 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
     });
   };
 
+  // Adding/removing a whole question changes how many slices the 75-point
+  // pool needs to split into, so it's re-normalized right here — otherwise
+  // every add/remove would silently drift the total away from 75 again and
+  // the reviewer would only find out from the publish-time error. A plain
+  // points-field edit does NOT go through this (see updateQuestion above) —
+  // renormalizing on every keystroke would fight whatever number they're
+  // actually trying to type in.
   const removeQuestion = (sectionIndex: number, questionIndex: number) => {
     setDraft((current) => {
       if (!current) return current;
-      return {
+      return normalizeDraftPoints({
         ...current,
         sections: current.sections.map((section, sIndex) =>
           sIndex === sectionIndex
             ? { ...section, questions: section.questions.filter((_, qIndex) => qIndex !== questionIndex) }
             : section,
         ),
-      };
+      });
     });
   };
 
   const addQuestion = (sectionIndex: number) => {
     setDraft((current) => {
       if (!current) return current;
-      return {
+      return normalizeDraftPoints({
         ...current,
         sections: current.sections.map((section, index) => index === sectionIndex
           ? { ...section, questions: [...section.questions, emptyQuestion(section.questions.length, t("addedManually"))] }
           : section),
-      };
+      });
     });
   };
 
@@ -373,7 +380,7 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
         order: current.sections.length,
         questions: [emptyQuestion(0, t("addedManually"))],
       };
-      return { ...current, sections: [...current.sections, section] };
+      return normalizeDraftPoints({ ...current, sections: [...current.sections, section] });
     });
   };
 

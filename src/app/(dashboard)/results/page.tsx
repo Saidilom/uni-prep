@@ -5,54 +5,33 @@ import { Trophy, Calendar, Clock } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { fetchUserMockResults, MockResultRow } from "@/lib/registan-utils";
 import { accuracyColor } from "@/lib/status-colors";
-import { areMockResultsPending } from "@/lib/mock-schedule";
-import supabase from "@/lib/supabase/client";
 import TeacherResultsExplorer from "@/components/teacher-results-explorer";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 type ResultRow = MockResultRow;
-type MockSchedule = { price: number; resultsPublishAt: string | null };
 
 export default function ResultsPage() {
     const { user } = useAuthStore();
     const { locale } = useLocale();
     const t = useTranslations("results");
     const [results, setResults] = useState<ResultRow[]>([]);
-    const [scheduleByTest, setScheduleByTest] = useState<Record<string, MockSchedule>>({});
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         if (!user || user.role === "teacher") return;
         (async () => {
             setLoading(true);
-            const rows = await fetchUserMockResults(user.id);
-            setResults(rows);
-
-            const testIds = Array.from(new Set(rows.map((r) => r.mock_test_id)));
-            if (testIds.length > 0) {
-                const { data: tests } = await supabase.from("mock_tests").select("id, price, results_publish_at").in("id", testIds);
-                const map: Record<string, MockSchedule> = {};
-                (tests || []).forEach((row) => {
-                    map[row.id as string] = { price: (row.price as number) || 0, resultsPublishAt: row.results_publish_at as string | null };
-                });
-                setScheduleByTest(map);
-            } else {
-                setScheduleByTest({});
-            }
+            setResults(await fetchUserMockResults(user.id));
             setLoading(false);
         })();
     }, [user]);
 
-    const isPending = (r: ResultRow, schedules: Record<string, MockSchedule>) => {
-        const schedule = schedules[r.mock_test_id];
-        return schedule ? areMockResultsPending({ price: schedule.price, resultsPublishAt: schedule.resultsPublishAt }) : false;
-    };
-
     // `score` is raw points earned (sum of question.points), not a percentage —
     // `accuracy` is the pre-computed correct/total percentage from submit_mock.
-    // A result whose mock hasn't reached its announced results date yet is
-    // excluded here too, not just from the per-row display below.
-    const scoredResults = useMemo(() => results.filter((r) => !isPending(r, scheduleByTest)), [results, scheduleByTest]);
+    // A result the teacher/admin hasn't finalized yet (revealed_at IS NULL —
+    // paid mock, or a free mock taken via a class) is excluded here too, not
+    // just from the per-row display below.
+    const scoredResults = useMemo(() => results.filter((r) => r.revealed_at), [results]);
     const avgScore = scoredResults.length > 0 ? Math.round(scoredResults.reduce((sum, r) => sum + r.accuracy, 0) / scoredResults.length) : null;
 
     if (user?.role === "teacher") return <TeacherResultsExplorer />;
@@ -93,7 +72,7 @@ export default function ResultsPage() {
                 ) : (
                     <div className="space-y-3">
                         {results.map((r) => {
-                            const pending = isPending(r, scheduleByTest);
+                            const pending = !r.revealed_at;
                             return (
                                 <div
                                     key={r.id}

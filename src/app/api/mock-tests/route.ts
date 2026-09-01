@@ -36,13 +36,31 @@ export async function GET() {
     : { data: [] as Array<{ id: string; name: string; surname: string | null }> };
   const creatorMap = new Map((creators || []).map((creator) => [creator.id, `${creator.name} ${creator.surname || ""}`.trim()]));
 
+  // One batched read for every test's submitted-result count instead of a
+  // per-row query — used by the studio list to gate the "Готово" (finalize
+  // results) button next to Закрыть/Открыть снова.
+  const testIds = (tests || []).map((test) => test.id);
+  const { data: resultRows } = testIds.length
+    ? await supabaseServer.from("mock_results").select("mock_test_id").in("mock_test_id", testIds)
+    : { data: [] as Array<{ mock_test_id: string }> };
+  const completedCountByTest = new Map<string, number>();
+  (resultRows || []).forEach((row) => {
+    const key = row.mock_test_id as string;
+    completedCountByTest.set(key, (completedCountByTest.get(key) || 0) + 1);
+  });
+
   const rows = await Promise.all((tests || []).map(async (test) => {
     const { data: sections } = await supabaseServer.from("mock_sections").select("id").eq("mock_test_id", test.id);
     const sectionIds = (sections || []).map((section) => section.id);
     const { count } = sectionIds.length
       ? await supabaseServer.from("mock_questions").select("id", { count: "exact", head: true }).in("section_id", sectionIds)
       : { count: 0 };
-    return { ...test, question_count: count || 0, creator_name: test.created_by ? creatorMap.get(test.created_by) || "—" : "Старый тест" };
+    return {
+      ...test,
+      question_count: count || 0,
+      creator_name: test.created_by ? creatorMap.get(test.created_by) || "—" : "Старый тест",
+      completed_count: completedCountByTest.get(test.id) || 0,
+    };
   }));
 
   return NextResponse.json({ tests: rows });

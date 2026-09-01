@@ -24,6 +24,7 @@ function TeacherMockAssignments() {
     const [summary, setSummary] = useState<Record<string, TeacherMockAssignmentSummary>>({});
     const [loading, setLoading] = useState(true);
     const [togglingClose, setTogglingClose] = useState<string | null>(null);
+    const [finalizing, setFinalizing] = useState<string | null>(null);
 
     const load = async () => {
         if (!user) return;
@@ -53,6 +54,21 @@ function TeacherMockAssignments() {
             toast.error(t("toggleCloseFailed"), { description: error instanceof Error ? error.message : String(error) });
         } finally {
             setTogglingClose(null);
+        }
+    };
+
+    const finalizeResults = async (test: TeacherTestRow) => {
+        setFinalizing(test.id);
+        try {
+            const response = await fetch(`/api/mock-tests/${test.id}/finalize-results`, { method: "POST" });
+            const body = await response.json();
+            if (!response.ok) throw new Error(body.error || t("finalizeResultsFailed"));
+            toast.success(t("finalizeResultsSuccessToast"));
+            await load();
+        } catch (error) {
+            toast.error(t("finalizeResultsFailed"), { description: error instanceof Error ? error.message : String(error) });
+        } finally {
+            setFinalizing(null);
         }
     };
 
@@ -97,6 +113,16 @@ function TeacherMockAssignments() {
                                                 <span className="text-xs font-semibold text-muted-foreground">{t("completedCountLabel").replace("{completed}", String(s.completedCount)).replace("{total}", String(s.totalCount))}</span>
                                             )}
                                             <span className="text-xs text-muted-foreground">{test.duration_minutes} {t("minutesSuffix")}</span>
+                                            {isClosed && s.completedCount > 0 && (
+                                                <button
+                                                    onClick={() => finalizeResults(test)}
+                                                    disabled={finalizing === test.id}
+                                                    className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-400"
+                                                >
+                                                    <CheckCircle2 size={13} />
+                                                    {finalizing === test.id ? t("finalizingLabel") : t("finalizeResultsAction")}
+                                                </button>
+                                            )}
                                             <button
                                                 onClick={() => toggleClose(test)}
                                                 disabled={togglingClose === test.id}

@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import localFont from "next/font/local";
 import { Golos_Text } from "next/font/google";
 import AuthProvider from "@/components/auth-provider";
+import { GlobalProviders } from "@/components/global-providers";
 import { APP_NAME, APP_DESCRIPTION } from "@/lib/app-config";
 import { LocaleProvider } from "@/lib/i18n/locale-provider";
 import { getServerLocale } from "@/lib/i18n/get-locale";
@@ -64,7 +65,9 @@ export default function RootLayout({
         <div className="relative z-10 min-h-screen">
           <LocaleProvider initialLocale={locale}>
             <Suspense fallback={null}>
-              <AuthProvider>{children}</AuthProvider>
+              <AuthProvider>
+                <GlobalProviders>{children}</GlobalProviders>
+              </AuthProvider>
             </Suspense>
           </LocaleProvider>
         </div>

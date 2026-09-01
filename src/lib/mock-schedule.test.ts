@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getMockEntryState, areMockResultsPending } from "./mock-schedule";
+import { getMockEntryState } from "./mock-schedule";
 
 describe("getMockEntryState", () => {
   const now = new Date("2026-08-15T12:00:00Z");
@@ -34,25 +34,5 @@ describe("getMockEntryState", () => {
 
   it("stays open past the close time if a result already exists (viewing/retake of an already-taken attempt)", () => {
     expect(getMockEntryState({ price: 50000, startsAt: "2026-08-13T09:00:00Z", endsAt: "2026-08-15T11:00:00Z", hasExistingResult: true, now })).toBe("open");
-  });
-});
-
-describe("areMockResultsPending", () => {
-  const now = new Date("2026-08-15T12:00:00Z");
-
-  it("is never pending for a free mock", () => {
-    expect(areMockResultsPending({ price: 0, resultsPublishAt: "2026-08-20T00:00:00Z", now })).toBe(false);
-  });
-
-  it("is not pending when no resultsPublishAt is set", () => {
-    expect(areMockResultsPending({ price: 50000, resultsPublishAt: null, now })).toBe(false);
-  });
-
-  it("is pending before the publish date", () => {
-    expect(areMockResultsPending({ price: 50000, resultsPublishAt: "2026-08-20T00:00:00Z", now })).toBe(true);
-  });
-
-  it("is not pending after the publish date", () => {
-    expect(areMockResultsPending({ price: 50000, resultsPublishAt: "2026-08-10T00:00:00Z", now })).toBe(false);
   });
 });

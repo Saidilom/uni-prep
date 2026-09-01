@@ -23,12 +23,3 @@ export function getMockEntryState(params: {
   return "open";
 }
 
-export function areMockResultsPending(params: {
-  price: number;
-  resultsPublishAt: string | null | undefined;
-  now?: Date;
-}): boolean {
-  const { price, resultsPublishAt, now = new Date() } = params;
-  if (price <= 0 || !resultsPublishAt) return false;
-  return now.getTime() < new Date(resultsPublishAt).getTime();
-}

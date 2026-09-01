@@ -344,7 +344,9 @@ export default function MockTestPage() {
         <p className="mt-2 text-sm text-muted-foreground">{title}</p>
         {result.resultsPending ? (
           <p className="mx-auto mt-8 max-w-xs rounded-2xl border border-[hsl(var(--brand-blue))]/20 bg-[hsl(var(--brand-blue-soft))] px-5 py-4 text-sm font-semibold text-[hsl(var(--brand-blue-ink))]">
-            {t("resultsPendingNotice").replace("{date}", result.resultsPublishAt ? new Date(result.resultsPublishAt).toLocaleString() : "")}
+            {result.resultsPublishAt
+              ? t("resultsPendingNotice").replace("{date}", new Date(result.resultsPublishAt).toLocaleString())
+              : t("resultsPendingNoticeNoDate")}
           </p>
         ) : (
           <>

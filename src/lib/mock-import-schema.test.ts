@@ -24,7 +24,7 @@ const baseDraft: ImportedMock = {
       correctOptionIds: ["b"],
       acceptedAnswers: [],
       answerOrigin: "inferred",
-      points: 1,
+      points: 75,
       order: 0,
       groupKey: null,
       sharedStimulus: null,
@@ -48,6 +48,12 @@ describe("getPublicationIssues", () => {
     const draft = structuredClone(baseDraft);
     draft.sections[0].questions[0].correctOptionIds = [];
     expect(getPublicationIssues(draft)).toContain("Задание 1: не указан правильный вариант");
+  });
+
+  it("blocks a draft whose points don't sum to 75", () => {
+    const draft = structuredClone(baseDraft);
+    draft.sections[0].questions[0].points = 10;
+    expect(getPublicationIssues(draft)).toContain("Сумма баллов должна быть равна 75 (сейчас: 10)");
   });
 
   it("allows an essay without an automatic answer key", () => {

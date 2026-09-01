@@ -6,8 +6,11 @@ import {
   AlertTriangle,
   ArrowLeft,
   Check,
+  CheckCircle2,
   Eye,
   FileText,
+  Lock,
+  LockOpen,
   Loader2,
   Send,
   Sparkles,
@@ -29,6 +32,7 @@ import {
   MOCK_QUESTION_TYPES,
   MockImportResponse,
 } from "@/lib/mock-import-schema";
+import { MOCK_TOTAL_POINTS, normalizePointsTo75, sumPoints } from "@/lib/mock-points";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 type StudioMode = "admin" | "teacher";
@@ -44,6 +48,8 @@ type TestRow = {
   creator_name: string;
   question_count: number;
   created_at: string;
+  closed_at: string | null;
+  completed_count: number;
 };
 
 type TeacherClass = { id: string; name: string };
@@ -138,6 +144,8 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
   const [classes, setClasses] = useState<TeacherClass[]>([]);
   const [students, setStudents] = useState<StudentTarget[]>([]);
   const [assigning, setAssigning] = useState<string | null>(null);
+  const [togglingClose, setTogglingClose] = useState<string | null>(null);
+  const [finalizing, setFinalizing] = useState<string | null>(null);
 
   // The reviewed-but-unpublished draft must survive an accidental page reload
   // (dev-server hot reload, browser refresh, tab restore) — losing a fully
@@ -450,11 +458,64 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
     }
   };
 
+  // Admin-only: paid mocks have no equivalent of the teacher's class-summary
+  // page, so the close/finalize controls the teacher gets there live here
+  // instead, next to the same tests list.
+  const toggleClose = async (test: TestRow) => {
+    const closing = !test.closed_at;
+    setTogglingClose(test.id);
+    try {
+      const { error } = await supabase.from("mock_tests").update({ closed_at: closing ? new Date().toISOString() : null }).eq("id", test.id);
+      if (error) throw error;
+      toast.success(closing ? t("mockClosedToast") : t("mockReopenedToast"));
+      await loadTests({ force: true });
+    } catch (error) {
+      toast.error(t("toggleCloseFailed"), { description: error instanceof Error ? error.message : String(error) });
+    } finally {
+      setTogglingClose(null);
+    }
+  };
+
+  const finalizeResults = async (test: TestRow) => {
+    setFinalizing(test.id);
+    try {
+      const response = await fetch(`/api/mock-tests/${test.id}/finalize-results`, { method: "POST" });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || t("finalizeResultsFailed"));
+      toast.success(t("finalizeResultsSuccessToast"));
+      await loadTests({ force: true });
+    } catch (error) {
+      toast.error(t("finalizeResultsFailed"), { description: error instanceof Error ? error.message : String(error) });
+    } finally {
+      setFinalizing(null);
+    }
+  };
+
   const itemCount = draft ? countResponseItems(draft) : 0;
   const missingKeys = useMemo(() => {
     if (!draft) return 0;
     return draft.sections.flatMap((section) => section.questions).filter((question) => question.answerOrigin === "missing" && !question.requiresManualReview).length;
   }, [draft]);
+  const totalPoints = useMemo(() => {
+    if (!draft) return 0;
+    return sumPoints(draft.sections.flatMap((section) => section.questions).map((question) => question.points));
+  }, [draft]);
+
+  const normalizeAllPointsTo75 = () => {
+    setDraft((current) => {
+      if (!current) return current;
+      const questions = current.sections.flatMap((section) => section.questions);
+      const normalized = normalizePointsTo75(questions.map((question) => question.points));
+      let cursor = 0;
+      return {
+        ...current,
+        sections: current.sections.map((section) => ({
+          ...section,
+          questions: section.questions.map((question) => ({ ...question, points: normalized[cursor++] })),
+        })),
+      };
+    });
+  };
 
   if (draft && importResult) {
     return (
@@ -467,10 +528,18 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
             <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{t("reviewTitle")}</h1>
             <p className="mt-2 text-sm text-muted-foreground">{t("reviewSubtitle")}</p>
           </div>
-          <div className="flex gap-2 text-xs">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
             <span className="rounded-full border border-border bg-muted px-3 py-1.5 font-semibold">{SUBJECT_LABELS[draft.subject]}</span>
             <span className="rounded-full border border-border bg-muted px-3 py-1.5 font-semibold">{t("answersCountLabel").replace("{count}", String(itemCount))}</span>
             {missingKeys > 0 && <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 font-semibold text-amber-800">{t("missingKeysLabel").replace("{count}", String(missingKeys))}</span>}
+            <span className={`rounded-full border px-3 py-1.5 font-semibold ${totalPoints === MOCK_TOTAL_POINTS ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+              {t("pointsTotalLabel").replace("{total}", String(totalPoints))}
+            </span>
+            {totalPoints !== MOCK_TOTAL_POINTS && (
+              <button onClick={normalizeAllPointsTo75} className="rounded-full border border-border bg-background px-3 py-1.5 font-semibold text-foreground hover:bg-muted">
+                {t("normalizeToTotalAction")}
+              </button>
+            )}
           </div>
         </div>
 
@@ -549,6 +618,18 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
                       <select value={question.type} onChange={(event) => updateQuestion(sectionIndex, questionIndex, { type: event.target.value as ImportedQuestion["type"] })} className="rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-semibold">
                         {MOCK_QUESTION_TYPES.filter((type) => mode === "admin" || type !== "essay" || question.type === "essay").map((type) => <option key={type} value={type}>{QUESTION_LABELS[type]}</option>)}
                       </select>
+                      <label className="flex items-center gap-1 rounded-lg border border-border bg-background px-2 py-1 text-xs font-semibold text-muted-foreground">
+                        {t("pointsLabel")}
+                        <input
+                          type="number"
+                          min={0}
+                          step="any"
+                          value={question.points}
+                          onChange={(event) => updateQuestion(sectionIndex, questionIndex, { points: Number(event.target.value) })}
+                          aria-label={t("pointsLabel")}
+                          className="w-14 bg-transparent text-right text-foreground outline-none"
+                        />
+                      </label>
                       <span className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${question.confidence >= 0.85 ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>{t("aiConfidenceLabel").replace("{percent}", String(Math.round(question.confidence * 100)))}</span>
                       <span className="text-xs text-muted-foreground">
                         {importResult.sourcePdfPaths.length > 1
@@ -747,14 +828,47 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
             <div className="py-16 text-center"><FileText className="mx-auto text-muted-foreground/40" /><p className="mt-3 font-semibold text-muted-foreground">{t("noTestsYet")}</p></div>
           ) : tests.map((test) => (
             <div key={test.id} className="grid gap-3 border-b border-border px-5 py-4 last:border-0 md:grid-cols-[minmax(220px,1.5fr)_140px_100px_120px_minmax(140px,1fr)_auto] md:items-center md:gap-4">
-              <div className="min-w-0"><p className="truncate font-semibold">{test.title}</p><p className="mt-1 text-xs text-muted-foreground">{new Date(test.created_at).toLocaleDateString(locale === "ru" ? "ru-RU" : "uz-UZ")} · {test.status}</p></div>
+              <div className="min-w-0">
+                <p className="truncate font-semibold">{test.title}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {new Date(test.created_at).toLocaleDateString(locale === "ru" ? "ru-RU" : "uz-UZ")} · {test.status}
+                  {mode === "admin" && Boolean(test.closed_at) && ` · ${t("closedLabel")}`}
+                </p>
+              </div>
               <span className="text-sm text-muted-foreground">{SUBJECT_LABELS[test.subject_id || "other"] || test.subject_id || "—"}</span>
               <span className="text-sm font-semibold tabular-nums">{test.question_count}</span>
               <span className="text-sm font-semibold">{mode === "admin" ? formatMoney(test.price, locale, t("currencySumSuffix")) : `${test.duration_minutes} ${t("minutesSuffix")}`}</span>
               <span className="truncate text-sm text-muted-foreground">{test.creator_name}</span>
-              <div className="flex justify-end gap-2">
+              <div className="flex flex-wrap justify-end gap-2">
                 <Link href={`/mock/${test.id}?preview=1`} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border hover:bg-muted" title={t("previewTitle")}><Eye size={16} /></Link>
                 {mode === "teacher" && <button onClick={() => openAssignments(test)} className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground"><Send size={14} /> {t("assignAction")}</button>}
+                {mode === "admin" && (
+                  <>
+                    {test.completed_count > 0 && (
+                      <span className="hidden items-center px-1 text-xs font-semibold text-muted-foreground md:inline-flex">
+                        {t("completedCountShort").replace("{count}", String(test.completed_count))}
+                      </span>
+                    )}
+                    {Boolean(test.closed_at) && test.completed_count > 0 && (
+                      <button
+                        onClick={() => finalizeResults(test)}
+                        disabled={finalizing === test.id}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-400"
+                      >
+                        <CheckCircle2 size={13} />
+                        {finalizing === test.id ? t("finalizingLabel") : t("finalizeResultsAction")}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => toggleClose(test)}
+                      disabled={togglingClose === test.id}
+                      className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-semibold transition-colors disabled:opacity-50 ${test.closed_at ? "border-border hover:bg-muted" : "border-red-200 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"}`}
+                    >
+                      {test.closed_at ? <LockOpen size={13} /> : <Lock size={13} />}
+                      {togglingClose === test.id ? t("togglingLabel") : test.closed_at ? t("reopenMock") : t("closeMock")}
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           ))}

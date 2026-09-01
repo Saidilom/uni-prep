@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MOCK_TOTAL_POINTS, sumPoints } from "./mock-points";
 
 export const MOCK_SUBJECTS = [
   "math",
@@ -124,6 +125,16 @@ export function getPublicationIssues(draft: ImportedMock, mode: "admin" | "teach
   const issues: string[] = [];
   if (!draft.title.trim()) issues.push("Укажите название теста");
   if (draft.sections.length === 0) issues.push("В тесте нет разделов");
+
+  // Every mock — paid or free — scores on the same fixed 75-point scale, so
+  // the question weights must sum to exactly that before anything can go
+  // live (mock-test-studio's "Нормировать до 75" button gets a draft there
+  // in one click; this is the hard gate for whatever a human then hand-edits
+  // away from it).
+  const totalPoints = sumPoints(draft.sections.flatMap((section) => section.questions).map((question) => question.points));
+  if (totalPoints !== MOCK_TOTAL_POINTS) {
+    issues.push(`Сумма баллов должна быть равна ${MOCK_TOTAL_POINTS} (сейчас: ${totalPoints})`);
+  }
 
   draft.sections.forEach((section, sectionIndex) => {
     if (section.questions.length === 0) {

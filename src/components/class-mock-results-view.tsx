@@ -12,6 +12,7 @@ import {
     MockAnswerDetail,
     QuestionErrorStat,
 } from "@/lib/class-utils";
+import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 export default function ClassMockResultsView({ classId, mockTestId, backHref }: { classId: string; mockTestId: string; backHref: string }) {
@@ -186,7 +187,7 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
                                         )}
                                         {gradeLevel && (
                                             <span className="rounded-xl border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-bold text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-300" title={t("gradeLevelTitle")}>
-                                                {gradeLevel}
+                                                {gradeLevelDisplay(gradeLevel as GradeLevel, locale)}
                                             </span>
                                         )}
                                         {raschScore !== null && (

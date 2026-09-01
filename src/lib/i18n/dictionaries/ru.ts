@@ -605,7 +605,6 @@ const ru = {
     completedCountShort: "Сдали: {count}",
     pointsLabel: "Баллы",
     pointsTotalLabel: "Итого: {total} / 75",
-    normalizeToTotalAction: "Нормировать до 75",
   },
   adminLayout: {
     navPanel: "Панель",

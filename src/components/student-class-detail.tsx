@@ -7,10 +7,12 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { fetchClassById, fetchStudentClassMocks, fetchMySubjectRanking, StudentClassMock, SubjectRanking } from "@/lib/class-utils";
 import { Class } from "@/lib/firestore-schema";
 import { accuracyColor } from "@/lib/status-colors";
-import { useTranslations } from "@/lib/i18n/locale-provider";
+import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
+import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 export default function StudentClassDetail({ classId }: { classId: string }) {
     const { user } = useAuthStore();
+    const { locale } = useLocale();
     const t = useTranslations("studentClassDetail");
     const tSubjects = useTranslations("mockTestStudio");
     const [cls, setCls] = useState<Class | null>(null);
@@ -123,7 +125,7 @@ export default function StudentClassDetail({ classId }: { classId: string }) {
                                         </span>
                                         {m.myResult.gradeLevel && (
                                             <span className="rounded-xl border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-bold text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-300">
-                                                {m.myResult.gradeLevel}
+                                                {gradeLevelDisplay(m.myResult.gradeLevel as GradeLevel, locale)}
                                             </span>
                                         )}
                                     </div>

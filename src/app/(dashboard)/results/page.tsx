@@ -5,6 +5,7 @@ import { Trophy, Calendar, Clock } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { fetchUserMockResults, MockResultRow } from "@/lib/registan-utils";
 import { accuracyColor } from "@/lib/status-colors";
+import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
 import TeacherResultsExplorer from "@/components/teacher-results-explorer";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
@@ -83,7 +84,7 @@ export default function ResultsPage() {
                                             <p className="truncate font-semibold text-foreground">{r.mock_test_title}</p>
                                             {!pending && r.grade_level && (
                                                 <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-400">
-                                                    {r.grade_level}
+                                                    {gradeLevelDisplay(r.grade_level as GradeLevel, locale)}
                                                 </span>
                                             )}
                                         </div>

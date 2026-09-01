@@ -69,6 +69,25 @@ function isChoiceQuestion(question: ImportedQuestion) {
   return ["single_choice", "multiple_choice", "true_false", "matching"].includes(question.type);
 }
 
+// Gemini's per-question weights (or a human's printed-points transcription)
+// almost never sum to exactly 75 on their own — applied right when a draft
+// comes back from import, so the review screen already shows the correct
+// total by default instead of making the reviewer hunt for a "fix it"
+// button. Manual point edits after this can still drift the sum away from
+// 75 again; getPublicationIssues() catches that at publish time.
+function normalizeDraftPoints(draft: ImportedMock): ImportedMock {
+  const questions = draft.sections.flatMap((section) => section.questions);
+  const normalized = normalizePointsTo75(questions.map((question) => question.points));
+  let cursor = 0;
+  return {
+    ...draft,
+    sections: draft.sections.map((section) => ({
+      ...section,
+      questions: section.questions.map((question) => ({ ...question, points: normalized[cursor++] })),
+    })),
+  };
+}
+
 function emptyQuestion(order: number, reviewNote: string): ImportedQuestion {
   return {
     number: String(order + 1),
@@ -281,7 +300,7 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || t("importErrorGeneric"));
       setImportResult(body as MockImportResponse);
-      setDraft((body as MockImportResponse).draft);
+      setDraft(normalizeDraftPoints((body as MockImportResponse).draft));
       setPendingTests([]);
       setPendingAnswers(null);
       toast.success(t("pdfRecognizedToast"), { description: t("reviewBeforePublishToast") });
@@ -501,22 +520,6 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
     return sumPoints(draft.sections.flatMap((section) => section.questions).map((question) => question.points));
   }, [draft]);
 
-  const normalizeAllPointsTo75 = () => {
-    setDraft((current) => {
-      if (!current) return current;
-      const questions = current.sections.flatMap((section) => section.questions);
-      const normalized = normalizePointsTo75(questions.map((question) => question.points));
-      let cursor = 0;
-      return {
-        ...current,
-        sections: current.sections.map((section) => ({
-          ...section,
-          questions: section.questions.map((question) => ({ ...question, points: normalized[cursor++] })),
-        })),
-      };
-    });
-  };
-
   if (draft && importResult) {
     return (
       <div className="space-y-6">
@@ -535,11 +538,6 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
             <span className={`rounded-full border px-3 py-1.5 font-semibold ${totalPoints === MOCK_TOTAL_POINTS ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
               {t("pointsTotalLabel").replace("{total}", String(totalPoints))}
             </span>
-            {totalPoints !== MOCK_TOTAL_POINTS && (
-              <button onClick={normalizeAllPointsTo75} className="rounded-full border border-border bg-background px-3 py-1.5 font-semibold text-foreground hover:bg-muted">
-                {t("normalizeToTotalAction")}
-              </button>
-            )}
           </div>
         </div>
 

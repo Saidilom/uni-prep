@@ -607,7 +607,6 @@ const uz: typeof ru = {
     completedCountShort: "Topshirdi: {count}",
     pointsLabel: "Ballar",
     pointsTotalLabel: "Jami: {total} / 75",
-    normalizeToTotalAction: "75 gacha me'yorlashtirish",
   },
   adminLayout: {
     navPanel: "Panel",

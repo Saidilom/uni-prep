@@ -19,7 +19,8 @@ import SafeMathText from "@/components/safe-math-text";
 import { useAuthStore } from "@/store/useAuthStore";
 import { invalidateStudentMockCaches } from "@/lib/registan-utils";
 import { getMockEntryState } from "@/lib/mock-schedule";
-import { useTranslations } from "@/lib/i18n/locale-provider";
+import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
+import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 type AnswerValue = string | string[] | Record<string, string>;
 type Question = {
@@ -69,6 +70,7 @@ export default function MockTestPage() {
   const searchParams = useSearchParams();
   const isPreview = searchParams.get("preview") === "1";
   const { user } = useAuthStore();
+  const { locale } = useLocale();
   const t = useTranslations("mockRunner");
   const [title, setTitle] = useState("");
   const [subject, setSubject] = useState<string | null>(null);
@@ -356,7 +358,7 @@ export default function MockTestPage() {
             {result.levelScore != null && (
               result.gradeLevel ? (
                 <div className="mx-auto mt-4 inline-flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 dark:border-emerald-900 dark:bg-emerald-950/30">
-                  <span className="text-lg font-black text-emerald-700 dark:text-emerald-400">{result.gradeLevel}</span>
+                  <span className="text-lg font-black text-emerald-700 dark:text-emerald-400">{gradeLevelDisplay(result.gradeLevel as GradeLevel, locale)}</span>
                   <span className="text-xs font-semibold text-emerald-700/70 dark:text-emerald-400/70">{result.levelScore} {t("levelScaleSuffix")}</span>
                 </div>
               ) : (

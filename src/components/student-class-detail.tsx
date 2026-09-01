@@ -118,7 +118,7 @@ export default function StudentClassDetail({ classId }: { classId: string }) {
                                         <Clock size={12} /> {t("durationTemplate").replace("{duration}", String(m.durationMinutes))}
                                     </p>
                                 </div>
-                                {m.myResult ? (
+                                {m.myResult && m.myResult.revealed ? (
                                     <div className="flex shrink-0 items-center gap-2 self-start sm:self-auto">
                                         <span className={`rounded-xl px-3 py-1.5 text-sm font-extrabold tabular-nums ${accuracyColor(m.myResult.accuracy)}`}>
                                             {m.myResult.score}/{m.myResult.maxScore}
@@ -129,6 +129,10 @@ export default function StudentClassDetail({ classId }: { classId: string }) {
                                             </span>
                                         )}
                                     </div>
+                                ) : m.myResult ? (
+                                    <span className="shrink-0 self-start rounded-xl border border-border bg-muted px-3 py-1.5 text-xs font-semibold text-muted-foreground sm:self-auto">
+                                        {t("resultsPendingLabel")}
+                                    </span>
                                 ) : (
                                     <span className="shrink-0 self-start rounded-xl border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground sm:self-auto">
                                         {t("notTakenYet")}

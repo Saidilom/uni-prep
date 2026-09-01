@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { createRouteHandlerClient } from "@/lib/supabase/server";
 import { estimateRasch, Observation } from "@/lib/rasch";
 import { raschThetaToT, writingPointsToScore, cefrBandFromScore, mean, stdev } from "@/lib/english-cefr";
 
@@ -18,6 +19,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: "Supabase service role not configured" }, { status: 500 });
   }
   const mockTestId = params.id;
+
+  const sessionClient = createRouteHandlerClient();
+  const { data: authData } = await sessionClient.auth.getUser();
+  if (!authData.user) return NextResponse.json({ error: "Не авторизован" }, { status: 401 });
+  const { data: allowed } = await sessionClient.rpc("can_access_mock", { p_mock_test_id: mockTestId });
+  if (!allowed) return NextResponse.json({ error: "Нет доступа" }, { status: 403 });
+
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
 
   const { data: test } = await admin.from("mock_tests").select("id, subject_id").eq("id", mockTestId).single();
@@ -107,5 +115,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     updates.map((u) => admin.from("mock_results").update({ cefr_score: u.cefrScore, cefr_band: u.cefrBand }).eq("id", u.resultId)),
   );
 
-  return NextResponse.json({ ok: true, resultCount: resultIds.length, updates });
+  // Deliberately not returning `updates` — it's a per-student score list, and
+  // this route is fire-and-forget from any caller who can access the test
+  // (see can_access_mock check above), not scoped to only the caller's own row.
+  return NextResponse.json({ ok: true, resultCount: resultIds.length });
 }

@@ -8,6 +8,7 @@ import { pageCache } from "@/lib/page-cache";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useLocale } from "@/lib/i18n/locale-provider";
 import { isLocale } from "@/lib/i18n/config";
+import { sanitizeRedirectTarget } from "@/lib/redirect-safety";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -106,7 +107,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
                         setLocaleRef.current(profile.locale);
                     }
                     if (profile.phone && (currentPathname === "/login" || currentPathname === "/onboarding")) {
-                        router.replace(redirectTarget ? decodeURIComponent(redirectTarget) : "/");
+                        router.replace(sanitizeRedirectTarget(redirectTarget ? decodeURIComponent(redirectTarget) : null));
                     } else if (!profile.phone && currentPathname !== "/onboarding" && isFreshSignIn) {
                         router.replace(`/onboarding${redirectTarget ? `?redirectTo=${encodeURIComponent(redirectTarget)}` : ""}`);
                     }

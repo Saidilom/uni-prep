@@ -32,6 +32,13 @@ export async function POST(req: NextRequest) {
   const authUser = authData.user;
   if (!authUser) return NextResponse.json({ error: "Не авторизован" }, { status: 401 });
 
+  const { data: withinLimit } = await routeClient.rpc("check_rate_limit", {
+    p_key: `ai-grade:${authUser.id}`,
+    p_max: 20,
+    p_window_seconds: 600,
+  });
+  if (!withinLimit) return NextResponse.json({ error: "Слишком много запросов, попробуйте позже" }, { status: 429 });
+
   const parsed = BodySchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Некорректный запрос" }, { status: 400 });
   const { resultId } = parsed.data;

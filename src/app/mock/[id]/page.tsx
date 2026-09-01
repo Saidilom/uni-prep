@@ -264,16 +264,16 @@ export default function MockTestPage() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ resultId: submitted.resultId }),
           }).catch(() => undefined);
-          const [{ data: refreshed }, { count: stillPending }] = await Promise.all([
+          const [{ data: refreshed }, { data: details }] = await Promise.all([
             supabase.from("mock_results").select("score, accuracy").eq("id", submitted.resultId).single(),
-            supabase.from("mock_answer_details").select("id", { count: "exact", head: true }).eq("result_id", submitted.resultId).eq("review_status", "pending"),
+            supabase.rpc("get_my_mock_answer_review", { p_result_id: submitted.resultId }),
           ]);
           if (refreshed) {
             setResult({
               ...submitted,
               score: refreshed.score,
               percentage: refreshed.accuracy,
-              hasPendingReview: (stillPending || 0) > 0,
+              hasPendingReview: (details || []).some((d: { review_status: string }) => d.review_status === "pending"),
             });
           }
         } finally {

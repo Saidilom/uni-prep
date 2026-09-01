@@ -465,7 +465,7 @@ export type StudentClassMock = {
     title: string;
     durationMinutes: number;
     price: number;
-    myResult: { score: number; maxScore: number; accuracy: number; gradeLevel: string | null } | null;
+    myResult: { score: number; maxScore: number; accuracy: number; gradeLevel: string | null; revealed: boolean } | null;
 };
 
 // Every mock assigned to this class (whole-class or individually to this
@@ -486,7 +486,7 @@ export const fetchStudentClassMocks = async (classId: string, studentId: string)
 
     const [{ data: tests }, { data: results }] = await Promise.all([
         supabase.from("mock_tests").select("id, title, duration_minutes, price").in("id", mockTestIds),
-        supabase.from("mock_results").select("mock_test_id, score, max_score, accuracy, grade_level").eq("user_id", studentId).in("mock_test_id", mockTestIds),
+        supabase.from("mock_results").select("mock_test_id, score, max_score, accuracy, grade_level, revealed_at").eq("user_id", studentId).in("mock_test_id", mockTestIds),
     ]);
     const resultMap = new Map((results || []).map((r) => [r.mock_test_id as string, r]));
 
@@ -497,11 +497,16 @@ export const fetchStudentClassMocks = async (classId: string, studentId: string)
             title: test.title as string,
             durationMinutes: (test.duration_minutes as number) || 0,
             price: (test.price as number) || 0,
+            // A row existing here just means "submitted" — score/gradeLevel
+            // must stay hidden until the teacher/admin finalizes a
+            // class-assigned mock (revealed_at IS NULL until then, same gate
+            // as results/page.tsx and mock/[id]/page.tsx).
             myResult: r ? {
                 score: r.score as number,
                 maxScore: r.max_score as number,
                 accuracy: r.accuracy as number,
                 gradeLevel: (r.grade_level as string | null) ?? null,
+                revealed: Boolean(r.revealed_at),
             } : null,
         };
     });

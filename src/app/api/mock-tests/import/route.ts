@@ -172,6 +172,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Импорт доступен только Super Admin и учителю" }, { status: 403 });
   }
 
+  const { data: withinLimit } = await routeClient.rpc("check_rate_limit", {
+    p_key: `mock-import:${authUser.id}`,
+    p_max: 10,
+    p_window_seconds: 3600,
+  });
+  if (!withinLimit) return NextResponse.json({ error: "Слишком много запросов на импорт, попробуйте позже" }, { status: 429 });
+
   if (!process.env.GEMINI_API_KEY) {
     return NextResponse.json(
       { error: "GEMINI_API_KEY не настроен в .env.local" },

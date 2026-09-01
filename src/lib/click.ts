@@ -39,7 +39,14 @@ export function buildClickSignSource(params: ClickSignatureParams, secretKey: st
 
 export function verifyClickSignature(params: ClickSignatureParams & { signString: string }, secretKey: string): boolean {
   const expected = crypto.createHash("md5").update(buildClickSignSource(params, secretKey)).digest("hex");
-  return expected === params.signString;
+  // Plain === short-circuits on the first differing byte, which leaks a
+  // (tiny but real) timing signal — the standard hardening for a signature
+  // comparison. MD5 hex digests are a fixed 32 chars, but signString is
+  // attacker-supplied, so the length check still guards Buffer.from below.
+  const expectedBuf = Buffer.from(expected, "utf8");
+  const actualBuf = Buffer.from(params.signString, "utf8");
+  if (expectedBuf.length !== actualBuf.length) return false;
+  return crypto.timingSafeEqual(expectedBuf, actualBuf);
 }
 
 // Click compares amounts as decimal UZS (not tiyin, unlike Payme) — but

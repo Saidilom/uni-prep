@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { sanitizeRedirectTarget } from "@/lib/redirect-safety";
 
 function resolveRedirectTarget(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
@@ -78,7 +79,7 @@ export async function middleware(request: NextRequest) {
 
     if (isAuthPage && profile?.role) {
       const redirectTo = request.nextUrl.searchParams.get("redirectTo");
-      const target = redirectTo ? decodeURIComponent(redirectTo) : "/";
+      const target = sanitizeRedirectTarget(redirectTo ? decodeURIComponent(redirectTo) : null);
       return NextResponse.redirect(new URL(target, request.url));
     }
 

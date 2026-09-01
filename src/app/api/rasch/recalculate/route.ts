@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { createRouteHandlerClient } from "@/lib/supabase/server";
 import { estimateRasch, Observation, mean, stdev, raschThetaToT } from "@/lib/rasch";
 import { gradeLevelFromScore } from "@/lib/mock-grade-level";
 
@@ -20,6 +21,16 @@ export async function POST(req: NextRequest) {
     if (!mockTestId || typeof mockTestId !== "string") {
         return NextResponse.json({ error: "mockTestId is required" }, { status: 400 });
     }
+
+    // Reuses can_access_mock — the exact set of callers for whom this
+    // recalculation is meaningful (they have a result on this test, own it,
+    // or are admin), since this route always fires right after the caller's
+    // own submission and has no other legitimate trigger.
+    const sessionClient = createRouteHandlerClient();
+    const { data: authData } = await sessionClient.auth.getUser();
+    if (!authData.user) return NextResponse.json({ error: "Не авторизован" }, { status: 401 });
+    const { data: allowed } = await sessionClient.rpc("can_access_mock", { p_mock_test_id: mockTestId });
+    if (!allowed) return NextResponse.json({ error: "Нет доступа" }, { status: 403 });
 
     const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
 

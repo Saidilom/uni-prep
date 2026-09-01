@@ -20,7 +20,10 @@ const toUser = (row: Record<string, unknown>): User =>
 // Backed by the users_staff_read_students RLS policy (049_staff_role.sql) —
 // a staff account can only ever see role='student' rows through this query.
 export const searchStudentsForStaff = async (query: string): Promise<User[]> => {
-    const q = query.trim();
+    // PostgREST builds the filter from this raw string — a query containing
+    // ",", "(", ")" could otherwise reshape the .or() expression itself
+    // (e.g. inject an always-true clause), not just the %...% search value.
+    const q = query.trim().replace(/[,()%*]/g, "");
     if (q.length < 2) return [];
     const { data } = await supabase
         .from("users")

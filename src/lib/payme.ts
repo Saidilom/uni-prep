@@ -3,6 +3,18 @@
 // Amounts on the wire are always tiyin (1 UZS = 100 tiyin); everywhere else
 // in this app (payments.amount, mock_tests.price) amounts are plain UZS.
 
+import { timingSafeEqual } from "crypto";
+
+// Plain === short-circuits on the first differing byte, which leaks a
+// (tiny but real) timing signal about how much of the secret a guess got
+// right — the standard hardening for any secret/signature comparison.
+function safeEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, "utf8");
+  const bufB = Buffer.from(b, "utf8");
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+}
+
 export const PAYME_ERROR = {
   INVALID_AMOUNT: -31001,
   TRANSACTION_NOT_FOUND: -31003,
@@ -48,7 +60,7 @@ export function verifyPaymeAuth(authHeader: string | null, merchantKey: string):
   const separatorIndex = decoded.indexOf(":");
   if (separatorIndex === -1) return false;
   const password = decoded.slice(separatorIndex + 1);
-  return password === merchantKey;
+  return safeEqual(password, merchantKey);
 }
 
 export function buildPaymeCheckoutUrl(opts: {

@@ -126,6 +126,7 @@ const uz: typeof ru = {
     noMocksYet: "Bu guruhga hali birorta Mock-test tayinlanmagan.",
     durationTemplate: "{duration} daq",
     notTakenYet: "Hali topshirilmagan",
+    resultsPendingLabel: "Natijani kuting",
   },
   teacherDashboard: {
     welcomeBack: "Qaytganingizdan xursandmiz,",

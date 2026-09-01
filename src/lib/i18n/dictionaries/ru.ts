@@ -124,6 +124,7 @@ const ru = {
     noMocksYet: "Этой группе пока не назначили ни одного Mock-теста.",
     durationTemplate: "{duration} мин",
     notTakenYet: "Ещё не пройден",
+    resultsPendingLabel: "Ожидайте результат",
   },
   teacherDashboard: {
     welcomeBack: "С возвращением,",

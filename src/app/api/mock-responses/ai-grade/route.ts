@@ -4,6 +4,7 @@ import { GoogleGenAI } from "@google/genai";
 import { createRouteHandlerClient, supabaseServer } from "@/lib/supabase/server";
 import { ESSAY_GRADING_JSON_SCHEMA, EssayGradingResultSchema } from "@/lib/essay-grading-schema";
 import { buildEssayGradingPrompt, ESSAY_GRADING_SYSTEM_PROMPT } from "@/lib/essay-grading-prompt";
+import { getGeminiThinkingConfig } from "@/lib/gemini-config";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -92,6 +93,7 @@ export async function POST(req: NextRequest) {
           responseSchema: ESSAY_GRADING_JSON_SCHEMA,
           temperature: 0.2,
           maxOutputTokens: 1024,
+          thinkingConfig: getGeminiThinkingConfig(),
         },
       });
       const verdict = parseGeminiVerdict(response.text || "");

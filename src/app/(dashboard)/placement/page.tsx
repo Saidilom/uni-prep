@@ -64,29 +64,38 @@ export default function PlacementPage() {
     // up leads straight to "Начать" with no admin step in between.
     const ensureActiveAssignment = useCallback(async () => {
         if (!user) return;
-        const { data: activeTest } = await supabase
+        // More than one placement_tests row can be is_active=true (admin no
+        // longer has a single-active constraint) — pick the most recently
+        // activated one deterministically instead of .maybeSingle(), which
+        // would silently error out (and skip self-assignment entirely) the
+        // moment a second test gets activated.
+        const { data: activeTests } = await supabase
             .from("placement_tests")
             .select("id, title")
             .eq("is_active", true)
-            .maybeSingle();
+            .order("created_at", { ascending: false })
+            .limit(1);
+        const activeTest = activeTests?.[0];
         if (!activeTest) return;
 
-        const { data: existing } = await supabase
-            .from("placement_assignments")
-            .select("id")
-            .eq("user_id", user.id)
-            .eq("test_id", activeTest.id)
-            .maybeSingle();
-        if (existing) return;
-
-        await supabase.from("placement_assignments").insert({
-            id: crypto.randomUUID(),
-            user_id: user.id,
-            test_id: activeTest.id,
-            test_title: activeTest.title,
-            status: "assigned",
-            assigned_by: user.id,
-        });
+        // A plain SELECT-then-INSERT here used to race — two near-simultaneous
+        // calls (e.g. React's dev-mode double effect invocation, or just two
+        // tabs) could both see "not assigned yet" and both insert, and once a
+        // duplicate existed .maybeSingle() found "more than one row" and read
+        // that the same as "none", so every later visit added yet another
+        // duplicate forever. The unique (user_id, test_id) constraint plus
+        // an upsert makes this atomic and idempotent instead.
+        await supabase.from("placement_assignments").upsert(
+            {
+                id: crypto.randomUUID(),
+                user_id: user.id,
+                test_id: activeTest.id,
+                test_title: activeTest.title,
+                status: "assigned",
+                assigned_by: user.id,
+            },
+            { onConflict: "user_id,test_id", ignoreDuplicates: true }
+        );
     }, [user]);
 
     const load = useCallback(async () => {

@@ -48,6 +48,14 @@ export const ImportedQuestionSchema = z.object({
   groupKey: z.string().nullable(),
   sharedStimulus: z.string().nullable(),
   sourcePage: z.number().int().min(1),
+  // Which of the (possibly several) uploaded test-part PDFs sourcePage refers
+  // to, 0-based in the order the files were given to Gemini — a mock built
+  // from e.g. separate Reading/Writing/Listening papers needs this to know
+  // which PDF to open, not just which page within "the" PDF (there is no
+  // longer a single one). Required like every other field here so Gemini
+  // always fills it in (0 for the common single-test-file case) rather than
+  // this becoming yet another field the model can decide to omit.
+  sourceFileIndex: z.number().int().min(0),
   needsSourceImage: z.boolean(),
   requiresManualReview: z.boolean(),
   confidence: z.number().min(0).max(1),
@@ -92,7 +100,10 @@ export const IMPORTED_MOCK_JSON_SCHEMA = z.toJSONSchema(ImportedMockSchema, { ta
 
 export type MockImportResponse = {
   importId: string;
-  sourcePdfPath: string;
+  // All uploaded test-part PDF paths, in the order given to Gemini —
+  // question.sourceFileIndex indexes into this array. previewUrl only ever
+  // shows sourcePdfPaths[0] (the review screen has one preview pane).
+  sourcePdfPaths: string[];
   previewUrl: string;
   model: string;
   inputTokens: number;
@@ -104,7 +115,12 @@ export function countResponseItems(draft: ImportedMock): number {
   return draft.sections.reduce((sum, section) => sum + section.questions.length, 0);
 }
 
-export function getPublicationIssues(draft: ImportedMock): string[] {
+// Essay/manual-review questions require a teacher or admin to actually read
+// and grade the student's free-form answer (or pay for AI grading) — a free
+// mock a teacher hands out to their own class shouldn't carry that ongoing
+// grading burden, so those question types are reserved for paid (admin)
+// mocks only.
+export function getPublicationIssues(draft: ImportedMock, mode: "admin" | "teacher" = "admin"): string[] {
   const issues: string[] = [];
   if (!draft.title.trim()) issues.push("Укажите название теста");
   if (draft.sections.length === 0) issues.push("В тесте нет разделов");
@@ -130,6 +146,9 @@ export function getPublicationIssues(draft: ImportedMock): string[] {
         if (autoTextType && question.acceptedAnswers.length === 0) {
           issues.push(`Задание ${label}: не указан допустимый ответ`);
         }
+      }
+      if (mode === "teacher" && (question.type === "essay" || question.requiresManualReview)) {
+        issues.push(`Задание ${label}: эссе и вопросы с ручной проверкой доступны только в платных Mock-тестах`);
       }
     });
   });

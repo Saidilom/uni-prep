@@ -55,6 +55,7 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.pathname === "/join";
 
   const isAdminPage = request.nextUrl.pathname.startsWith("/admin");
+  const isStaffPage = request.nextUrl.pathname.startsWith("/staff");
 
   if (!user && !isAuthPage && request.nextUrl.pathname !== "/") {
     const target = resolveRedirectTarget(request);
@@ -68,7 +69,7 @@ export async function middleware(request: NextRequest) {
   // Only worth the extra DB round-trip when the role actually gates
   // something (auth pages / admin routes) — every other navigation used to
   // pay for this query and throw the result away.
-  if (user && (isAuthPage || isAdminPage)) {
+  if (user && (isAuthPage || isAdminPage || isStaffPage)) {
     const { data: profile } = await supabase
       .from("users")
       .select("role")
@@ -82,6 +83,10 @@ export async function middleware(request: NextRequest) {
     }
 
     if (isAdminPage && profile?.role !== "admin") {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
+
+    if (isStaffPage && profile?.role !== "staff") {
       return NextResponse.redirect(new URL("/", request.url));
     }
   }

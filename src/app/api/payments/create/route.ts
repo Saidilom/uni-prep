@@ -53,25 +53,13 @@ export async function POST(req: NextRequest) {
         .eq("mock_test_id", mockTestId)
         .maybeSingle();
 
-    const { data: pendingPayment } = await supabaseServer
-        .from("payments")
-        .select("id")
-        .eq("user_id", user.id)
-        .eq("mock_test_id", mockTestId)
-        .eq("status", "pending")
-        .maybeSingle();
-
     const decision = evaluatePaymentCreation({
         testType: test.type,
         hasExistingAccess: !!existingAccess,
-        pendingPaymentId: pendingPayment?.id ?? null,
     });
 
     if (decision.action === "reject") {
         return NextResponse.json({ error: decision.reason }, { status: 400 });
-    }
-    if (decision.action === "reuse_pending") {
-        return NextResponse.json({ paymentId: decision.paymentId, ...buildCheckoutUrls(req, decision.paymentId, test.price) });
     }
 
     const { data: profile } = await supabaseServer
@@ -80,23 +68,23 @@ export async function POST(req: NextRequest) {
         .eq("id", user.id)
         .single();
 
-    const paymentId = crypto.randomUUID();
-    const { error: insertError } = await supabaseServer.from("payments").insert({
-        id: paymentId,
-        user_id: user.id,
-        user_name: `${profile?.name || ""} ${profile?.surname || ""}`.trim() || "Ученик",
-        user_phone: profile?.phone || "",
-        mock_test_id: test.id,
-        mock_test_title: test.title,
-        amount: test.price,
-        currency: "UZS",
-        status: "pending",
-        // Real provider ("payme"/"click") is only known once the matching
-        // webhook claims this order — see /api/payments/payme and /click.
-        provider: "pending",
+    // Atomic get-or-create — a plain SELECT-then-INSERT here previously let
+    // two near-simultaneous "Оплатить" clicks (double-click, two open tabs)
+    // both see "no pending payment yet" and both create one, minting two
+    // live checkout sessions for the same purchase. This RPC does the
+    // equivalent of INSERT ... ON CONFLICT (user_id, mock_test_id) WHERE
+    // status='pending' ... RETURNING inside the database itself, so there
+    // is no window where two requests can both "win".
+    const { data: paymentId, error: paymentError } = await supabaseServer.rpc("get_or_create_pending_payment", {
+        p_user_id: user.id,
+        p_user_name: `${profile?.name || ""} ${profile?.surname || ""}`.trim() || "Ученик",
+        p_user_phone: profile?.phone || "",
+        p_mock_test_id: test.id,
+        p_mock_test_title: test.title,
+        p_amount: test.price,
     });
 
-    if (insertError) {
+    if (paymentError || !paymentId) {
         return NextResponse.json({ error: "Не удалось создать платёж" }, { status: 500 });
     }
 

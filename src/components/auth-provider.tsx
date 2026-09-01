@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import supabase from "@/lib/supabase/client";
 import { useAuthStore } from "../store/useAuthStore";
 import { getUserProfile } from "../lib/auth-utils";
+import { pageCache } from "@/lib/page-cache";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useLocale } from "@/lib/i18n/locale-provider";
 import { isLocale } from "@/lib/i18n/config";
@@ -22,6 +23,18 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 // a single 500ms retry. Retrying several times with backoff covers that
 // cold-start window instead of permanently giving up on one bad attempt.
 async function fetchProfileWithRetry(userId: string) {
+    // getUserProfile is wrapped in pageCache (5 min TTL, survives client-side
+    // navigation) — great for avoiding redundant fetches while browsing, but
+    // wrong here: this runs on every auth-state-change event (a real sign-in,
+    // a tab regaining a session, a token refresh), which is exactly when a
+    // role/permission change made elsewhere (e.g. an admin promoting this
+    // user in a different tab/session) needs to actually take effect. Without
+    // this, a user already signed in when their role changes keeps seeing
+    // their old role/permissions until the in-memory cache happens to expire
+    // or they hard-refresh — confirmed as a real, confusing bug: promoting an
+    // account to a new role and switching to it in the same browser session
+    // still showed the old role.
+    pageCache.invalidate(`userProfile:${userId}`);
     const delaysMs = [0, 600, 1500, 3000];
     let lastError: unknown;
     for (const delay of delaysMs) {

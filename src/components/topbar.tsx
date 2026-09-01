@@ -32,10 +32,10 @@ export default function Topbar() {
         { name: t("results"), href: "/results" },
         { name: t("school"), href: "/placement" },
         { name: t("achievements"), href: "/achievements" },
+        { name: t("myClasses"), href: "/classes" },
         { name: t("profile"), href: "/profile" },
     ];
     const TEACHER_PAGES: SearchablePage[] = [
-        { name: t("myClasses"), href: "/classes" },
         { name: t("myTests"), href: "/teacher/mock-tests" },
     ];
     const ADMIN_PAGES: SearchablePage[] = [{ name: t("adminPanel"), href: "/admin" }];
@@ -102,7 +102,7 @@ export default function Topbar() {
     };
 
     const userMenu: MenuItem[] = [
-        { label: t("myClasses"), href: "/classes", icon: GraduationCap, visible: user?.role === "teacher" },
+        { label: t("myClasses"), href: "/classes", icon: GraduationCap, visible: user?.role === "teacher" || user?.role === "student" },
     ].filter((i) => i.visible);
 
     if (!user) return null;

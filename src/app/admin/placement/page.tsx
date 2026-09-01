@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, Check, FileText, Loader2, Sparkles, Star, Trash2, X } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, Check, FileText, ListChecks, Loader2, Sparkles, Star, Trash2, X } from "lucide-react";
 import supabase from "@/lib/supabase/client";
 import { useToast } from "@/hooks/useToast";
 import { getPlacementPublicationIssues, ImportedPlacementQuestion, ImportedPlacementTest } from "@/lib/placement-import-schema";
@@ -13,16 +14,23 @@ type TestRow = {
     time_limit_minutes: number | null;
     is_active: boolean;
     question_count: number;
+    results_count: number;
 };
+
+// Same reasoning as mock-test-studio.tsx's MAX_TEST_FILES — a placement test
+// can also be assembled from several separate paper PDFs.
+const MAX_TEST_FILES = 4;
 
 export default function AdminPlacementPage() {
     const toast = useToast();
     const t = useTranslations("adminPlacement");
     const inputRef = useRef<HTMLInputElement>(null);
+    const answersInputRef = useRef<HTMLInputElement>(null);
     const [tests, setTests] = useState<TestRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [dragging, setDragging] = useState(false);
-    const [pendingFile, setPendingFile] = useState<File | null>(null);
+    const [pendingTests, setPendingTests] = useState<File[]>([]);
+    const [pendingAnswers, setPendingAnswers] = useState<File | null>(null);
     const [importing, setImporting] = useState(false);
     const [draft, setDraft] = useState<ImportedPlacementTest | null>(null);
     const [publishing, setPublishing] = useState(false);
@@ -35,60 +43,91 @@ export default function AdminPlacementPage() {
             .from("placement_tests")
             .select("id, title, time_limit_minutes, is_active")
             .order("created_at", { ascending: false });
-        const list = (rows || []) as Omit<TestRow, "question_count">[];
-        const counts = await Promise.all(
-            list.map((t) => supabase.from("placement_questions").select("id", { count: "exact", head: true }).eq("test_id", t.id)),
-        );
-        setTests(list.map((t, i) => ({ ...t, question_count: counts[i].count ?? 0 })));
+        const list = (rows || []) as Omit<TestRow, "question_count" | "results_count">[];
+        const [counts, resultCounts] = await Promise.all([
+            Promise.all(list.map((t) => supabase.from("placement_questions").select("id", { count: "exact", head: true }).eq("test_id", t.id))),
+            Promise.all(list.map((t) => supabase.from("placement_results").select("id", { count: "exact", head: true }).eq("test_id", t.id))),
+        ]);
+        setTests(list.map((t, i) => ({ ...t, question_count: counts[i].count ?? 0, results_count: resultCounts[i].count ?? 0 })));
         setLoading(false);
     }, []);
 
     useEffect(() => { loadTests(); }, [loadTests]);
 
-    const selectFile = (file: File | undefined) => {
+    const addTestFiles = (fileList: FileList | File[] | null | undefined) => {
+        if (!fileList) return;
+        const incoming = Array.from(fileList);
+        if (incoming.some((file) => !file.name.toLowerCase().endsWith(".pdf"))) {
+            toast.error(t("needPdfFile"));
+            return;
+        }
+        setPendingTests((current) => {
+            const merged = [...current, ...incoming];
+            if (merged.length > MAX_TEST_FILES) {
+                toast.error(t("tooManyTestFiles").replace("{max}", String(MAX_TEST_FILES)));
+                return merged.slice(0, MAX_TEST_FILES);
+            }
+            return merged;
+        });
+    };
+
+    const removeTestFile = (index: number) => {
+        setPendingTests((current) => current.filter((_, i) => i !== index));
+    };
+
+    const selectAnswers = (file: File | undefined) => {
         if (!file) return;
         if (!file.name.toLowerCase().endsWith(".pdf")) {
             toast.error(t("needPdfFile"));
             return;
         }
-        setPendingFile(file);
+        setPendingAnswers(file);
+    };
+
+    const uploadStoredFile = async (file: File, importId: string | undefined, kind: "test" | "answers") => {
+        const uploadInit = await fetch("/api/mock-tests/import/upload-url", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ filename: file.name, size: file.size, importId, kind }),
+        });
+        const uploadData = await uploadInit.json();
+        if (!uploadInit.ok) throw new Error(uploadData.error || t("prepareUploadFailed"));
+        const { error: directUploadError } = await supabase.storage
+            .from("test-imports")
+            .uploadToSignedUrl(uploadData.path, uploadData.token, file, { contentType: "application/pdf" });
+        if (directUploadError) throw directUploadError;
+        return { importId: uploadData.importId as string, path: uploadData.path as string, filename: file.name, size: file.size };
     };
 
     const runImport = async () => {
-        if (!pendingFile) return;
+        if (pendingTests.length === 0) return;
         setImporting(true);
         setPublishIssues([]);
         try {
-            const uploadInit = await fetch("/api/mock-tests/import/upload-url", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ filename: pendingFile.name, size: pendingFile.size, kind: "test" }),
-            });
-            const uploadData = await uploadInit.json();
-            if (!uploadInit.ok) throw new Error(uploadData.error || t("prepareUploadFailed"));
-            const { error: directUploadError } = await supabase.storage
-                .from("test-imports")
-                .uploadToSignedUrl(uploadData.path, uploadData.token, pendingFile, { contentType: "application/pdf" });
-            if (directUploadError) throw directUploadError;
+            const firstTestFile = await uploadStoredFile(pendingTests[0], undefined, "test");
+            const restTestFiles = await Promise.all(
+                pendingTests.slice(1).map((file) => uploadStoredFile(file, firstTestFile.importId, "test")),
+            );
+            const testFiles = [firstTestFile, ...restTestFiles];
+            const answersFile = pendingAnswers ? await uploadStoredFile(pendingAnswers, firstTestFile.importId, "answers") : undefined;
 
             const response = await fetch("/api/placement/import", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    importId: uploadData.importId,
-                    testFile: { path: uploadData.path, filename: pendingFile.name, size: pendingFile.size },
-                }),
+                body: JSON.stringify({ importId: firstTestFile.importId, testFiles, answersFile }),
             });
             const body = await response.json();
             if (!response.ok) throw new Error(body.error || t("importErrorGeneric"));
             setDraft(body.draft as ImportedPlacementTest);
-            setPendingFile(null);
+            setPendingTests([]);
+            setPendingAnswers(null);
             toast.success(t("pdfRecognizedToast"), { description: t("reviewBeforePublishToast") });
         } catch (error) {
             toast.error(t("geminiFailedToast"), { description: error instanceof Error ? error.message : String(error) });
         } finally {
             setImporting(false);
             if (inputRef.current) inputRef.current.value = "";
+            if (answersInputRef.current) answersInputRef.current.value = "";
         }
     };
 
@@ -153,6 +192,20 @@ export default function AdminPlacementPage() {
             await loadTests();
         } catch (error) {
             toast.error(t("activateFailedToast"), { description: error instanceof Error ? error.message : String(error) });
+        } finally {
+            setActivating(null);
+        }
+    };
+
+    const deactivate = async (testId: string) => {
+        setActivating(testId);
+        try {
+            const { error } = await supabase.rpc("deactivate_placement_test", { p_test_id: testId });
+            if (error) throw error;
+            toast.success(t("deactivatedToast"));
+            await loadTests();
+        } catch (error) {
+            toast.error(t("deactivateFailedToast"), { description: error instanceof Error ? error.message : String(error) });
         } finally {
             setActivating(null);
         }
@@ -262,28 +315,60 @@ export default function AdminPlacementPage() {
                 </p>
             </section>
 
-            {!pendingFile ? (
+            {pendingTests.length === 0 ? (
                 <button
                     onClick={() => inputRef.current?.click()}
                     onDragEnter={(e) => { e.preventDefault(); setDragging(true); }}
                     onDragOver={(e) => e.preventDefault()}
                     onDragLeave={() => setDragging(false)}
-                    onDrop={(e) => { e.preventDefault(); setDragging(false); selectFile(e.dataTransfer.files?.[0]); }}
+                    onDrop={(e) => { e.preventDefault(); setDragging(false); addTestFiles(e.dataTransfer.files); }}
                     className={`group flex w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-10 text-center transition ${dragging ? "border-blue-500 bg-blue-50 dark:bg-blue-950/20" : "border-border bg-muted/30 hover:border-blue-300 hover:bg-blue-50/50 dark:hover:bg-blue-950/10"}`}
                 >
                     <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-600 text-white shadow-sm"><FileText size={22} /></span>
                     <span className="mt-4 font-bold">{t("dropPdfHere")}</span>
                     <span className="mt-1 text-sm text-muted-foreground">{t("upTo32mb")}</span>
+                    <span className="mt-1 text-xs text-muted-foreground">{t("multiPartHint").replace("{max}", String(MAX_TEST_FILES))}</span>
                 </button>
             ) : (
                 <div className="rounded-2xl border-2 border-dashed border-blue-300 bg-blue-50/50 p-6 dark:bg-blue-950/10">
-                    <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
-                        <div className="flex min-w-0 items-center gap-3">
-                            <FileText size={18} className="shrink-0 text-blue-600" />
-                            <p className="truncate text-sm font-semibold">{pendingFile.name}</p>
-                        </div>
-                        <button onClick={() => setPendingFile(null)} disabled={importing} className="shrink-0 rounded-lg p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-50"><X size={16} /></button>
+                    <div className="space-y-2">
+                        {pendingTests.map((file, index) => (
+                            <div key={`${file.name}-${index}`} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
+                                <div className="flex min-w-0 items-center gap-3">
+                                    <FileText size={18} className="shrink-0 text-blue-600" />
+                                    <div className="min-w-0">
+                                        <p className="truncate text-sm font-semibold">{file.name}</p>
+                                        {pendingTests.length > 1 && <p className="text-xs text-muted-foreground">{t("testPartNote").replace("{number}", String(index + 1))}</p>}
+                                    </div>
+                                </div>
+                                <button onClick={() => removeTestFile(index)} disabled={importing} className="shrink-0 rounded-lg p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-50"><X size={16} /></button>
+                            </div>
+                        ))}
                     </div>
+
+                    {pendingTests.length < MAX_TEST_FILES && (
+                        <button onClick={() => inputRef.current?.click()} disabled={importing} className="mt-3 w-full rounded-xl border border-dashed border-border px-4 py-3 text-sm font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50">
+                            {t("addAnotherTestPart")}
+                        </button>
+                    )}
+
+                    {pendingAnswers ? (
+                        <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
+                            <div className="flex min-w-0 items-center gap-3">
+                                <FileText size={18} className="shrink-0 text-emerald-600" />
+                                <div className="min-w-0">
+                                    <p className="truncate text-sm font-semibold">{pendingAnswers.name}</p>
+                                    <p className="text-xs text-muted-foreground">{t("answersFileNote")}</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setPendingAnswers(null)} disabled={importing} className="shrink-0 rounded-lg p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-50"><X size={16} /></button>
+                        </div>
+                    ) : (
+                        <button onClick={() => answersInputRef.current?.click()} disabled={importing} className="mt-3 w-full rounded-xl border border-dashed border-border px-4 py-3 text-sm font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50">
+                            {t("addAnswersFile")}
+                        </button>
+                    )}
+
                     <div className="mt-5 flex items-center gap-3">
                         <button onClick={runImport} disabled={importing} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-60">
                             {importing ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
@@ -293,7 +378,8 @@ export default function AdminPlacementPage() {
                     {importing && <p className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-blue-600"><Loader2 size={16} className="animate-spin" /> {t("mayTakeAMinute")}</p>}
                 </div>
             )}
-            <input ref={inputRef} type="file" accept="application/pdf,.pdf" hidden onChange={(e) => selectFile(e.target.files?.[0])} />
+            <input ref={inputRef} type="file" accept="application/pdf,.pdf" multiple hidden onChange={(e) => { addTestFiles(e.target.files); e.target.value = ""; }} />
+            <input ref={answersInputRef} type="file" accept="application/pdf,.pdf" hidden onChange={(e) => selectAnswers(e.target.files?.[0])} />
 
             <section>
                 <h2 className="mb-3 text-lg font-bold text-[hsl(var(--brand-blue-ink))]">{t("testsListTitle")}</h2>
@@ -315,7 +401,17 @@ export default function AdminPlacementPage() {
                                     <p className="mt-0.5 text-xs text-muted-foreground">{t("statsLineTemplate").replace("{count}", String(test.question_count)).replace("{minutes}", String(test.time_limit_minutes ?? "—"))}</p>
                                 </div>
                                 <div className="flex shrink-0 items-center gap-2">
-                                    {!test.is_active && (
+                                    <Link
+                                        href={`/admin/placement/results?test=${test.id}`}
+                                        className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-xs font-bold text-muted-foreground transition-colors hover:bg-muted"
+                                    >
+                                        <ListChecks size={14} /> {t("viewResults").replace("{count}", String(test.results_count))}
+                                    </Link>
+                                    {test.is_active ? (
+                                        <button onClick={() => deactivate(test.id)} disabled={activating === test.id} className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-xs font-bold text-muted-foreground hover:bg-muted disabled:opacity-50">
+                                            {activating === test.id ? t("activatingEllipsis") : t("makeInactive")}
+                                        </button>
+                                    ) : (
                                         <button onClick={() => activate(test.id)} disabled={activating === test.id} className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground hover:opacity-90 disabled:opacity-50">
                                             {activating === test.id ? t("activatingEllipsis") : t("makeActive")}
                                         </button>

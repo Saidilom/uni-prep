@@ -32,10 +32,11 @@ function Sidebar() {
     if (!user) return null;
 
     const isTeacher = user.role === "teacher";
+    const isStudent = user.role === "student";
     const isAdmin = user.role === "admin";
     const links = [
         { name: t("home"), href: "/", icon: LayoutDashboard },
-        ...(isTeacher ? [{ name: t("myClasses"), href: "/classes", icon: GraduationCap }] : []),
+        ...(isTeacher || isStudent ? [{ name: t("myClasses"), href: "/classes", icon: GraduationCap }] : []),
         ...(isTeacher ? [{ name: t("myTests"), href: "/teacher/mock-tests", icon: FileText }] : []),
         { name: t("mockTests"), href: "/mock", icon: FileText },
         { name: t("results"), href: "/results", icon: BarChart3 },

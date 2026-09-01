@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Copy, Check, ArrowRight, Lock, Play, Calendar, Trophy, CheckCircle2, ClipboardList, GraduationCap, Crown } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
@@ -16,6 +17,7 @@ type ResultRow = MockResultRow;
 
 export default function HomePage() {
     const { user } = useAuthStore();
+    const router = useRouter();
     const { locale } = useLocale();
     const t = useTranslations("home");
     const [copied, setCopied] = useState(false);
@@ -50,6 +52,14 @@ export default function HomePage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [user]);
 
+    // A "staff" account only ever uses the isolated /staff panel (see
+    // src/app/staff/layout.tsx) — this dashboard's home view has nothing
+    // relevant to show them (it only special-cases teacher below, everyone
+    // else falls into the student view, which would be wrong for staff).
+    useEffect(() => {
+        if (user?.role === "staff") router.push("/staff");
+    }, [user, router]);
+
     const copyStudentId = () => {
         if (!user) return;
         navigator.clipboard.writeText(user.shortId || user.id);
@@ -82,6 +92,7 @@ export default function HomePage() {
 
     if (!user) return <LandingView />;
     if (user.role === "teacher") return <TeacherHome />;
+    if (user.role === "staff") return null;
 
     return (
         <div className="flex flex-col gap-10 py-4 animate-in fade-in slide-in-from-bottom-4 duration-700">

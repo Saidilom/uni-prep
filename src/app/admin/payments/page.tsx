@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Search, CreditCard, Wallet } from "lucide-react";
+import { Search, CreditCard, Wallet, ChevronDown, List, LayoutGrid } from "lucide-react";
 import supabase from "@/lib/supabase/client";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
@@ -9,6 +9,7 @@ type PaymentRow = {
     id: string;
     user_name: string;
     user_phone: string;
+    mock_test_id: string | null;
     mock_test_title: string;
     amount: number;
     currency: string;
@@ -19,6 +20,7 @@ type PaymentRow = {
 };
 
 type StatusFilter = "all" | "pending" | "success" | "failed";
+type ViewMode = "list" | "byMock";
 
 export default function AdminPaymentsPage() {
     const [payments, setPayments] = useState<PaymentRow[]>([]);
@@ -30,6 +32,8 @@ export default function AdminPaymentsPage() {
     const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
     const [dateFrom, setDateFrom] = useState("");
     const [dateTo, setDateTo] = useState("");
+    const [view, setView] = useState<ViewMode>("list");
+    const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
     const load = async () => {
         setLoading(true);
@@ -55,6 +59,33 @@ export default function AdminPaymentsPage() {
     }, [payments, search, statusFilter, dateFrom, dateTo]);
 
     const totalAmount = filtered.reduce((sum, p) => sum + (p.status === "success" ? p.amount : 0), 0);
+
+    const mockGroups = useMemo(() => {
+        const groups = new Map<string, { key: string; title: string; payments: PaymentRow[]; revenue: number; successCount: number }>();
+        for (const p of filtered) {
+            const key = p.mock_test_id ?? `title:${p.mock_test_title}`;
+            let group = groups.get(key);
+            if (!group) {
+                group = { key, title: p.mock_test_title, payments: [], revenue: 0, successCount: 0 };
+                groups.set(key, group);
+            }
+            group.payments.push(p);
+            if (p.status === "success") {
+                group.revenue += p.amount;
+                group.successCount += 1;
+            }
+        }
+        return Array.from(groups.values()).sort((a, b) => b.revenue - a.revenue);
+    }, [filtered]);
+
+    const toggleExpanded = (key: string) => {
+        setExpanded((current) => {
+            const next = new Set(current);
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
+            return next;
+        });
+    };
 
     return (
         <div className="flex flex-col gap-10">
@@ -127,6 +158,20 @@ export default function AdminPaymentsPage() {
                         {t("reset")}
                     </button>
                 )}
+                <div className="flex items-center gap-1 rounded-2xl border border-border bg-background p-1 sm:ml-auto">
+                    <button
+                        onClick={() => setView("list")}
+                        className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-semibold transition-colors ${view === "list" ? "bg-[hsl(var(--brand-blue-ink))] text-white" : "text-muted-foreground hover:bg-muted"}`}
+                    >
+                        <List size={15} /> {t("viewList")}
+                    </button>
+                    <button
+                        onClick={() => setView("byMock")}
+                        className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-semibold transition-colors ${view === "byMock" ? "bg-[hsl(var(--brand-blue-ink))] text-white" : "text-muted-foreground hover:bg-muted"}`}
+                    >
+                        <LayoutGrid size={15} /> {t("viewByMock")}
+                    </button>
+                </div>
             </section>
 
             <section>
@@ -140,7 +185,7 @@ export default function AdminPaymentsPage() {
                     <div className="rounded-2xl border border-border bg-muted/50 py-10 text-center dark:bg-muted/30">
                         <p className="font-medium text-muted-foreground">{payments.length === 0 ? t("noPaymentsYet") : t("noResultsForFilter")}</p>
                     </div>
-                ) : (
+                ) : view === "list" ? (
                     <div className="space-y-3">
                         {filtered.map((p) => (
                             <div key={p.id} className="flex flex-col justify-between gap-4 rounded-2xl border border-border bg-card p-5 transition-all hover:bg-muted/40 sm:flex-row sm:items-center">
@@ -159,6 +204,47 @@ export default function AdminPaymentsPage() {
                                 </div>
                             </div>
                         ))}
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        {mockGroups.map((group) => {
+                            const isOpen = expanded.has(group.key);
+                            return (
+                                <div key={group.key} className="overflow-hidden rounded-2xl border border-border bg-card">
+                                    <button
+                                        onClick={() => toggleExpanded(group.key)}
+                                        className="flex w-full flex-col justify-between gap-3 p-5 text-left transition-colors hover:bg-muted/40 sm:flex-row sm:items-center"
+                                    >
+                                        <div className="min-w-0">
+                                            <p className="truncate font-semibold text-foreground">{group.title}</p>
+                                            <p className="mt-0.5 text-xs text-muted-foreground">{t("paymentsCountLabel").replace("{count}", String(group.payments.length))}</p>
+                                        </div>
+                                        <div className="flex items-center gap-4">
+                                            <p className="text-lg font-bold tabular-nums text-foreground">{group.revenue.toLocaleString()} <span className="text-xs font-semibold text-muted-foreground">UZS</span></p>
+                                            <ChevronDown size={18} className={`shrink-0 text-muted-foreground transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                                        </div>
+                                    </button>
+                                    {isOpen && (
+                                        <div className="space-y-2 border-t border-border bg-muted/20 p-4">
+                                            {group.payments.map((p) => (
+                                                <div key={p.id} className="flex flex-col justify-between gap-2 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center">
+                                                    <div className="min-w-0">
+                                                        <p className="truncate text-sm font-semibold text-foreground">{p.user_name} {p.user_phone}</p>
+                                                        <p className="mt-0.5 text-xs text-muted-foreground">{new Date(p.created_at).toLocaleString(locale === "ru" ? "ru-RU" : "uz-UZ")}</p>
+                                                    </div>
+                                                    <div className="flex items-center gap-3">
+                                                        <p className="text-sm font-bold tabular-nums text-foreground">{p.amount.toLocaleString()} {p.currency}</p>
+                                                        <span className={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${p.status === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40" : p.status === "failed" ? "border-red-200 bg-red-50 text-red-700 dark:bg-red-950/40" : "border-border bg-muted text-muted-foreground"}`}>
+                                                            {p.status === "success" ? t("statusSuccess") : p.status === "failed" ? t("statusFailed") : t("statusPending")}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
                 )}
             </section>

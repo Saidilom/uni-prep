@@ -29,6 +29,7 @@ const baseDraft: ImportedMock = {
       groupKey: null,
       sharedStimulus: null,
       sourcePage: 1,
+      sourceFileIndex: 0,
       needsSourceImage: false,
       requiresManualReview: false,
       confidence: 0.99,

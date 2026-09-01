@@ -1,34 +1,59 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Trophy, Calendar, Clock } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { fetchUserMockResults, MockResultRow } from "@/lib/registan-utils";
 import { accuracyColor } from "@/lib/status-colors";
+import { areMockResultsPending } from "@/lib/mock-schedule";
+import supabase from "@/lib/supabase/client";
 import TeacherResultsExplorer from "@/components/teacher-results-explorer";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 type ResultRow = MockResultRow;
+type MockSchedule = { price: number; resultsPublishAt: string | null };
 
 export default function ResultsPage() {
     const { user } = useAuthStore();
     const { locale } = useLocale();
     const t = useTranslations("results");
     const [results, setResults] = useState<ResultRow[]>([]);
+    const [scheduleByTest, setScheduleByTest] = useState<Record<string, MockSchedule>>({});
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         if (!user || user.role === "teacher") return;
         (async () => {
             setLoading(true);
-            setResults(await fetchUserMockResults(user.id));
+            const rows = await fetchUserMockResults(user.id);
+            setResults(rows);
+
+            const testIds = Array.from(new Set(rows.map((r) => r.mock_test_id)));
+            if (testIds.length > 0) {
+                const { data: tests } = await supabase.from("mock_tests").select("id, price, results_publish_at").in("id", testIds);
+                const map: Record<string, MockSchedule> = {};
+                (tests || []).forEach((row) => {
+                    map[row.id as string] = { price: (row.price as number) || 0, resultsPublishAt: row.results_publish_at as string | null };
+                });
+                setScheduleByTest(map);
+            } else {
+                setScheduleByTest({});
+            }
             setLoading(false);
         })();
     }, [user]);
 
+    const isPending = (r: ResultRow, schedules: Record<string, MockSchedule>) => {
+        const schedule = schedules[r.mock_test_id];
+        return schedule ? areMockResultsPending({ price: schedule.price, resultsPublishAt: schedule.resultsPublishAt }) : false;
+    };
+
     // `score` is raw points earned (sum of question.points), not a percentage —
     // `accuracy` is the pre-computed correct/total percentage from submit_mock.
-    const avgScore = results.length > 0 ? Math.round(results.reduce((sum, r) => sum + r.accuracy, 0) / results.length) : null;
+    // A result whose mock hasn't reached its announced results date yet is
+    // excluded here too, not just from the per-row display below.
+    const scoredResults = useMemo(() => results.filter((r) => !isPending(r, scheduleByTest)), [results, scheduleByTest]);
+    const avgScore = scoredResults.length > 0 ? Math.round(scoredResults.reduce((sum, r) => sum + r.accuracy, 0) / scoredResults.length) : null;
 
     if (user?.role === "teacher") return <TeacherResultsExplorer />;
 
@@ -67,29 +92,50 @@ export default function ResultsPage() {
                     </div>
                 ) : (
                     <div className="space-y-3">
-                        {results.map((r) => (
-                            <div
-                                key={r.id}
-                                className="flex flex-col justify-between gap-3 rounded-2xl border border-border bg-card p-5 transition-all hover:bg-muted/40 sm:flex-row sm:items-center"
-                            >
-                                <div className="min-w-0">
-                                    <p className="truncate font-semibold text-foreground">{r.mock_test_title}</p>
-                                    <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                                        <span className="flex items-center gap-1">
-                                            <Calendar size={12} />
-                                            {new Date(r.completed_at).toLocaleDateString(locale === "ru" ? "ru-RU" : "uz-UZ", { day: "numeric", month: "long", year: "numeric" })}
-                                        </span>
-                                        <span className="flex items-center gap-1">
-                                            <Clock size={12} />
-                                            {r.correct_answers}/{r.total_questions} {t("correctSuffix")}
-                                        </span>
+                        {results.map((r) => {
+                            const pending = isPending(r, scheduleByTest);
+                            return (
+                                <div
+                                    key={r.id}
+                                    className="flex flex-col justify-between gap-3 rounded-2xl border border-border bg-card p-5 transition-all hover:bg-muted/40 sm:flex-row sm:items-center"
+                                >
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            <p className="truncate font-semibold text-foreground">{r.mock_test_title}</p>
+                                            {!pending && r.grade_level && (
+                                                <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-400">
+                                                    {r.grade_level}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                                            <span className="flex items-center gap-1">
+                                                <Calendar size={12} />
+                                                {new Date(r.completed_at).toLocaleDateString(locale === "ru" ? "ru-RU" : "uz-UZ", { day: "numeric", month: "long", year: "numeric" })}
+                                            </span>
+                                            {!pending && (
+                                                <span className="flex items-center gap-1">
+                                                    <Clock size={12} />
+                                                    {r.correct_answers}/{r.total_questions} {t("correctSuffix")}
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
+                                    {pending ? (
+                                        <span className="shrink-0 self-start rounded-xl border border-border bg-muted px-4 py-2 text-xs font-semibold text-muted-foreground sm:self-auto">
+                                            {t("resultsPendingLabel")}
+                                        </span>
+                                    ) : (
+                                        <div className="flex shrink-0 flex-col items-end gap-0.5 self-start sm:self-auto">
+                                            <span className={`rounded-xl px-4 py-2 text-sm font-extrabold tabular-nums ${accuracyColor(r.accuracy)}`}>
+                                                {r.score}/{r.max_score}
+                                            </span>
+                                            <span className="text-[11px] font-semibold text-muted-foreground">{r.accuracy}%</span>
+                                        </div>
+                                    )}
                                 </div>
-                                <span className={`shrink-0 self-start rounded-xl px-4 py-2 text-sm font-extrabold tabular-nums sm:self-auto ${accuracyColor(r.accuracy)}`}>
-                                    {r.accuracy}%
-                                </span>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
             </section>

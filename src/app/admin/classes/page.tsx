@@ -1,22 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Users, User as UserIcon, GraduationCap } from "lucide-react";
-import supabase from "@/lib/supabase/client";
+import Link from "next/link";
+import { Users, User as UserIcon, GraduationCap, ChevronRight } from "lucide-react";
+import { fetchAdminClassesOverview, AdminClassSummary } from "@/lib/class-utils";
+import { accuracyColor } from "@/lib/status-colors";
 import { pluralizeRu } from "@/lib/pluralize-ru";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
-type ClassRow = {
-    id: string;
-    name: string;
-    teacher_id: string;
-    created_at: string;
-    teacherName: string;
-    memberCount: number;
-};
-
 export default function AdminClassesPage() {
-    const [classes, setClasses] = useState<ClassRow[]>([]);
+    const [classes, setClasses] = useState<AdminClassSummary[]>([]);
     const [loading, setLoading] = useState(true);
     const { locale } = useLocale();
     const t = useTranslations("adminClasses");
@@ -24,22 +17,7 @@ export default function AdminClassesPage() {
     useEffect(() => {
         (async () => {
             setLoading(true);
-            const { data: rows } = await supabase.from("classes").select("*").order("created_at", { ascending: false });
-            const classRows = (rows ?? []) as ClassRow[];
-            if (classRows.length > 0) {
-                const [{ data: teachers }, { data: members }] = await Promise.all([
-                    supabase.from("users").select("id, name, surname").in("id", classRows.map((c) => c.teacher_id)),
-                    supabase.from("class_members").select("class_id").in("class_id", classRows.map((c) => c.id)),
-                ]);
-                const teacherMap = new Map((teachers || []).map((t) => [t.id, `${t.name} ${t.surname || ""}`.trim()]));
-                const counts = new Map<string, number>();
-                (members || []).forEach((m) => counts.set(m.class_id, (counts.get(m.class_id) || 0) + 1));
-                classRows.forEach((c) => {
-                    c.teacherName = teacherMap.get(c.teacher_id) || "—";
-                    c.memberCount = counts.get(c.id) || 0;
-                });
-            }
-            setClasses(classRows);
+            setClasses(await fetchAdminClassesOverview());
             setLoading(false);
         })();
     }, []);
@@ -69,7 +47,11 @@ export default function AdminClassesPage() {
                 ) : (
                     <div className="space-y-3">
                         {classes.map((c) => (
-                            <div key={c.id} className="flex flex-col justify-between gap-3 rounded-2xl border border-border bg-card p-5 sm:flex-row sm:items-center">
+                            <Link
+                                key={c.id}
+                                href={`/admin/classes/${c.id}`}
+                                className="flex flex-col justify-between gap-3 rounded-2xl border border-border bg-card p-5 transition-colors hover:bg-muted/40 sm:flex-row sm:items-center"
+                            >
                                 <div className="flex min-w-0 items-center gap-4">
                                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[hsl(var(--brand-blue-ink))]/10 text-[hsl(var(--brand-blue-ink))]">
                                         <GraduationCap size={18} />
@@ -81,10 +63,16 @@ export default function AdminClassesPage() {
                                         </p>
                                     </div>
                                 </div>
-                                <span className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-xl border border-border bg-muted px-3 py-2 text-xs font-semibold text-muted-foreground sm:self-auto">
-                                    <Users size={13} /> {c.memberCount} {locale === "ru" ? pluralizeRu(c.memberCount, ["ученик", "ученика", "учеников"]) : t("studentWord")}
-                                </span>
-                            </div>
+                                <div className="flex shrink-0 items-center gap-2 self-start sm:self-auto">
+                                    <span className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-muted px-3 py-2 text-xs font-semibold text-muted-foreground">
+                                        <Users size={13} /> {c.memberCount} {locale === "ru" ? pluralizeRu(c.memberCount, ["ученик", "ученика", "учеников"]) : t("studentWord")}
+                                    </span>
+                                    <span className={`rounded-xl px-3 py-2 text-xs font-extrabold tabular-nums ${accuracyColor(c.avgAccuracy)}`}>
+                                        {c.avgAccuracy !== null ? `${c.avgAccuracy}%` : "—"}
+                                    </span>
+                                    <ChevronRight size={16} className="text-muted-foreground" />
+                                </div>
+                            </Link>
                         ))}
                     </div>
                 )}

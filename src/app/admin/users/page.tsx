@@ -7,6 +7,14 @@ import supabase from "@/lib/supabase/client";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 type AdminUser = UserType & { registeredVia?: string; shortid?: string };
+type RoleFilter = "all" | "student" | "teacher" | "staff" | "admin";
+const ROLE_FILTERS: RoleFilter[] = ["all", "student", "teacher", "staff", "admin"];
+const ROLE_FILTER_LABEL_KEYS: Partial<Record<RoleFilter, "roleStudent" | "roleTeacher" | "roleStaff" | "roleAdmin">> = {
+    student: "roleStudent",
+    teacher: "roleTeacher",
+    staff: "roleStaff",
+    admin: "roleAdmin",
+};
 
 const studentId = (u: AdminUser) => u.shortId || u.shortid || "";
 
@@ -19,6 +27,7 @@ const PERMANENT_SUPER_ADMIN_ID = "ed845170-28aa-4d33-b0a1-40a9e8d8af01";
 export default function AdminUsersPage() {
     const [users, setUsers] = useState<AdminUser[]>([]);
     const [search, setSearch] = useState("");
+    const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
     const [loading, setLoading] = useState(true);
     const { locale } = useLocale();
     const t = useTranslations("adminUsers");
@@ -40,17 +49,22 @@ export default function AdminUsersPage() {
         load();
     };
 
-    const setRole = async (u: AdminUser, role: "student" | "teacher" | "admin") => {
+    const setRole = async (u: AdminUser, role: "student" | "teacher" | "admin" | "staff") => {
         if (role === u.role) return;
+        if (role === "admin" && !confirm(t("confirmMakeAdmin").replace("{name}", `${u.name} ${u.surname || ""}`.trim()))) return;
+        if (role === "staff" && !confirm(t("confirmMakeStaff").replace("{name}", `${u.name} ${u.surname || ""}`.trim()))) return;
         await supabase.from("users").update({ role }).eq("id", u.id);
         load();
     };
 
-    const filtered = users.filter((u) =>
-        (u.name + " " + (u.surname || "") + " " + (u.email || "") + " " + (u.phone || "") + " " + studentId(u))
+    const roleCount = (role: RoleFilter) => (role === "all" ? users.length : users.filter((u) => u.role === role).length);
+
+    const filtered = users.filter((u) => {
+        if (roleFilter !== "all" && u.role !== roleFilter) return false;
+        return (u.name + " " + (u.surname || "") + " " + (u.email || "") + " " + (u.phone || "") + " " + studentId(u))
             .toLowerCase()
-            .includes(search.toLowerCase())
-    );
+            .includes(search.toLowerCase());
+    });
 
     return (
         <div className="flex flex-col gap-10">
@@ -67,6 +81,24 @@ export default function AdminUsersPage() {
                         placeholder={t("searchPlaceholder")}
                         className="w-full rounded-2xl border border-border bg-background py-3 pl-4 pr-4 text-foreground placeholder:text-muted-foreground transition-colors focus:border-border focus:outline-none focus:ring-2 focus:ring-ring/25"
                     />
+                </div>
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                    {ROLE_FILTERS.map((role) => (
+                        <button
+                            key={role}
+                            onClick={() => setRoleFilter(role)}
+                            className={`inline-flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-xs font-semibold transition-all ${
+                                roleFilter === role
+                                    ? "border-foreground bg-foreground text-background"
+                                    : "border-border bg-card text-muted-foreground hover:text-foreground"
+                            }`}
+                        >
+                            {ROLE_FILTER_LABEL_KEYS[role] ? t(ROLE_FILTER_LABEL_KEYS[role]) : t("roleFilterAll")}
+                            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${roleFilter === role ? "bg-background/20" : "bg-muted"}`}>
+                                {roleCount(role)}
+                            </span>
+                        </button>
+                    ))}
                 </div>
             </section>
 
@@ -123,10 +155,12 @@ export default function AdminUsersPage() {
                                     ) : (
                                         <select
                                             value={u.role}
-                                            onChange={(e) => setRole(u, e.target.value as "student" | "teacher" | "admin")}
+                                            onChange={(e) => setRole(u, e.target.value as "student" | "teacher" | "admin" | "staff")}
                                             className={`rounded-xl border px-3 py-2 text-xs font-semibold transition-all ${
                                                 u.role === "admin"
                                                     ? "border-amber-200 bg-amber-50 text-amber-700 dark:bg-amber-950/40"
+                                                    : u.role === "staff"
+                                                    ? "border-blue-200 bg-blue-50 text-blue-700 dark:bg-blue-950/40"
                                                     : u.role === "teacher"
                                                     ? "border-violet-200 bg-violet-50 text-violet-700 dark:bg-violet-950/40"
                                                     : "border-border bg-card text-muted-foreground"
@@ -134,6 +168,7 @@ export default function AdminUsersPage() {
                                         >
                                             <option value="student">{t("roleStudent")}</option>
                                             <option value="teacher">{t("roleTeacher")}</option>
+                                            <option value="staff">{t("roleStaff")}</option>
                                             <option value="admin">{t("roleAdmin")}</option>
                                         </select>
                                     )}

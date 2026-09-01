@@ -6,22 +6,25 @@
 
 export type PaymentCreationDecision =
     | { action: "reject"; reason: string }
-    | { action: "reuse_pending"; paymentId: string }
     | { action: "create" };
 
+// Deciding "reuse an existing pending payment vs. create a new one" used to
+// live here too, based on a pre-fetched snapshot — but that snapshot could
+// go stale between the check and the insert (two near-simultaneous requests
+// both seeing "no pending payment yet"), so that decision now happens
+// atomically in the database itself (get_or_create_pending_payment,
+// 045_atomic_pending_payment.sql) instead of being made from a stale read
+// here. This function only ever needs to decide whether to allow a payment
+// attempt at all.
 export function evaluatePaymentCreation(input: {
     testType: string;
     hasExistingAccess: boolean;
-    pendingPaymentId: string | null;
 }): PaymentCreationDecision {
     if (input.testType !== "paid") {
         return { action: "reject", reason: "Этот тест не требует оплаты" };
     }
     if (input.hasExistingAccess) {
         return { action: "reject", reason: "У вас уже есть доступ к этому тесту" };
-    }
-    if (input.pendingPaymentId) {
-        return { action: "reuse_pending", paymentId: input.pendingPaymentId };
     }
     return { action: "create" };
 }

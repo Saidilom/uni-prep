@@ -49,6 +49,12 @@ type TestRow = {
 type TeacherClass = { id: string; name: string };
 type StudentTarget = { id: string; name: string; surname: string | null; shortid: string | null; className: string };
 
+// A single English mock is commonly built from separate Reading/Writing/
+// Listening papers (sometimes a 4th part too) — this needs to fit that
+// without letting an import balloon into something Gemini can't finish
+// inside the request's own timeout budget.
+const MAX_TEST_FILES = 4;
+
 function formatMoney(value: number, locale: "ru" | "uz", sumWord: string) {
   return new Intl.NumberFormat(locale === "ru" ? "ru-RU" : "uz-UZ").format(value) + " " + sumWord;
 }
@@ -71,6 +77,7 @@ function emptyQuestion(order: number, reviewNote: string): ImportedQuestion {
     groupKey: null,
     sharedStimulus: null,
     sourcePage: 1,
+    sourceFileIndex: 0,
     needsSourceImage: false,
     requiresManualReview: false,
     confidence: 1,
@@ -116,12 +123,15 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
   const [tests, setTests] = useState<TestRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [dragging, setDragging] = useState(false);
-  const [pendingTest, setPendingTest] = useState<File | null>(null);
+  const [pendingTests, setPendingTests] = useState<File[]>([]);
   const [pendingAnswers, setPendingAnswers] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<MockImportResponse | null>(null);
   const [draft, setDraft] = useState<ImportedMock | null>(null);
   const [price, setPrice] = useState(0);
+  const [startsAt, setStartsAt] = useState("");
+  const [endsAt, setEndsAt] = useState("");
+  const [resultsPublishAt, setResultsPublishAt] = useState("");
   const [publishing, setPublishing] = useState(false);
   const [publishIssues, setPublishIssues] = useState<string[]>([]);
   const [assigningTest, setAssigningTest] = useState<TestRow | null>(null);
@@ -133,7 +143,7 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
   // (dev-server hot reload, browser refresh, tab restore) — losing a fully
   // recognized test because of that felt like a "reset" to the user even
   // though no button was pressed. Persisted only for the post-recognition
-  // review stage: pendingTest/pendingAnswers are raw File objects and can't
+  // review stage: pendingTests/pendingAnswers are raw File objects and can't
   // be serialized, so a reload before "Распознать тест" still needs re-attaching.
   const draftStorageKey = `mock-import-draft:${mode}`;
   const skipNextPersist = useRef(true);
@@ -199,13 +209,25 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
 
   useEffect(() => { loadTests(); }, [loadTests]);
 
-  const selectTest = (file: File | undefined) => {
-    if (!file) return;
-    if (!file.name.toLowerCase().endsWith(".pdf")) {
+  const addTestFiles = (fileList: FileList | File[] | null | undefined) => {
+    if (!fileList) return;
+    const incoming = Array.from(fileList);
+    if (incoming.some((file) => !file.name.toLowerCase().endsWith(".pdf"))) {
       toast.error(t("needPdfFile"));
       return;
     }
-    setPendingTest(file);
+    setPendingTests((current) => {
+      const merged = [...current, ...incoming];
+      if (merged.length > MAX_TEST_FILES) {
+        toast.error(t("tooManyTestFiles").replace("{max}", String(MAX_TEST_FILES)));
+        return merged.slice(0, MAX_TEST_FILES);
+      }
+      return merged;
+    });
+  };
+
+  const removeTestFile = (index: number) => {
+    setPendingTests((current) => current.filter((_, i) => i !== index));
   };
 
   const selectAnswers = (file: File | undefined) => {
@@ -233,22 +255,26 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
   };
 
   const runImport = async () => {
-    if (!pendingTest) return;
+    if (pendingTests.length === 0) return;
     setImporting(true);
     setPublishIssues([]);
     try {
-      const testFile = await uploadStoredFile(pendingTest, undefined, "test");
-      const answersFile = pendingAnswers ? await uploadStoredFile(pendingAnswers, testFile.importId, "answers") : undefined;
+      const firstTestFile = await uploadStoredFile(pendingTests[0], undefined, "test");
+      const restTestFiles = await Promise.all(
+        pendingTests.slice(1).map((file) => uploadStoredFile(file, firstTestFile.importId, "test")),
+      );
+      const testFiles = [firstTestFile, ...restTestFiles];
+      const answersFile = pendingAnswers ? await uploadStoredFile(pendingAnswers, firstTestFile.importId, "answers") : undefined;
       const response = await fetch("/api/mock-tests/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ importId: testFile.importId, testFile, answersFile }),
+        body: JSON.stringify({ importId: firstTestFile.importId, testFiles, answersFile }),
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || t("importErrorGeneric"));
       setImportResult(body as MockImportResponse);
       setDraft((body as MockImportResponse).draft);
-      setPendingTest(null);
+      setPendingTests([]);
       setPendingAnswers(null);
       toast.success(t("pdfRecognizedToast"), { description: t("reviewBeforePublishToast") });
     } catch (error) {
@@ -261,7 +287,7 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
   };
 
   const cancelPending = () => {
-    setPendingTest(null);
+    setPendingTests([]);
     setPendingAnswers(null);
     if (inputRef.current) inputRef.current.value = "";
     if (answersInputRef.current) answersInputRef.current.value = "";
@@ -326,8 +352,16 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
 
   const publish = async () => {
     if (!draft || !importResult) return;
-    const issues = getPublicationIssues(draft);
+    const issues = getPublicationIssues(draft, mode);
     if (mode === "admin" && price <= 0) issues.unshift(t("addPricePrompt"));
+    if (mode === "admin" && startsAt && !endsAt) issues.unshift(t("endsAtRequiredPrompt"));
+    if (mode === "admin" && endsAt && !startsAt) issues.unshift(t("startsAtRequiredPrompt"));
+    if (mode === "admin" && startsAt && endsAt && new Date(endsAt) <= new Date(startsAt)) {
+      issues.unshift(t("endsBeforeStartPrompt"));
+    }
+    if (mode === "admin" && startsAt && resultsPublishAt && new Date(resultsPublishAt) < new Date(startsAt)) {
+      issues.unshift(t("resultsBeforeStartPrompt"));
+    }
     setPublishIssues(issues);
     if (issues.length > 0) {
       document.getElementById("studio-issues")?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -342,8 +376,11 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
         body: JSON.stringify({
           draft,
           importId: importResult.importId,
-          sourcePdfPath: importResult.sourcePdfPath,
+          sourcePdfPaths: importResult.sourcePdfPaths,
           price: mode === "admin" ? price : 0,
+          startsAt: mode === "admin" && startsAt ? new Date(startsAt).toISOString() : null,
+          endsAt: mode === "admin" && endsAt ? new Date(endsAt).toISOString() : null,
+          resultsPublishAt: mode === "admin" && resultsPublishAt ? new Date(resultsPublishAt).toISOString() : null,
         }),
       });
       const body = await response.json();
@@ -355,6 +392,9 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
       setDraft(null);
       setImportResult(null);
       setPrice(0);
+      setStartsAt("");
+      setEndsAt("");
+      setResultsPublishAt("");
       await loadTests({ force: true });
     } catch (error) {
       toast.error(t("publishNotFinishedToast"), { description: error instanceof Error ? error.message : String(error) });
@@ -436,6 +476,9 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
 
         <div className="grid min-h-[760px] gap-5 xl:grid-cols-[minmax(360px,0.85fr)_minmax(520px,1.15fr)]">
           <aside className="xl:sticky xl:top-0 xl:h-[calc(100vh-170px)]">
+            {importResult.sourcePdfPaths.length > 1 && (
+              <p className="mb-2 text-xs font-semibold text-muted-foreground">{t("previewShowsFirstOfN").replace("{count}", String(importResult.sourcePdfPaths.length))}</p>
+            )}
             <div className="h-full overflow-hidden rounded-2xl border border-border bg-muted">
               <iframe title={t("sourcePdfTitle")} src={importResult.previewUrl} className="h-full min-h-[640px] w-full" />
             </div>
@@ -457,6 +500,25 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
                     {t("priceUzsLabel")}
                     <input type="number" min={1} value={price || ""} onChange={(event) => setPrice(Number(event.target.value))} placeholder={t("pricePlaceholder")} className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3 text-foreground" />
                   </label>
+                )}
+                {mode === "admin" && price > 0 && (
+                  <>
+                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      {t("startsAtLabel")}
+                      <input type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3 text-foreground" />
+                      <span className="mt-1 block text-[11px] font-normal normal-case text-muted-foreground">{t("startsAtHint")}</span>
+                    </label>
+                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      {t("endsAtLabel")}
+                      <input type="datetime-local" value={endsAt} onChange={(event) => setEndsAt(event.target.value)} className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3 text-foreground" />
+                      <span className="mt-1 block text-[11px] font-normal normal-case text-muted-foreground">{t("endsAtHint")}</span>
+                    </label>
+                    <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      {t("resultsPublishAtLabel")}
+                      <input type="datetime-local" value={resultsPublishAt} onChange={(event) => setResultsPublishAt(event.target.value)} className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3 text-foreground" />
+                      <span className="mt-1 block text-[11px] font-normal normal-case text-muted-foreground">{t("resultsPublishAtHint")}</span>
+                    </label>
+                  </>
                 )}
               </div>
               {(draft.warnings.length > 0 || missingKeys > 0) && (
@@ -485,10 +547,14 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
                     <div className="mb-4 flex flex-wrap items-center gap-2">
                       <input aria-label={t("questionNumberAria")} value={question.number} onChange={(event) => updateQuestion(sectionIndex, questionIndex, { number: event.target.value })} className="w-14 rounded-lg bg-primary px-2.5 py-1 text-center text-xs font-bold text-primary-foreground outline-none" />
                       <select value={question.type} onChange={(event) => updateQuestion(sectionIndex, questionIndex, { type: event.target.value as ImportedQuestion["type"] })} className="rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-semibold">
-                        {MOCK_QUESTION_TYPES.map((type) => <option key={type} value={type}>{QUESTION_LABELS[type]}</option>)}
+                        {MOCK_QUESTION_TYPES.filter((type) => mode === "admin" || type !== "essay" || question.type === "essay").map((type) => <option key={type} value={type}>{QUESTION_LABELS[type]}</option>)}
                       </select>
                       <span className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${question.confidence >= 0.85 ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>{t("aiConfidenceLabel").replace("{percent}", String(Math.round(question.confidence * 100)))}</span>
-                      <span className="text-xs text-muted-foreground">{t("pageLabel").replace("{page}", String(question.sourcePage))}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {importResult.sourcePdfPaths.length > 1
+                          ? t("pageOfFileLabel").replace("{page}", String(question.sourcePage)).replace("{file}", String(question.sourceFileIndex + 1))
+                          : t("pageLabel").replace("{page}", String(question.sourcePage))}
+                      </span>
                       <button onClick={() => removeQuestion(sectionIndex, questionIndex)} className="ml-auto rounded-lg p-1.5 text-muted-foreground hover:bg-red-50 hover:text-red-600" aria-label={t("removeQuestionAria")}><Trash2 size={15} /></button>
                     </div>
 
@@ -591,41 +657,52 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
             {t("uploadSubtitle")}
           </p>
         </div>
-        {!pendingTest && (
+        {pendingTests.length === 0 && (
           <button onClick={() => inputRef.current?.click()} disabled={importing} className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-bold text-primary-foreground transition hover:opacity-90 disabled:opacity-60">
             <UploadCloud size={18} /> {t("uploadPdf")}
           </button>
         )}
-        <input ref={inputRef} type="file" accept="application/pdf,.pdf" hidden onChange={(event) => selectTest(event.target.files?.[0])} />
+        <input ref={inputRef} type="file" accept="application/pdf,.pdf" multiple hidden onChange={(event) => { addTestFiles(event.target.files); event.target.value = ""; }} />
         <input ref={answersInputRef} type="file" accept="application/pdf,.pdf" hidden onChange={(event) => selectAnswers(event.target.files?.[0])} />
       </header>
 
-      {!pendingTest ? (
+      {pendingTests.length === 0 ? (
         <button
           onClick={() => inputRef.current?.click()}
           onDragEnter={(event) => { event.preventDefault(); setDragging(true); }}
           onDragOver={(event) => event.preventDefault()}
           onDragLeave={() => setDragging(false)}
-          onDrop={(event) => { event.preventDefault(); setDragging(false); selectTest(event.dataTransfer.files?.[0]); }}
+          onDrop={(event) => { event.preventDefault(); setDragging(false); addTestFiles(event.dataTransfer.files); }}
           className={`group flex w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-10 text-center transition ${dragging ? "border-primary bg-primary/5" : "border-border bg-muted/30 hover:border-primary/40 hover:bg-primary/5"}`}
         >
           <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm"><FileText size={22} /></span>
           <span className="mt-4 font-bold">{t("dropPdfHere")}</span>
           <span className="mt-1 text-sm text-muted-foreground">{t("uploadHint")}</span>
+          <span className="mt-1 text-xs text-muted-foreground">{t("multiPartHint").replace("{max}", String(MAX_TEST_FILES))}</span>
         </button>
       ) : (
         <div className="rounded-2xl border-2 border-dashed border-primary/30 bg-primary/5 p-6">
           <p className="text-sm font-bold text-primary">{t("readyToRecognize")}</p>
-          <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
-            <div className="flex min-w-0 items-center gap-3">
-              <FileText size={18} className="shrink-0 text-primary" />
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold">{pendingTest.name}</p>
-                <p className="text-xs text-muted-foreground">{t("testFileNote")}</p>
+          <div className="mt-4 space-y-2">
+            {pendingTests.map((file, index) => (
+              <div key={`${file.name}-${index}`} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <FileText size={18} className="shrink-0 text-primary" />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">{file.name}</p>
+                    <p className="text-xs text-muted-foreground">{pendingTests.length > 1 ? t("testPartNote").replace("{number}", String(index + 1)) : t("testFileNote")}</p>
+                  </div>
+                </div>
+                <button onClick={() => removeTestFile(index)} disabled={importing} className="shrink-0 rounded-lg p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-50" aria-label={t("removeTestFileAria")}><X size={16} /></button>
               </div>
-            </div>
-            <button onClick={() => setPendingTest(null)} disabled={importing} className="shrink-0 rounded-lg p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-50" aria-label={t("removeTestFileAria")}><X size={16} /></button>
+            ))}
           </div>
+
+          {pendingTests.length < MAX_TEST_FILES && (
+            <button onClick={() => inputRef.current?.click()} disabled={importing} className="mt-3 w-full rounded-xl border border-dashed border-border px-4 py-3 text-sm font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50">
+              {t("addAnotherTestPart")}
+            </button>
+          )}
 
           {pendingAnswers ? (
             <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">

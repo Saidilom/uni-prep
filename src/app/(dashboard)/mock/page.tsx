@@ -1,37 +1,60 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BookOpen, Lock, CheckCircle2, Play, Users, GraduationCap } from "lucide-react";
+import { BookOpen, Lock, CheckCircle2, Play, Users, GraduationCap, Lock as LockIcon, LockOpen } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { fetchAvailableMockTests, fetchUserMockAccess, fetchUserClassMockAccess, fetchUserMockResults, userHasMockAccess, MockTest, MockAccess } from "@/lib/registan-utils";
 import { fetchTeacherMockAssignmentsSummary, TeacherMockAssignmentSummary } from "@/lib/class-utils";
+import { getMockEntryState } from "@/lib/mock-schedule";
 import { pageCache } from "@/lib/page-cache";
 import { MOCK_STATUS_COLOR } from "@/lib/status-colors";
 import Link from "next/link";
 import PaymentModal from "@/components/payment-modal";
+import supabase from "@/lib/supabase/client";
+import { useToast } from "@/hooks/useToast";
 import { useTranslations } from "@/lib/i18n/locale-provider";
 
-type TeacherTestRow = { id: string; title: string; duration_minutes: number; status: string };
+type TeacherTestRow = { id: string; title: string; duration_minutes: number; status: string; closed_at: string | null };
 
 function TeacherMockAssignments() {
     const { user } = useAuthStore();
     const t = useTranslations("mockCatalog");
+    const toast = useToast();
     const [tests, setTests] = useState<TeacherTestRow[]>([]);
     const [summary, setSummary] = useState<Record<string, TeacherMockAssignmentSummary>>({});
     const [loading, setLoading] = useState(true);
+    const [togglingClose, setTogglingClose] = useState<string | null>(null);
+
+    const load = async () => {
+        if (!user) return;
+        setLoading(true);
+        const response = await fetch("/api/mock-tests", { cache: "no-store" });
+        const body = await response.json().catch(() => ({}));
+        const rows = (response.ok ? body.tests || [] : []) as TeacherTestRow[];
+        setTests(rows);
+        setSummary(await fetchTeacherMockAssignmentsSummary(user.id, rows.map((t) => t.id)));
+        setLoading(false);
+    };
 
     useEffect(() => {
-        if (!user) return;
-        (async () => {
-            setLoading(true);
-            const response = await fetch("/api/mock-tests", { cache: "no-store" });
-            const body = await response.json().catch(() => ({}));
-            const rows = (response.ok ? body.tests || [] : []) as TeacherTestRow[];
-            setTests(rows);
-            setSummary(await fetchTeacherMockAssignmentsSummary(user.id, rows.map((t) => t.id)));
-            setLoading(false);
-        })();
+        load();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [user]);
+
+    const toggleClose = async (test: TeacherTestRow) => {
+        const closing = !test.closed_at;
+        setTogglingClose(test.id);
+        try {
+            const { error } = await supabase.from("mock_tests").update({ closed_at: closing ? new Date().toISOString() : null }).eq("id", test.id);
+            if (error) throw error;
+            toast.success(closing ? t("mockClosedToast") : t("mockReopenedToast"));
+            await load();
+        } catch (error) {
+            toast.error(t("toggleCloseFailed"), { description: error instanceof Error ? error.message : String(error) });
+        } finally {
+            setTogglingClose(null);
+        }
+    };
 
     return (
         <div className="flex flex-col gap-10">
@@ -56,12 +79,33 @@ function TeacherMockAssignments() {
                 ) : (
                     <div className="space-y-3">
                         {tests.map((test) => {
-                            const s = summary[test.id] || { classes: [], students: [] };
+                            const s = summary[test.id] || { classes: [], students: [], completedCount: 0, totalCount: 0 };
+                            const isClosed = Boolean(test.closed_at);
                             return (
-                                <div key={test.id} className="rounded-2xl border border-border bg-card p-5">
-                                    <div className="flex items-center justify-between gap-3">
-                                        <p className="truncate font-semibold text-foreground">{test.title}</p>
-                                        <span className="shrink-0 text-xs text-muted-foreground">{test.duration_minutes} {t("minutesSuffix")}</span>
+                                <div key={test.id} className={`rounded-2xl border p-5 ${isClosed ? "border-border bg-muted/30" : "border-border bg-card"}`}>
+                                    <div className="flex flex-wrap items-center justify-between gap-3">
+                                        <div className="flex min-w-0 items-center gap-2">
+                                            <p className="truncate font-semibold text-foreground">{test.title}</p>
+                                            {isClosed && (
+                                                <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                                                    <LockIcon size={10} /> {t("closedLabel")}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="flex shrink-0 items-center gap-3">
+                                            {s.totalCount > 0 && (
+                                                <span className="text-xs font-semibold text-muted-foreground">{t("completedCountLabel").replace("{completed}", String(s.completedCount)).replace("{total}", String(s.totalCount))}</span>
+                                            )}
+                                            <span className="text-xs text-muted-foreground">{test.duration_minutes} {t("minutesSuffix")}</span>
+                                            <button
+                                                onClick={() => toggleClose(test)}
+                                                disabled={togglingClose === test.id}
+                                                className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 ${isClosed ? "border-border hover:bg-muted" : "border-red-200 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"}`}
+                                            >
+                                                {isClosed ? <LockOpen size={13} /> : <LockIcon size={13} />}
+                                                {togglingClose === test.id ? t("togglingLabel") : isClosed ? t("reopenMock") : t("closeMock")}
+                                            </button>
+                                        </div>
                                     </div>
                                     <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                                         <div>
@@ -186,6 +230,12 @@ function StudentMockCatalog() {
                         {visibleTests.map((test) => {
                             const status = getStatus(test);
                             const StatusIcon = statusLabel[status].icon;
+                            const entryState = getMockEntryState({
+                                price: test.price,
+                                startsAt: test.startsAt,
+                                endsAt: test.endsAt,
+                                hasExistingResult: results.has(test.id),
+                            });
                             return (
                                 <div
                                     key={test.id}
@@ -211,6 +261,14 @@ function StudentMockCatalog() {
                                     ) : status === "locked" ? (
                                         <span className="shrink-0 rounded-xl border border-border bg-muted px-5 py-2.5 text-center text-sm font-semibold text-muted-foreground">
                                             {test.type === "class_only" ? t("classOnlyLocked") : t("registanOnlyLocked")}
+                                        </span>
+                                    ) : entryState === "not_open_yet" ? (
+                                        <span className="shrink-0 rounded-xl border border-border bg-muted px-5 py-2.5 text-center text-sm font-semibold text-muted-foreground">
+                                            {t("opensAtLabel").replace("{date}", test.startsAt ? new Date(test.startsAt).toLocaleString() : "")}
+                                        </span>
+                                    ) : entryState === "closed" ? (
+                                        <span className="shrink-0 rounded-xl border border-border bg-muted px-5 py-2.5 text-center text-sm font-semibold text-muted-foreground">
+                                            {t("entryClosedLabel")}
                                         </span>
                                     ) : (
                                         <Link

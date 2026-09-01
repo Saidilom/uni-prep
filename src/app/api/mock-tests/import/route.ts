@@ -4,6 +4,7 @@ import { z } from "zod";
 import { createRouteHandlerClient, supabaseServer } from "@/lib/supabase/server";
 import { IMPORTED_MOCK_JSON_SCHEMA, ImportedMock, ImportedMockSchema } from "@/lib/mock-import-schema";
 import { buildMockImportPrompt, MOCK_IMPORT_SYSTEM_PROMPT } from "@/lib/mock-import-prompt";
+import { getGeminiThinkingConfig } from "@/lib/gemini-config";
 
 export const runtime = "nodejs";
 // A real multi-page exam (measured: a 7MB/50-question biology paper) took
@@ -22,9 +23,14 @@ const StoredFileSchema = z.object({
   filename: z.string().min(1).max(255),
   size: z.number().int().positive().max(MAX_PDF_BYTES),
 });
+// Up to 4 test-part PDFs (e.g. separate Reading/Writing/Listening/Speaking
+// papers of one English mock) plus one optional separate answer key — see
+// buildMockImportPrompt for how these are described to Gemini as one
+// combined exam, and mock-import-schema.ts's sourceFileIndex for how a
+// question's origin PDF is tracked once there's more than one.
 const StoredImportSchema = z.object({
   importId: z.string().uuid(),
-  testFile: StoredFileSchema,
+  testFiles: z.array(StoredFileSchema).min(1).max(4),
   answersFile: StoredFileSchema.optional(),
 });
 
@@ -86,16 +92,19 @@ async function waitForGeminiFile(ai: GoogleGenAI, name: string) {
 
 async function extractDraftWithGemini(
   ai: GoogleGenAI,
-  files: Array<{ file: Awaited<ReturnType<typeof waitForGeminiFile>>; filename: string }>,
+  testFiles: Array<{ file: Awaited<ReturnType<typeof waitForGeminiFile>>; filename: string }>,
+  answersFile: { file: Awaited<ReturnType<typeof waitForGeminiFile>>; filename: string } | undefined,
   role: "admin" | "teacher",
 ) {
-  const fileParts = files.map(({ file, filename }) => {
+  const allFiles = [...testFiles, ...(answersFile ? [answersFile] : [])];
+  const fileParts = allFiles.map(({ file, filename }) => {
     if (!file.uri || !file.mimeType) {
       throw new Error(`Gemini не вернул URI загруженного файла (${filename})`);
     }
     return createPartFromUri(file.uri, file.mimeType);
   });
-  const [testFilename, answersFilename] = files.map((f) => f.filename);
+  const testFilenames = testFiles.map((f) => f.filename);
+  const answersFilename = answersFile?.filename;
   // Must fit inside maxDuration (300s, Vercel Hobby's hard ceiling) with
   // room left over for the file upload + waitForGeminiFile polling that
   // happen before this call and the JSON parsing/DB write after it — a
@@ -125,7 +134,7 @@ async function extractDraftWithGemini(
         model,
         contents: [
           ...fileParts,
-          { text: buildMockImportPrompt(testFilename, role, answersFilename) },
+          { text: buildMockImportPrompt(testFilenames, role, answersFilename) },
         ],
         config: {
           httpOptions: { timeout: timeoutMs },
@@ -134,6 +143,7 @@ async function extractDraftWithGemini(
           responseSchema: IMPORTED_MOCK_JSON_SCHEMA,
           temperature: 0.1,
           maxOutputTokens: Number(process.env.GEMINI_IMPORT_MAX_TOKENS || 50000),
+          thinkingConfig: getGeminiThinkingConfig(),
         },
       });
       return { model, response, draft: parseGeminiJson(response.text || "") };
@@ -171,7 +181,7 @@ export async function POST(req: NextRequest) {
 
   const parsed = StoredImportSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Некорректные данные загруженного PDF" }, { status: 400 });
-  const { importId, testFile, answersFile } = parsed.data;
+  const { importId, testFiles, answersFile } = parsed.data;
 
   const loadAndValidate = async (stored: z.infer<typeof StoredFileSchema>): Promise<Buffer | { error: string; status: number }> => {
     if (!stored.path.startsWith(`${authUser.id}/${importId}/`) || !stored.filename.toLowerCase().endsWith(".pdf")) {
@@ -189,9 +199,12 @@ export async function POST(req: NextRequest) {
     return bytes;
   };
 
-  const testResult = await loadAndValidate(testFile);
-  if (!Buffer.isBuffer(testResult)) return NextResponse.json({ error: testResult.error }, { status: testResult.status });
-  const testBytes = testResult;
+  const testBytesList: Buffer[] = [];
+  for (const testFile of testFiles) {
+    const testResult = await loadAndValidate(testFile);
+    if (!Buffer.isBuffer(testResult)) return NextResponse.json({ error: testResult.error }, { status: testResult.status });
+    testBytesList.push(testResult);
+  }
 
   let answersBytes: Buffer | undefined;
   if (answersFile) {
@@ -204,8 +217,8 @@ export async function POST(req: NextRequest) {
   const { error: importRecordError } = await supabaseServer.from("mock_imports").insert({
     id: importId,
     created_by: authUser.id,
-    filename: testFile.filename,
-    file_path: testFile.path,
+    filename: testFiles[0].filename,
+    file_path: testFiles[0].path,
     answers_file_path: answersFile?.path ?? null,
     answers_filename: answersFile?.filename ?? null,
     status: "processing",
@@ -229,16 +242,17 @@ export async function POST(req: NextRequest) {
       return { file: await waitForGeminiFile(ai, name), filename };
     };
 
-    const readyFiles = await Promise.all([
-      uploadOne(testBytes, testFile.filename),
-      ...(answersBytes ? [uploadOne(answersBytes, answersFile!.filename)] : []),
+    const [readyTestFiles, readyAnswersFile] = await Promise.all([
+      Promise.all(testBytesList.map((bytes, i) => uploadOne(bytes, testFiles[i].filename))),
+      answersBytes ? uploadOne(answersBytes, answersFile!.filename) : Promise.resolve(undefined),
     ]);
 
-    const { model: usedModel, response, draft } = await extractDraftWithGemini(ai, readyFiles, role);
+    const { model: usedModel, response, draft } = await extractDraftWithGemini(ai, readyTestFiles, readyAnswersFile, role);
 
+    const sourcePdfPaths = testFiles.map((f) => f.path);
     const { data: signed, error: signedError } = await supabaseServer.storage
       .from("test-imports")
-      .createSignedUrl(testFile.path, 60 * 60);
+      .createSignedUrl(sourcePdfPaths[0], 60 * 60);
     if (signedError || !signed?.signedUrl) throw signedError || new Error("Не удалось создать preview URL");
 
     await supabaseServer
@@ -258,7 +272,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       importId,
-      sourcePdfPath: testFile.path,
+      sourcePdfPaths,
       previewUrl: signed.signedUrl,
       model: usedModel,
       inputTokens: response.usageMetadata?.promptTokenCount || 0,

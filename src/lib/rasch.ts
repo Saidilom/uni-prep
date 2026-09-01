@@ -184,3 +184,32 @@ function recenter(b: number[], theta: number[]): void {
     for (let i = 0; i < b.length; i++) b[i] -= mean;
     for (let n = 0; n < theta.length; n++) theta[n] -= mean;
 }
+
+// Generic descriptive-stats + ability-to-scaled-score helpers — used to
+// standardize a cohort's Rasch person abilities (theta) into a fixed 0-75
+// scale (Z-score against that same mock's own test-takers, T = Z*10 + 50).
+// Subject-agnostic: src/lib/english-cefr.ts reuses these for the officially
+// mandated English scoring, and the generic per-mock grade level
+// (src/lib/mock-grade-level.ts) reuses them for every other subject.
+export function mean(values: number[]): number {
+    if (values.length === 0) return 0;
+    return values.reduce((a, b) => a + b, 0) / values.length;
+}
+
+export function stdev(values: number[]): number {
+    if (values.length < 2) return 0;
+    const m = mean(values);
+    const variance = values.reduce((sum, v) => sum + (v - m) ** 2, 0) / values.length;
+    return Math.sqrt(variance);
+}
+
+export function raschThetaToT(theta: number, cohortMean: number, cohortStdev: number): number {
+    // With fewer than ~2 meaningfully-different ability estimates, a
+    // population stdev is not a meaningful yardstick (and would divide by
+    // ~0) — fall back to the scale's center point until there's enough data
+    // to standardize against, rather than producing NaN/Infinity.
+    if (!Number.isFinite(cohortStdev) || cohortStdev < 1e-6) return 50;
+    const z = (theta - cohortMean) / cohortStdev;
+    const t = z * 10 + 50;
+    return Math.max(0, Math.min(75, Math.round(t)));
+}

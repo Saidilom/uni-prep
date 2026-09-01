@@ -9,7 +9,7 @@ Critical extraction rules:
 4. For matching tasks, emit one answerable item per requested match if the answer sheet expects separate responses. Reuse the common option pool.
 5. Use LaTeX delimiters $...$ or $$...$$ for mathematical expressions. Never output HTML.
 6. Set needsSourceImage=true whenever solving/displaying the item requires a figure, graph, map, diagram, photo or visually structured table from the PDF.
-7. sourcePage is the 1-based PDF page containing the task.
+7. sourcePage is the 1-based page number counting from the start of whichever single PDF the task appears in (never a running count across multiple attached files). sourceFileIndex is the 0-based index, in the order the test PDFs are listed below, of that same file.
 8. Preserve printed points. If no points are printed, use 1.
 9. If an answer key is visibly provided, use answerOrigin=provided. If it is not provided but you can solve with high confidence, use inferred and add a review note. Never pretend an inferred answer was provided. If uncertain, use missing with empty answer arrays.
 10. Essays and extended written work get type=essay, requireManualReview=true, answerOrigin=missing. Put the exam's own instructions/prompt text (the topic, the situation, what the student must write about) into sharedStimulus. For English, Russian and Uzbek writing tasks specifically, also follow the official rubric rule below and fill rubricNote and points from it — do not leave points at the 1-per-question default for these.
@@ -40,24 +40,30 @@ Question type guidance:
 The teacher or Super Admin will review everything before publication, so confidence and warnings must be honest.`;
 
 export function buildMockImportPrompt(
-  filename: string,
+  testFilenames: string[],
   role: "admin" | "teacher",
   answersFilename?: string,
 ) {
+  const testFilesSection = testFilenames.length === 1
+    ? `Extract the attached exam PDF (${testFilenames[0]}) into the required schema. It is file index 0 — every question from it must have sourceFileIndex=0.`
+    : `${testFilenames.length} PDFs are attached, each a separate part/paper of the SAME exam (e.g. Reading, Writing, Listening papers of one English test) — extract ALL of them into ONE combined schema (one title, one sections[] array covering every part), not ${testFilenames.length} separate tests. They are listed here in the exact order they are attached, 0-based — every question's sourceFileIndex must match the file it actually came from:
+${testFilenames.map((name, i) => `  - file index ${i}: ${name}`).join("\n")}
+If the parts read as clearly distinct sections (e.g. by paper title, or kind of task), reflect that in sections[].kind and sections[].title rather than flattening them into one generic section.`;
+
   const answerKeySection = answersFilename
     ? `
 
-A second PDF (${answersFilename}) is attached after the exam — it is a SEPARATE answer key, not part of the exam itself. Do not extract any questions from it.
+A separate PDF (${answersFilename}) is attached after ${testFilenames.length === 1 ? "the exam" : "the exam files"} — it is an answer key, not part of the exam itself and not one of the file indices above. Do not extract any questions from it, and never set a question's sourceFileIndex to it.
 Match each answer-key entry to its question strictly by the printed question number (handle subparts like 36a/36b exactly as printed). For every match set answerOrigin=provided and fill correctOptionIds/acceptedAnswers from the key.
 If the key gives a plain letter/number for a choice question, map it to the corresponding option id you extracted from the exam PDF, not the raw letter.
 If the answer key is missing an entry for a question, fall back to inferred (solve it yourself, add a review note) or missing — never invent an answer that is not supported by either PDF.
-Add a warning if the two documents disagree on numbering or question count.`
+Add a warning if the answer key disagrees with the exam file(s) on numbering or question count.`
     : "";
 
-  return `Extract the attached exam PDF (${filename}) into the required schema.${answerKeySection}
+  return `${testFilesSection}${answerKeySection}
 
 This import is being made by a ${role === "admin" ? "Super Admin for a paid Mock" : "Teacher for a free assigned Mock"}.
-Choose a sensible title and duration from the document. If duration is absent, use 60 minutes and add a warning.
-After extraction, verify numbering continuity and count all actual response fields, including subparts.
+Choose a sensible title and duration from the document(s) — if there are several parts, the duration is the sum of each part's own time limit when printed, otherwise a sensible total. If duration is absent everywhere, use 60 minutes and add a warning.
+After extraction, verify numbering continuity and count all actual response fields, including subparts, across every part.
 Return only valid JSON matching the schema. Do not wrap it in Markdown.`;
 }

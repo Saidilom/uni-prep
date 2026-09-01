@@ -38,6 +38,9 @@ export async function fetchAvailableMockTests(): Promise<MockTest[]> {
       updatedAt: row.updated_at,
       subjectId: row.subject_id,
       createdBy: row.created_by,
+      startsAt: row.starts_at,
+      endsAt: row.ends_at,
+      resultsPublishAt: row.results_publish_at,
     })) as MockTest[];
   }, STUDENT_CACHE_TTL);
 }
@@ -89,9 +92,11 @@ export type MockResultRow = {
   mock_test_id: string;
   mock_test_title: string;
   score: number;
+  max_score: number;
   total_questions: number;
   correct_answers: number;
   accuracy: number;
+  grade_level: string | null;
   completed_at: string;
 };
 
@@ -99,7 +104,7 @@ export async function fetchUserMockResults(userId: string): Promise<MockResultRo
   return pageCache.fetch(`mockResults:${userId}`, async () => {
     const { data } = await supabase
       .from("mock_results")
-      .select("id, mock_test_id, mock_test_title, score, total_questions, correct_answers, accuracy, completed_at")
+      .select("id, mock_test_id, mock_test_title, score, max_score, total_questions, correct_answers, accuracy, grade_level, completed_at")
       .eq("user_id", userId)
       .order("completed_at", { ascending: false });
     return (data || []) as MockResultRow[];

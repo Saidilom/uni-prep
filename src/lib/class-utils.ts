@@ -250,6 +250,12 @@ export const unassignMockFromStudent = async (assignmentId: string, classId: str
 export type TeacherMockAssignmentSummary = {
     classes: { id: string; name: string }[];
     students: { id: string; name: string }[];
+    // Union of every student reachable by this test (class members of any
+    // assigned class, plus anyone assigned individually) and how many of
+    // them already have a result — lets a teacher see "all done" before
+    // deciding to close the mock (see closed_at, 048_manual_mock_close.sql).
+    completedCount: number;
+    totalCount: number;
 };
 
 // Cross-class assignment overview for a teacher's own tests — used by the
@@ -261,7 +267,7 @@ export const fetchTeacherMockAssignmentsSummary = async (
     mockTestIds: string[]
 ): Promise<Record<string, TeacherMockAssignmentSummary>> => {
     const summary: Record<string, TeacherMockAssignmentSummary> = {};
-    mockTestIds.forEach((id) => { summary[id] = { classes: [], students: [] }; });
+    mockTestIds.forEach((id) => { summary[id] = { classes: [], students: [], completedCount: 0, totalCount: 0 }; });
     if (mockTestIds.length === 0) return summary;
 
     const [{ data: classAssignments }, { data: studentAssignments }] = await Promise.all([
@@ -270,22 +276,62 @@ export const fetchTeacherMockAssignmentsSummary = async (
     ]);
 
     const classIds = Array.from(new Set((classAssignments || []).map((a) => a.class_id as string)));
-    const studentIds = Array.from(new Set((studentAssignments || []).map((a) => a.student_id as string)));
-    const [{ data: classes }, { data: students }] = await Promise.all([
+    const [{ data: classes }, { data: classMembers }] = await Promise.all([
         classIds.length ? supabase.from("classes").select("id, name").in("id", classIds) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
-        studentIds.length ? supabase.from("users").select("id, name, surname").in("id", studentIds) : Promise.resolve({ data: [] as { id: string; name: string; surname: string | null }[] }),
+        classIds.length ? supabase.from("class_members").select("class_id, student_id").in("class_id", classIds) : Promise.resolve({ data: [] as { class_id: string; student_id: string }[] }),
     ]);
     const classMap = new Map((classes || []).map((c) => [c.id as string, c.name as string]));
+    const memberIdsByClass = new Map<string, string[]>();
+    (classMembers || []).forEach((m) => {
+        const list = memberIdsByClass.get(m.class_id as string) || [];
+        list.push(m.student_id as string);
+        memberIdsByClass.set(m.class_id as string, list);
+    });
+
+    const individualStudentIds = Array.from(new Set((studentAssignments || []).map((a) => a.student_id as string)));
+    const { data: students } = individualStudentIds.length
+        ? await supabase.from("users").select("id, name, surname").in("id", individualStudentIds)
+        : { data: [] as { id: string; name: string; surname: string | null }[] };
     const studentMap = new Map((students || []).map((s) => [s.id as string, `${s.name} ${s.surname || ""}`.trim()]));
 
+    const involvedByTest = new Map<string, Set<string>>();
+    const addInvolved = (testId: string, studentId: string) => {
+        const set = involvedByTest.get(testId) || new Set<string>();
+        set.add(studentId);
+        involvedByTest.set(testId, set);
+    };
+
     (classAssignments || []).forEach((a) => {
-        const entry = summary[a.mock_test_id as string];
+        const testId = a.mock_test_id as string;
+        const entry = summary[testId];
         if (entry) entry.classes.push({ id: a.class_id as string, name: classMap.get(a.class_id as string) || "—" });
+        (memberIdsByClass.get(a.class_id as string) || []).forEach((studentId) => addInvolved(testId, studentId));
     });
     (studentAssignments || []).forEach((a) => {
-        const entry = summary[a.mock_test_id as string];
+        const testId = a.mock_test_id as string;
+        const entry = summary[testId];
         if (entry) entry.students.push({ id: a.student_id as string, name: studentMap.get(a.student_id as string) || "—" });
+        addInvolved(testId, a.student_id as string);
     });
+
+    const allInvolvedIds = Array.from(new Set(Array.from(involvedByTest.values()).flatMap((set) => Array.from(set))));
+    const { data: results } = allInvolvedIds.length
+        ? await supabase.from("mock_results").select("user_id, mock_test_id").in("mock_test_id", mockTestIds).in("user_id", allInvolvedIds)
+        : { data: [] as { user_id: string; mock_test_id: string }[] };
+    const completedByTest = new Map<string, Set<string>>();
+    (results || []).forEach((r) => {
+        const set = completedByTest.get(r.mock_test_id as string) || new Set<string>();
+        set.add(r.user_id as string);
+        completedByTest.set(r.mock_test_id as string, set);
+    });
+
+    mockTestIds.forEach((testId) => {
+        const involved = involvedByTest.get(testId) || new Set<string>();
+        const completed = completedByTest.get(testId) || new Set<string>();
+        summary[testId].totalCount = involved.size;
+        summary[testId].completedCount = Array.from(involved).filter((id) => completed.has(id)).length;
+    });
+
     return summary;
 };
 
@@ -304,15 +350,18 @@ export const fetchStudentActivePlacementTestIds = async (studentId: string): Pro
     return new Set((data || []).filter((a) => a.status !== "completed").map((a) => a.test_id as string));
 };
 
-export const assignPlacementToStudent = async (test: AssignablePlacementTest, studentId: string, assignedBy: string): Promise<void> => {
-    const { error } = await supabase.from("placement_assignments").insert({
-        id: crypto.randomUUID(),
-        user_id: studentId,
-        test_id: test.id,
-        test_title: test.title,
-        status: "assigned",
-        assigned_by: assignedBy,
-        assigned_at: new Date().toISOString(),
+// Backed by reassign_placement_test (044_reassign_placement_test.sql): a
+// brand-new student gets a fresh assignment row; a student who already has
+// one for this test (including a completed one — that's the retake case)
+// gets that same row reset instead, since placement_assignments now has a
+// UNIQUE (user_id, test_id) constraint. Needs SECURITY DEFINER because
+// placement_assignments/placement_results have no teacher UPDATE/DELETE RLS
+// policy, only INSERT/SELECT.
+export const assignPlacementToStudent = async (test: AssignablePlacementTest, studentId: string): Promise<void> => {
+    const { error } = await supabase.rpc("reassign_placement_test", {
+        p_test_id: test.id,
+        p_student_id: studentId,
+        p_test_title: test.title,
     });
     if (error) throw error;
 };
@@ -329,6 +378,9 @@ export type StudentMockResult = {
     // src/lib/english-cefr.ts) — null for every other subject.
     cefrBand: string | null;
     cefrScore: number | null;
+    // Generic A+..C level (src/lib/mock-grade-level.ts) — populated for
+    // every subject once a real cohort exists to standardize against.
+    gradeLevel: string | null;
 };
 
 export type ClassMockResultsSummary = {
@@ -345,7 +397,7 @@ export const fetchClassMockResults = async (classId: string, mockTestId: string)
     const [members, { data: test }, { data: results }] = await Promise.all([
         fetchClassMembers(classId),
         supabase.from("mock_tests").select("title").eq("id", mockTestId).single(),
-        supabase.from("mock_results").select("id, user_id, score, accuracy, correct_answers, total_questions, rasch_score, cefr_band, cefr_score, completed_at").eq("mock_test_id", mockTestId),
+        supabase.from("mock_results").select("id, user_id, score, accuracy, correct_answers, total_questions, rasch_score, cefr_band, cefr_score, grade_level, completed_at").eq("mock_test_id", mockTestId),
     ]);
 
     const resultByStudent = new Map((results || []).map((r) => [r.user_id as string, r]));
@@ -361,6 +413,7 @@ export const fetchClassMockResults = async (classId: string, mockTestId: string)
                 raschScore: r && r.rasch_score !== null ? (r.rasch_score as number) : null,
                 cefrBand: r ? (r.cefr_band as string | null) : null,
                 cefrScore: r && r.cefr_score !== null ? (r.cefr_score as number) : null,
+                gradeLevel: r ? (r.grade_level as string | null) : null,
                 completedAt: r ? (r.completed_at as string) : null,
             };
         })
@@ -377,6 +430,157 @@ export const fetchClassMockResults = async (classId: string, mockTestId: string)
         maxScore: scores.length > 0 ? Math.max(...scores) : null,
         minScore: scores.length > 0 ? Math.min(...scores) : null,
     };
+};
+
+export type StudentClassSummary = { id: string; name: string; teacherName: string };
+
+// A student's own read-only view of the classes they belong to — powers the
+// student-facing "Классы" nav item (#18). Relies on the narrow
+// users_student_read_own_teacher policy (035_student_read_own_teacher.sql)
+// to resolve the teacher's display name.
+export const fetchStudentClasses = async (studentId: string): Promise<StudentClassSummary[]> => {
+    return pageCache.fetch(`studentClasses:${studentId}`, async () => {
+        const { data: memberships } = await supabase.from("class_members").select("class_id").eq("student_id", studentId);
+        const classIds = Array.from(new Set((memberships || []).map((m) => m.class_id as string)));
+        if (classIds.length === 0) return [];
+
+        const { data: classes } = await supabase.from("classes").select("*").in("id", classIds).order("created_at", { ascending: false });
+        const classRows = (classes || []) as Array<Record<string, unknown>>;
+        const teacherIds = Array.from(new Set(classRows.map((c) => c.teacher_id as string)));
+        const { data: teachers } = teacherIds.length > 0
+            ? await supabase.from("users").select("id, name, surname").in("id", teacherIds)
+            : { data: [] as Array<{ id: string; name: string; surname: string | null }> };
+        const teacherMap = new Map((teachers || []).map((u) => [u.id as string, `${u.name} ${u.surname || ""}`.trim()]));
+
+        return classRows.map((c) => ({
+            id: c.id as string,
+            name: c.name as string,
+            teacherName: teacherMap.get(c.teacher_id as string) || "—",
+        }));
+    }, TEACHER_CACHE_TTL);
+};
+
+export type StudentClassMock = {
+    mockTestId: string;
+    title: string;
+    durationMinutes: number;
+    price: number;
+    myResult: { score: number; maxScore: number; accuracy: number; gradeLevel: string | null } | null;
+};
+
+// Every mock assigned to this class (whole-class or individually to this
+// student) together with the student's own result, if any — deliberately
+// does NOT surface classmates' completion counts, since a student session's
+// RLS view of class_members is limited to their own row (class_members_student_read_own),
+// so any class-wide count computed client-side here would silently undercount.
+export const fetchStudentClassMocks = async (classId: string, studentId: string): Promise<StudentClassMock[]> => {
+    const [{ data: classAssignments }, { data: individualAssignments }] = await Promise.all([
+        supabase.from("mock_class_assignments").select("mock_test_id").eq("class_id", classId),
+        supabase.from("mock_student_assignments").select("mock_test_id").eq("student_id", studentId),
+    ]);
+    const mockTestIds = Array.from(new Set([
+        ...(classAssignments || []).map((a) => a.mock_test_id as string),
+        ...(individualAssignments || []).map((a) => a.mock_test_id as string),
+    ]));
+    if (mockTestIds.length === 0) return [];
+
+    const [{ data: tests }, { data: results }] = await Promise.all([
+        supabase.from("mock_tests").select("id, title, duration_minutes, price").in("id", mockTestIds),
+        supabase.from("mock_results").select("mock_test_id, score, max_score, accuracy, grade_level").eq("user_id", studentId).in("mock_test_id", mockTestIds),
+    ]);
+    const resultMap = new Map((results || []).map((r) => [r.mock_test_id as string, r]));
+
+    return ((tests || []) as Array<Record<string, unknown>>).map((test) => {
+        const r = resultMap.get(test.id as string) as Record<string, unknown> | undefined;
+        return {
+            mockTestId: test.id as string,
+            title: test.title as string,
+            durationMinutes: (test.duration_minutes as number) || 0,
+            price: (test.price as number) || 0,
+            myResult: r ? {
+                score: r.score as number,
+                maxScore: r.max_score as number,
+                accuracy: r.accuracy as number,
+                gradeLevel: (r.grade_level as string | null) ?? null,
+            } : null,
+        };
+    });
+};
+
+export type SubjectRanking = {
+    subjectId: string;
+    myAvgAccuracy: number;
+    myAttempts: number;
+    myRank: number;
+    totalStudents: number;
+};
+
+// #23 — wraps the get_my_class_subject_ranking RPC (037_student_subject_ranking.sql),
+// which computes the ranking server-side and returns only the calling
+// student's own place in it, never a classmate's row.
+export const fetchMySubjectRanking = async (classId: string): Promise<SubjectRanking[]> => {
+    const { data, error } = await supabase.rpc("get_my_class_subject_ranking", { p_class_id: classId });
+    if (error) {
+        console.error("[class-utils] fetchMySubjectRanking:", error);
+        return [];
+    }
+    return ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+        subjectId: row.subject_id as string,
+        myAvgAccuracy: Number(row.my_avg_accuracy),
+        myAttempts: row.my_attempts as number,
+        myRank: row.my_rank as number,
+        totalStudents: row.total_students as number,
+    }));
+};
+
+export type QuestionErrorStat = {
+    questionId: string;
+    questionText: string;
+    wrongCount: number;
+    totalCount: number;
+    wrongRate: number;
+};
+
+// Cross-student aggregation for one class's attempt at one mock: how many of
+// the class's students got each question wrong, ranked worst-first. Powers
+// the "hardest question" ranking on the class-mock results page (#24) — a
+// natural extension of the per-student breakdown already shown there.
+export const fetchMockQuestionErrorStats = async (classId: string, mockTestId: string): Promise<QuestionErrorStat[]> => {
+    const members = await fetchClassMembers(classId);
+    if (members.length === 0) return [];
+
+    const { data: results } = await supabase
+        .from("mock_results")
+        .select("id")
+        .eq("mock_test_id", mockTestId)
+        .in("user_id", members.map((m) => m.id));
+    const resultIds = (results || []).map((r) => r.id as string);
+    if (resultIds.length === 0) return [];
+
+    const { data: details } = await supabase
+        .from("mock_answer_details")
+        .select("question_id, question_text, is_correct")
+        .in("result_id", resultIds);
+
+    const byQuestion = new Map<string, { questionText: string; wrong: number; total: number }>();
+    (details || []).forEach((d) => {
+        const questionId = d.question_id as string | null;
+        if (!questionId) return;
+        const entry = byQuestion.get(questionId) || { questionText: d.question_text as string, wrong: 0, total: 0 };
+        entry.total += 1;
+        if (!d.is_correct) entry.wrong += 1;
+        byQuestion.set(questionId, entry);
+    });
+
+    return Array.from(byQuestion.entries())
+        .map(([questionId, { questionText, wrong, total }]) => ({
+            questionId,
+            questionText,
+            wrongCount: wrong,
+            totalCount: total,
+            wrongRate: total > 0 ? Math.round((wrong / total) * 100) : 0,
+        }))
+        .sort((a, b) => b.wrongRate - a.wrongRate);
 };
 
 export type MockAnswerDetail = {
@@ -536,5 +740,58 @@ export const fetchTeacherResultsOverview = async (teacherId: string): Promise<Te
         }
 
         return { classes: classSummaries, topClass, topStudent };
+    }, TEACHER_CACHE_TTL);
+};
+
+export type AdminClassSummary = ClassWithCount & { teacherName: string; avgAccuracy: number | null; attemptCount: number };
+
+// Same average-accuracy math as fetchTeacherResultsOverview, but across every
+// class on the platform (not scoped to one teacher) — powers the admin
+// classes list and its avgAccuracy badge (#19 for the admin role).
+export const fetchAdminClassesOverview = async (): Promise<AdminClassSummary[]> => {
+    return pageCache.fetch("adminClassesOverview", async () => {
+        const { data: classes } = await supabase.from("classes").select("*").order("created_at", { ascending: false });
+        const classRows = (classes || []) as Array<Record<string, unknown>>;
+        if (classRows.length === 0) return [];
+
+        const classIds = classRows.map((c) => c.id as string);
+        const teacherIds = Array.from(new Set(classRows.map((c) => c.teacher_id as string)));
+
+        const [{ data: teachers }, { data: members }] = await Promise.all([
+            supabase.from("users").select("id, name, surname").in("id", teacherIds),
+            supabase.from("class_members").select("class_id, student_id").in("class_id", classIds),
+        ]);
+        const teacherMap = new Map((teachers || []).map((u) => [u.id as string, `${u.name} ${u.surname || ""}`.trim()]));
+
+        const studentIds = Array.from(new Set((members || []).map((m) => m.student_id as string)));
+        const { data: results } = studentIds.length > 0
+            ? await supabase.from("mock_results").select("user_id, accuracy").in("user_id", studentIds)
+            : { data: [] as Array<{ user_id: string; accuracy: number }> };
+
+        const scoresByStudent = new Map<string, number[]>();
+        (results || []).forEach((r) => {
+            const list = scoresByStudent.get(r.user_id as string) || [];
+            list.push(r.accuracy as number);
+            scoresByStudent.set(r.user_id as string, list);
+        });
+
+        const studentsByClass = new Map<string, string[]>();
+        (members || []).forEach((m) => {
+            const list = studentsByClass.get(m.class_id as string) || [];
+            list.push(m.student_id as string);
+            studentsByClass.set(m.class_id as string, list);
+        });
+
+        return classRows.map((c) => {
+            const ids = studentsByClass.get(c.id as string) || [];
+            const scores = ids.flatMap((id) => scoresByStudent.get(id) || []);
+            return {
+                ...toClass(c),
+                memberCount: ids.length,
+                teacherName: teacherMap.get(c.teacher_id as string) || "—",
+                attemptCount: scores.length,
+                avgAccuracy: scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null,
+            };
+        });
     }, TEACHER_CACHE_TTL);
 };

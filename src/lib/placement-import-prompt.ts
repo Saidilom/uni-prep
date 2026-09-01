@@ -14,15 +14,19 @@ Rules:
 
 Return only valid JSON matching the schema. Do not wrap it in Markdown.`;
 
-export function buildPlacementImportPrompt(filename: string, answersFilename?: string) {
+export function buildPlacementImportPrompt(testFilenames: string[], answersFilename?: string) {
+  const testFilesSection = testFilenames.length === 1
+    ? `Extract the attached placement test PDF (${testFilenames[0]}) into the required schema.`
+    : `${testFilenames.length} PDFs are attached (${testFilenames.join(", ")}), each a separate part of the SAME placement test — extract every question from all of them into ONE combined questions[] array, continuing the numbering/order across parts rather than treating them as separate tests.`;
+
   const answerKeySection = answersFilename
     ? `
 
-A second PDF (${answersFilename}) is attached after the test — it is a SEPARATE answer key, not part of the test itself. Do not extract any questions from it. Match each answer-key entry to its question strictly by the printed question number, and set correctOptionId from it (mapping a plain letter/number to the corresponding option id you extracted from the test PDF).`
+A separate PDF (${answersFilename}) is attached after ${testFilenames.length === 1 ? "the test" : "the test files"} — it is an answer key, not part of the test itself. Do not extract any questions from it. Match each answer-key entry to its question strictly by the printed question number, and set correctOptionId from it (mapping a plain letter/number to the corresponding option id you extracted from the test PDF(s)).`
     : "";
 
-  return `Extract the attached placement test PDF (${filename}) into the required schema.${answerKeySection}
+  return `${testFilesSection}${answerKeySection}
 
-After extraction, verify numbering continuity and count all questions.
+After extraction, verify numbering continuity and count all questions across every attached test file.
 Return only valid JSON matching the schema. Do not wrap it in Markdown.`;
 }

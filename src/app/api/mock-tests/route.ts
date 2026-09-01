@@ -24,7 +24,7 @@ export async function GET() {
 
   let query = supabaseServer
     .from("mock_tests")
-    .select("id,title,description,type,price,duration_minutes,subject_id,language,created_by,status,created_at,published_at")
+    .select("id,title,description,type,price,duration_minutes,subject_id,language,created_by,status,created_at,published_at,starts_at,ends_at,results_publish_at,closed_at")
     .order("created_at", { ascending: false });
   if (role === "teacher") query = query.eq("created_by", user.id);
   const { data: tests, error } = await query;
@@ -51,8 +51,11 @@ export async function GET() {
 const PublishSchema = z.object({
   draft: ImportedMockSchema,
   importId: z.string().uuid(),
-  sourcePdfPath: z.string().min(1),
+  sourcePdfPaths: z.array(z.string().min(1)).min(1),
   price: z.number().int().min(0),
+  startsAt: z.string().datetime().nullable().optional(),
+  endsAt: z.string().datetime().nullable().optional(),
+  resultsPublishAt: z.string().datetime().nullable().optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -68,7 +71,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Для платного Mock укажите цену" }, { status: 400 });
   }
 
-  const issues = getPublicationIssues(parsed.data.draft);
+  const issues = getPublicationIssues(parsed.data.draft, role === "admin" ? "admin" : "teacher");
   if (issues.length > 0) {
     return NextResponse.json({ error: "Исправьте тест перед публикацией", issues }, { status: 422 });
   }
@@ -76,8 +79,11 @@ export async function POST(req: NextRequest) {
   const payload = {
     ...parsed.data.draft,
     importId: parsed.data.importId,
-    sourcePdfPath: parsed.data.sourcePdfPath,
+    sourcePdfPaths: parsed.data.sourcePdfPaths,
     price: role === "admin" ? parsed.data.price : 0,
+    startsAt: role === "admin" ? parsed.data.startsAt ?? null : null,
+    endsAt: role === "admin" ? parsed.data.endsAt ?? null : null,
+    resultsPublishAt: role === "admin" ? parsed.data.resultsPublishAt ?? null : null,
     importMetadata: {
       importedWithClaude: true,
       reviewedBy: user.id,

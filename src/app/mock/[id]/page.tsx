@@ -18,6 +18,7 @@ import supabase from "@/lib/supabase/client";
 import SafeMathText from "@/components/safe-math-text";
 import { useAuthStore } from "@/store/useAuthStore";
 import { invalidateStudentMockCaches } from "@/lib/registan-utils";
+import { getMockEntryState } from "@/lib/mock-schedule";
 import { useTranslations } from "@/lib/i18n/locale-provider";
 
 type AnswerValue = string | string[] | Record<string, string>;
@@ -36,6 +37,7 @@ type Question = {
     needsSourceImage?: boolean;
   };
   source_page?: number | null;
+  source_file_index?: number | null;
   group_key?: string | null;
   requires_manual_review?: boolean;
 };
@@ -43,11 +45,16 @@ type Section = { id: string; title: string; order: number; questions: Question[]
 type Result = {
   resultId: string;
   score: number;
+  maxScore: number;
   total: number;
   percentage: number;
   hasPendingReview?: boolean;
   cefrScore?: number | null;
   cefrBand?: string | null;
+  levelScore?: number | null;
+  gradeLevel?: string | null;
+  resultsPending?: boolean;
+  resultsPublishAt?: string | null;
 };
 
 function isAnswered(value: AnswerValue | undefined) {
@@ -81,16 +88,14 @@ export default function MockTestPage() {
     if (!id || !user) return;
     setLoading(true);
     setError(null);
-    const { data: allowed, error: accessError } = await supabase.rpc("can_access_mock", { p_mock_test_id: id });
-    if (accessError || !allowed) {
-      setError(t("notAssigned"));
-      setLoading(false);
-      return;
-    }
 
+    // mock_tests_read_auth grants read on any *published* row regardless of
+    // can_access_mock, so a scheduled-but-not-yet-open mock's metadata is
+    // still visible here — used below to show a precise "opens at/closed"
+    // message instead of the generic "not assigned" one.
     const { data: test, error: testError } = await supabase
       .from("mock_tests")
-      .select("title,duration_minutes,subject_id")
+      .select("title,duration_minutes,subject_id,price,starts_at,ends_at")
       .eq("id", id)
       .single();
     if (testError || !test) {
@@ -98,16 +103,44 @@ export default function MockTestPage() {
       setLoading(false);
       return;
     }
+
+    const { data: allowed, error: accessError } = await supabase.rpc("can_access_mock", { p_mock_test_id: id });
+    if (accessError || !allowed) {
+      const entryState = getMockEntryState({
+        price: test.price || 0,
+        startsAt: test.starts_at,
+        endsAt: test.ends_at,
+        hasExistingResult: false,
+      });
+      if (entryState === "not_open_yet") {
+        setError(t("opensAtNotice").replace("{date}", new Date(test.starts_at as string).toLocaleString()));
+      } else if (entryState === "closed") {
+        setError(t("entryWindowClosed"));
+      } else {
+        setError(t("notAssigned"));
+      }
+      setLoading(false);
+      return;
+    }
+
     setTitle(test.title);
     setSubject(test.subject_id);
-    const seconds = Math.max(60, Number(test.duration_minutes || 60) * 60);
-    setDurationSeconds(seconds);
+    const rawSeconds = Math.max(60, Number(test.duration_minutes || 60) * 60);
+    // A manually scheduled paid mock (ends_at set) must cut everyone off at
+    // that exact moment regardless of the mock's own duration — clamp the
+    // exam's own countdown to whichever is sooner, measured from THIS
+    // student's own start point (not "now" — recomputing against "now" on
+    // every reload would double-count the elapsed time, since `start`
+    // itself is stable across reloads via localStorage below).
+    const deadlineMs = test.ends_at ? new Date(test.ends_at as string).getTime() : null;
     if (isPreview) {
       // Preview is a read-only walkthrough for the author/admin — it must
       // never touch the real per-user attempt timer, or reuse of a stale
       // localStorage entry from an earlier real attempt on this same test
       // would read as already-expired and auto-submit the moment it loads.
       startedAtRef.current = Date.now();
+      const seconds = deadlineMs ? Math.max(0, Math.min(rawSeconds, Math.floor((deadlineMs - Date.now()) / 1000))) : rawSeconds;
+      setDurationSeconds(seconds);
       setTimeLeft(seconds);
     } else {
       const storageKey = `mock_start_${id}_${user.id}`;
@@ -115,6 +148,8 @@ export default function MockTestPage() {
       const start = stored ? Number(stored) : Date.now();
       if (!stored) window.localStorage.setItem(storageKey, String(start));
       startedAtRef.current = start;
+      const seconds = deadlineMs ? Math.max(0, Math.min(rawSeconds, Math.floor((deadlineMs - start) / 1000))) : rawSeconds;
+      setDurationSeconds(seconds);
       setTimeLeft(Math.max(0, seconds - Math.floor((Date.now() - start) / 1000)));
 
       // The timer already survives a reload via mock_start_*, but the picked
@@ -198,6 +233,23 @@ export default function MockTestPage() {
       // No-ops server-side for any non-English mock test.
       const recalculateCefr = () => fetch(`/api/mock-tests/${id}/cefr-recalculate`, { method: "POST" }).catch(() => undefined);
 
+      if (submitted.resultsPending) {
+        // submit_mock already stripped score/percentage/level from the
+        // response — grading and Rasch/CEFR recalculation still run so the
+        // numbers are ready the moment resultsPublishAt passes, but nothing
+        // score-shaped is fetched back into this student's browser before then.
+        if (submitted.hasPendingReview) {
+          await fetch("/api/mock-responses/ai-grade", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ resultId: submitted.resultId }),
+          }).catch(() => undefined);
+        }
+        await recalculateRasch();
+        await recalculateCefr();
+        return;
+      }
+
       // Essay/writing questions come back from submit_mock as pending —
       // grade them against the official rubric right away instead of
       // leaving the student staring at a score that's missing a whole
@@ -227,18 +279,31 @@ export default function MockTestPage() {
           // Recalculate once the essay's is_correct is settled, not before —
           // otherwise Rasch calibrates against an essay item that always
           // reads as incorrect just because grading hadn't finished yet,
-          // and CEFR's Writing score would be computed from an unfinished
-          // (zero) essay score.
-          recalculateRasch();
+          // and the level would be computed from an unfinished (zero)
+          // essay score.
+          await recalculateRasch();
         }
       } else {
-        recalculateRasch();
+        await recalculateRasch();
       }
 
-      // Awaited (unlike Rasch, which is fire-and-forget) so an English
-      // student actually sees their CEFR band on this same screen instead
-      // of it only ever landing quietly in the database. Cheap no-op for
-      // every other subject — the route itself short-circuits immediately.
+      // Awaited (like CEFR below) so the student sees their level on this
+      // same screen instead of it only ever landing quietly in the
+      // database — needs a real cohort to be meaningful (see
+      // raschThetaToT's fallback-to-50 comment), but is cheap either way.
+      const { data: levelRow } = await supabase
+        .from("mock_results")
+        .select("level_score, grade_level")
+        .eq("id", submitted.resultId)
+        .single();
+      if (levelRow?.grade_level) {
+        setResult((current) => (current ? { ...current, levelScore: levelRow.level_score, gradeLevel: levelRow.grade_level } : current));
+      }
+
+      // Awaited so an English student actually sees their CEFR band on this
+      // same screen instead of it only ever landing quietly in the
+      // database. Cheap no-op for every other subject — the route itself
+      // short-circuits immediately.
       await recalculateCefr();
       const { data: cefrRow } = await supabase
         .from("mock_results")
@@ -277,20 +342,39 @@ export default function MockTestPage() {
         <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[hsl(var(--brand-blue-soft))] text-[hsl(var(--brand-blue-ink))]"><Trophy size={27} /></span>
         <h1 className="mt-5 text-3xl font-bold">{t("testCompleted")}</h1>
         <p className="mt-2 text-sm text-muted-foreground">{title}</p>
-        <p className="mt-8 text-6xl font-black tabular-nums">{result.percentage}%</p>
-        <p className="mt-2 text-sm text-muted-foreground">{t("autoScoreSummary").replace("{score}", String(result.score)).replace("{total}", String(result.total))}</p>
-        {result.cefrBand && (
-          <div className="mx-auto mt-4 inline-flex items-center gap-2 rounded-2xl border border-[hsl(var(--brand-blue))]/20 bg-[hsl(var(--brand-blue-soft))] px-4 py-2">
-            <span className="text-lg font-black text-[hsl(var(--brand-blue-ink))]">{result.cefrBand}</span>
-            <span className="text-xs font-semibold text-[hsl(var(--brand-blue-ink))]/70">{result.cefrScore} {t("cefrScaleSuffix")}</span>
-          </div>
-        )}
-        {grading && (
-          <p className="mt-5 flex items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-semibold text-violet-800">
-            <Loader2 size={15} className="animate-spin" /> {t("aiGrading")}
+        {result.resultsPending ? (
+          <p className="mx-auto mt-8 max-w-xs rounded-2xl border border-[hsl(var(--brand-blue))]/20 bg-[hsl(var(--brand-blue-soft))] px-5 py-4 text-sm font-semibold text-[hsl(var(--brand-blue-ink))]">
+            {t("resultsPendingNotice").replace("{date}", result.resultsPublishAt ? new Date(result.resultsPublishAt).toLocaleString() : "")}
           </p>
+        ) : (
+          <>
+            <p className="mt-8 text-6xl font-black tabular-nums">{result.score} <span className="text-3xl text-muted-foreground">/ {result.maxScore}</span></p>
+            <p className="mt-1 text-xs font-bold uppercase tracking-widest text-muted-foreground">{t("pointsLabel")}</p>
+            <p className="mt-2 text-sm text-muted-foreground">{t("percentageSecondary").replace("{percent}", String(result.percentage))}</p>
+            {result.levelScore != null && (
+              result.gradeLevel ? (
+                <div className="mx-auto mt-4 inline-flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 dark:border-emerald-900 dark:bg-emerald-950/30">
+                  <span className="text-lg font-black text-emerald-700 dark:text-emerald-400">{result.gradeLevel}</span>
+                  <span className="text-xs font-semibold text-emerald-700/70 dark:text-emerald-400/70">{result.levelScore} {t("levelScaleSuffix")}</span>
+                </div>
+              ) : (
+                <p className="mx-auto mt-4 max-w-xs text-xs text-muted-foreground">{t("noCertificateNotice")}</p>
+              )
+            )}
+            {result.cefrBand && (
+              <div className="mx-auto mt-4 inline-flex items-center gap-2 rounded-2xl border border-[hsl(var(--brand-blue))]/20 bg-[hsl(var(--brand-blue-soft))] px-4 py-2">
+                <span className="text-lg font-black text-[hsl(var(--brand-blue-ink))]">{result.cefrBand}</span>
+                <span className="text-xs font-semibold text-[hsl(var(--brand-blue-ink))]/70">{result.cefrScore} {t("cefrScaleSuffix")}</span>
+              </div>
+            )}
+            {grading && (
+              <p className="mt-5 flex items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-semibold text-violet-800">
+                <Loader2 size={15} className="animate-spin" /> {t("aiGrading")}
+              </p>
+            )}
+            {!grading && result.hasPendingReview && <p className="mt-5 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-800">{t("pendingReviewNotice")}</p>}
+          </>
         )}
-        {!grading && result.hasPendingReview && <p className="mt-5 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-800">{t("pendingReviewNotice")}</p>}
         <button onClick={() => router.push("/results")} disabled={grading} className="mt-7 rounded-xl bg-primary px-6 py-3 text-sm font-bold text-primary-foreground disabled:opacity-50">{t("toResults")}</button>
       </div>
     </div>
@@ -341,7 +425,7 @@ export default function MockTestPage() {
                           {question.content?.needsSourceImage && question.source_page && (
                             <details className="mt-4 overflow-hidden rounded-xl border border-[hsl(var(--brand-blue))]/20 bg-[hsl(var(--brand-blue-soft))]/60" open>
                               <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm font-bold text-[hsl(var(--brand-blue-ink))]"><Eye size={16} /> {t("sourceImageLabel").replace("{page}", String(question.source_page))}</summary>
-                              <iframe title={t("sourceIframeTitle").replace("{number}", question.content.number || "")} src={`/api/mock-tests/${id}/source?page=${question.source_page}`} className="h-[520px] w-full border-t border-[hsl(var(--brand-blue))]/20 bg-white" />
+                              <iframe title={t("sourceIframeTitle").replace("{number}", question.content.number || "")} src={`/api/mock-tests/${id}/source?page=${question.source_page}&file=${question.source_file_index ?? 0}`} className="h-[520px] w-full border-t border-[hsl(var(--brand-blue))]/20 bg-white" />
                             </details>
                           )}
 

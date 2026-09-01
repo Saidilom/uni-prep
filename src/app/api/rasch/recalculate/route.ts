@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { estimateRasch, Observation } from "@/lib/rasch";
+import { estimateRasch, Observation, mean, stdev, raschThetaToT } from "@/lib/rasch";
+import { gradeLevelFromScore } from "@/lib/mock-grade-level";
 
 // Recalibrates the Rasch item difficulties + person abilities for one Mock
 // test, across every attempt that test has on record — a single new
@@ -88,8 +89,23 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: calibrationError.message }, { status: 500 });
     }
 
+    // Standardize this cohort's abilities onto the same 0-75 scale used for
+    // English's official CEFR scoring (Z-score against the people who took
+    // THIS mock, not a fixed/absolute scale) — meaningful once there's a
+    // real cohort; with <2 distinct ability estimates raschThetaToT falls
+    // back to 50 (scale center) for everyone, which is why a level shown
+    // right after the first-ever attempt on a brand new mock isn't
+    // trustworthy yet and should be read as provisional.
+    const abilityMean = mean(personAbility);
+    const abilityStdev = stdev(personAbility);
+    const levelScores = personAbility.map((theta) => raschThetaToT(theta, abilityMean, abilityStdev));
+
     await Promise.all(
-        resultIds.map((id, n) => admin.from("mock_results").update({ rasch_score: personAbility[n] }).eq("id", id))
+        resultIds.map((id, n) => admin.from("mock_results").update({
+            rasch_score: personAbility[n],
+            level_score: levelScores[n],
+            grade_level: gradeLevelFromScore(levelScores[n]),
+        }).eq("id", id))
     );
 
     return NextResponse.json({

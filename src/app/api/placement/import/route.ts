@@ -4,6 +4,7 @@ import { z } from "zod";
 import { createRouteHandlerClient, supabaseServer } from "@/lib/supabase/server";
 import { IMPORTED_PLACEMENT_JSON_SCHEMA, ImportedPlacementTest, ImportedPlacementTestSchema } from "@/lib/placement-import-schema";
 import { buildPlacementImportPrompt, PLACEMENT_IMPORT_SYSTEM_PROMPT } from "@/lib/placement-import-prompt";
+import { getGeminiThinkingConfig } from "@/lib/gemini-config";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -15,9 +16,11 @@ const StoredFileSchema = z.object({
   filename: z.string().min(1).max(255),
   size: z.number().int().positive().max(MAX_PDF_BYTES),
 });
+// Same shape as the mock-test import route — up to 4 test-part PDFs plus
+// one optional separate answer key.
 const StoredImportSchema = z.object({
   importId: z.string().uuid(),
-  testFile: StoredFileSchema,
+  testFiles: z.array(StoredFileSchema).min(1).max(4),
   answersFile: StoredFileSchema.optional(),
 });
 
@@ -69,15 +72,18 @@ async function waitForGeminiFile(ai: GoogleGenAI, name: string) {
 
 async function extractDraftWithGemini(
   ai: GoogleGenAI,
-  files: Array<{ file: Awaited<ReturnType<typeof waitForGeminiFile>>; filename: string }>,
+  testFiles: Array<{ file: Awaited<ReturnType<typeof waitForGeminiFile>>; filename: string }>,
+  answersFile: { file: Awaited<ReturnType<typeof waitForGeminiFile>>; filename: string } | undefined,
 ) {
-  const fileParts = files.map(({ file, filename }) => {
+  const allFiles = [...testFiles, ...(answersFile ? [answersFile] : [])];
+  const fileParts = allFiles.map(({ file, filename }) => {
     if (!file.uri || !file.mimeType) {
       throw new Error(`Gemini не вернул URI загруженного файла (${filename})`);
     }
     return createPartFromUri(file.uri, file.mimeType);
   });
-  const [testFilename, answersFilename] = files.map((f) => f.filename);
+  const testFilenames = testFiles.map((f) => f.filename);
+  const answersFilename = answersFile?.filename;
   const timeoutMs = Number(process.env.GEMINI_IMPORT_TIMEOUT_MS || 400_000);
   const candidates = getGeminiModelCandidates();
 
@@ -92,7 +98,7 @@ async function extractDraftWithGemini(
         model,
         contents: [
           ...fileParts,
-          { text: buildPlacementImportPrompt(testFilename, answersFilename) },
+          { text: buildPlacementImportPrompt(testFilenames, answersFilename) },
         ],
         config: {
           httpOptions: { timeout: timeoutMs },
@@ -101,6 +107,7 @@ async function extractDraftWithGemini(
           responseSchema: IMPORTED_PLACEMENT_JSON_SCHEMA,
           temperature: 0.1,
           maxOutputTokens: Number(process.env.GEMINI_IMPORT_MAX_TOKENS || 30000),
+          thinkingConfig: getGeminiThinkingConfig(),
         },
       });
       return { model, response, draft: parseGeminiJson(response.text || "") };
@@ -130,7 +137,7 @@ export async function POST(req: NextRequest) {
 
   const parsed = StoredImportSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Некорректные данные загруженного PDF" }, { status: 400 });
-  const { importId, testFile, answersFile } = parsed.data;
+  const { importId, testFiles, answersFile } = parsed.data;
 
   const loadAndValidate = async (stored: z.infer<typeof StoredFileSchema>): Promise<Buffer | { error: string; status: number }> => {
     if (!stored.path.startsWith(`${authUser.id}/${importId}/`) || !stored.filename.toLowerCase().endsWith(".pdf")) {
@@ -148,9 +155,12 @@ export async function POST(req: NextRequest) {
     return bytes;
   };
 
-  const testResult = await loadAndValidate(testFile);
-  if (!Buffer.isBuffer(testResult)) return NextResponse.json({ error: testResult.error }, { status: testResult.status });
-  const testBytes = testResult;
+  const testBytesList: Buffer[] = [];
+  for (const testFile of testFiles) {
+    const testResult = await loadAndValidate(testFile);
+    if (!Buffer.isBuffer(testResult)) return NextResponse.json({ error: testResult.error }, { status: testResult.status });
+    testBytesList.push(testResult);
+  }
 
   let answersBytes: Buffer | undefined;
   if (answersFile) {
@@ -173,12 +183,12 @@ export async function POST(req: NextRequest) {
       return { file: await waitForGeminiFile(ai, name), filename };
     };
 
-    const readyFiles = await Promise.all([
-      uploadOne(testBytes, testFile.filename),
-      ...(answersBytes ? [uploadOne(answersBytes, answersFile!.filename)] : []),
+    const [readyTestFiles, readyAnswersFile] = await Promise.all([
+      Promise.all(testBytesList.map((bytes, i) => uploadOne(bytes, testFiles[i].filename))),
+      answersBytes ? uploadOne(answersBytes, answersFile!.filename) : Promise.resolve(undefined),
     ]);
 
-    const { model: usedModel, response, draft } = await extractDraftWithGemini(ai, readyFiles);
+    const { model: usedModel, response, draft } = await extractDraftWithGemini(ai, readyTestFiles, readyAnswersFile);
 
     return NextResponse.json({
       importId,

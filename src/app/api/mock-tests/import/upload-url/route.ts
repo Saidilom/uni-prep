@@ -29,7 +29,12 @@ export async function POST(req: NextRequest) {
   }
   const importId = parsed.data.importId || crypto.randomUUID();
   const safeName = parsed.data.filename.replace(/[^a-zA-Z0-9._-]+/g, "-").slice(-120) || "exam.pdf";
-  const path = `${user.id}/${importId}/${parsed.data.kind}-${safeName}`;
+  // Multiple "test" files can now be uploaded to the same importId (up to 4
+  // exam-part PDFs) — without a unique slot per upload, two files that
+  // happen to share an original filename (or even just both landing on
+  // kind="test") would silently overwrite each other in storage.
+  const slot = crypto.randomUUID().slice(0, 8);
+  const path = `${user.id}/${importId}/${parsed.data.kind}-${slot}-${safeName}`;
   const { data, error } = await supabaseServer.storage.from("test-imports").createSignedUploadUrl(path);
   if (error || !data) {
     return NextResponse.json({ error: `Не удалось подготовить загрузку: ${error?.message || "unknown"}` }, { status: 500 });

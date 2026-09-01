@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { fetchAdminOverview } from "@/lib/admin-utils";
-import { GraduationCap, Wallet, Clock, CreditCard, ArrowRight } from "lucide-react";
+import { GraduationCap, Wallet, Clock, CreditCard, ArrowRight, BarChart3, ClipboardCheck } from "lucide-react";
+import { accuracyColor } from "@/lib/status-colors";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 type Overview = Awaited<ReturnType<typeof fetchAdminOverview>>;
@@ -104,6 +105,86 @@ export default function AdminDashboard() {
                                 </div>
                             );
                         })}
+                    </div>
+                )}
+            </section>
+
+            <section className="rounded-2xl border border-border bg-card p-8">
+                <div className="mb-6 flex items-center justify-between">
+                    <div>
+                        <h2 className="flex items-center gap-2 text-xl font-bold tracking-tight text-[hsl(var(--brand-blue-ink))]">
+                            <BarChart3 size={19} className="text-muted-foreground" /> {t("revenueByMockTitle")}
+                        </h2>
+                        <p className="mt-1 text-sm text-muted-foreground">{t("revenueByMockSubtitle")}</p>
+                    </div>
+                    <Link href="/admin/payments" className="inline-flex items-center gap-1.5 text-sm font-semibold text-[hsl(var(--brand-blue-ink))] hover:underline">
+                        {t("allPayments")} <ArrowRight size={14} />
+                    </Link>
+                </div>
+
+                {isLoading ? (
+                    <div className="space-y-3">
+                        {[1, 2, 3].map((n) => (
+                            <div key={n} className="h-14 animate-pulse rounded-2xl border border-border bg-muted" />
+                        ))}
+                    </div>
+                ) : !overview || overview.revenueByMock.length === 0 ? (
+                    <div className="rounded-2xl border border-border bg-muted/50 py-10 text-center dark:bg-muted/30">
+                        <p className="font-medium text-muted-foreground">{t("noTransactionsYet")}</p>
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        {overview.revenueByMock.map((m) => (
+                            <div key={m.mockTestId} className="flex flex-col justify-between gap-2 rounded-2xl border border-border p-4 sm:flex-row sm:items-center">
+                                <div className="min-w-0">
+                                    <p className="truncate text-sm font-semibold text-foreground">{m.mockTestTitle}</p>
+                                    <p className="mt-0.5 text-xs text-muted-foreground">{t("paymentsCountLabel").replace("{count}", String(m.paymentsCount))}</p>
+                                </div>
+                                <p className="shrink-0 text-sm font-bold tabular-nums text-foreground">{m.revenue.toLocaleString()} UZS</p>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </section>
+
+            <section className="rounded-2xl border border-border bg-card p-8">
+                <div className="mb-6 flex items-center justify-between">
+                    <div>
+                        <h2 className="flex items-center gap-2 text-xl font-bold tracking-tight text-[hsl(var(--brand-blue-ink))]">
+                            <ClipboardCheck size={19} className="text-muted-foreground" /> {t("recentPlacementTitle")}
+                        </h2>
+                        <p className="mt-1 text-sm text-muted-foreground">{t("recentPlacementSubtitle")}</p>
+                    </div>
+                    <Link href="/admin/placement/results" className="inline-flex items-center gap-1.5 text-sm font-semibold text-[hsl(var(--brand-blue-ink))] hover:underline">
+                        {t("allPlacementResults")} <ArrowRight size={14} />
+                    </Link>
+                </div>
+
+                {isLoading ? (
+                    <div className="space-y-3">
+                        {[1, 2, 3].map((n) => (
+                            <div key={n} className="h-16 animate-pulse rounded-2xl border border-border bg-muted" />
+                        ))}
+                    </div>
+                ) : !overview || overview.recentPlacementResults.length === 0 ? (
+                    <div className="rounded-2xl border border-border bg-muted/50 py-10 text-center dark:bg-muted/30">
+                        <p className="font-medium text-muted-foreground">{t("noPlacementResultsYet")}</p>
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        {overview.recentPlacementResults.map((r) => (
+                            <Link
+                                key={r.id}
+                                href={`/admin/placement/results?test=${r.testId}`}
+                                className="flex flex-col justify-between gap-3 rounded-2xl border border-border p-4 transition-colors hover:bg-muted/40 sm:flex-row sm:items-center"
+                            >
+                                <div className="min-w-0">
+                                    <p className="truncate text-sm font-semibold text-foreground">{r.userName}</p>
+                                    <p className="mt-0.5 truncate text-xs text-muted-foreground">{r.testTitle} • {new Date(r.completedAt).toLocaleString(locale === "ru" ? "ru-RU" : "uz-UZ")}</p>
+                                </div>
+                                <span className={`shrink-0 self-start rounded-xl px-3 py-1.5 text-sm font-bold tabular-nums sm:self-auto ${accuracyColor(r.accuracy)}`}>{r.accuracy}%</span>
+                            </Link>
+                        ))}
                     </div>
                 )}
             </section>

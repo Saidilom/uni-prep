@@ -3,22 +3,17 @@ import { evaluatePaymentCreation, evaluatePaymentConfirmation } from "./payment-
 
 describe("evaluatePaymentCreation", () => {
     it("rejects non-paid test types", () => {
-        const result = evaluatePaymentCreation({ testType: "free", hasExistingAccess: false, pendingPaymentId: null });
+        const result = evaluatePaymentCreation({ testType: "free", hasExistingAccess: false });
         expect(result.action).toBe("reject");
     });
 
     it("rejects when the user already has access", () => {
-        const result = evaluatePaymentCreation({ testType: "paid", hasExistingAccess: true, pendingPaymentId: null });
+        const result = evaluatePaymentCreation({ testType: "paid", hasExistingAccess: true });
         expect(result.action).toBe("reject");
     });
 
-    it("reuses an existing pending payment instead of creating a duplicate", () => {
-        const result = evaluatePaymentCreation({ testType: "paid", hasExistingAccess: false, pendingPaymentId: "p1" });
-        expect(result).toEqual({ action: "reuse_pending", paymentId: "p1" });
-    });
-
-    it("allows creating a new payment when nothing blocks it", () => {
-        const result = evaluatePaymentCreation({ testType: "paid", hasExistingAccess: false, pendingPaymentId: null });
+    it("allows creating a payment when nothing blocks it", () => {
+        const result = evaluatePaymentCreation({ testType: "paid", hasExistingAccess: false });
         expect(result).toEqual({ action: "create" });
     });
 });

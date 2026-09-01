@@ -2,21 +2,10 @@
 // (tests-pdf/англ/Multilevel-bm.pdf, Bilimni baholash agentligi,
 // 2023-03-16) — pure math only, no I/O. The orchestration (fetching
 // responses, running Rasch, writing results back) lives in
-// /api/mock-tests/[id]/cefr-recalculate.
-
-// Listening/Reading: Z = (theta - mean) / stdev, T = Z*10 + 50, capped to
-// [0, 75] since the exam doesn't test C2 (the top of the 0-75 scale is
-// deliberately C1's ceiling, not a true C2 score).
-export function raschThetaToT(theta: number, mean: number, stdev: number): number {
-  // With fewer than ~2 meaningfully-different ability estimates, a
-  // population stdev is not a meaningful yardstick (and would divide by
-  // ~0) — fall back to the scale's center point until there's enough data
-  // to standardize against, rather than producing NaN/Infinity.
-  if (!Number.isFinite(stdev) || stdev < 1e-6) return 50;
-  const z = (theta - mean) / stdev;
-  const t = z * 10 + 50;
-  return Math.max(0, Math.min(75, Math.round(t)));
-}
+// /api/mock-tests/[id]/cefr-recalculate. raschThetaToT/mean/stdev moved to
+// src/lib/rasch.ts (generic, reused by src/lib/mock-grade-level.ts too) —
+// re-exported here so existing importers of this module keep working.
+export { raschThetaToT, mean, stdev } from "./rasch";
 
 // Writing: Task 1 (raw 0-10) and Task 2 (raw 0-20) both scale by the same
 // x1.2 factor into a combined 0-36 raw sum (10*1.2=12, 20*1.2=24 — matches
@@ -58,16 +47,4 @@ export function cefrBandFromScore(avgScore: number): CefrBand {
   if (avgScore >= 51) return "B2";
   if (avgScore >= 38) return "B1";
   return "<B1";
-}
-
-export function mean(values: number[]): number {
-  if (values.length === 0) return 0;
-  return values.reduce((a, b) => a + b, 0) / values.length;
-}
-
-export function stdev(values: number[]): number {
-  if (values.length < 2) return 0;
-  const m = mean(values);
-  const variance = values.reduce((sum, v) => sum + (v - m) ** 2, 0) / values.length;
-  return Math.sqrt(variance);
 }

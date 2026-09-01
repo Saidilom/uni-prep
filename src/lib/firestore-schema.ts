@@ -4,7 +4,11 @@
 
 // Schema types — decouple from Firebase Timestamp. Use ISO strings or Date where needed.
 
-export type UserRole = "student" | "teacher" | "admin";
+// "staff" is a limited admin role granted by a full admin — its only power
+// is promoting a student to teacher (see the /staff panel and
+// promote_student_to_teacher, 049_staff_role.sql). It is deliberately
+// distinct from "admin" (full power, unchanged) everywhere in RLS.
+export type UserRole = "student" | "teacher" | "admin" | "staff";
 
 export type RegisteredVia = "qr" | "google" | "phone" | "admin";
 
@@ -226,6 +230,9 @@ export interface MockTest {
   language?: string;
   createdBy?: string;
   status?: "draft" | "review" | "published" | "archived";
+  startsAt?: string | null;
+  endsAt?: string | null;
+  resultsPublishAt?: string | null;
 }
 
 export type MockAccessSource = "registan" | "payment" | "admin";

@@ -58,6 +58,17 @@ type Result = {
   resultsPublishAt?: string | null;
 };
 
+type AnswerReview = {
+  question_id: string;
+  question_text: string;
+  selected_answer: string | null;
+  is_correct: boolean;
+  points_earned: number;
+  max_points: number;
+  review_status: string;
+  review_feedback: string | null;
+};
+
 function isAnswered(value: AnswerValue | undefined) {
   if (Array.isArray(value)) return value.length > 0;
   if (typeof value === "string") return value.trim().length > 0;
@@ -81,6 +92,7 @@ export default function MockTestPage() {
   const [submitting, setSubmitting] = useState(false);
   const [grading, setGrading] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
+  const [review, setReview] = useState<AnswerReview[] | null>(null);
   const [durationSeconds, setDurationSeconds] = useState(0);
   const [timeLeft, setTimeLeft] = useState(0);
   const startedAtRef = useRef(Date.now());
@@ -256,6 +268,7 @@ export default function MockTestPage() {
       // grade them against the official rubric right away instead of
       // leaving the student staring at a score that's missing a whole
       // section until a teacher happens to open the review page.
+      let fetchedReview: AnswerReview[] | null = null;
       if (submitted.hasPendingReview) {
         setGrading(true);
         try {
@@ -268,12 +281,13 @@ export default function MockTestPage() {
             supabase.from("mock_results").select("score, accuracy").eq("id", submitted.resultId).single(),
             supabase.rpc("get_my_mock_answer_review", { p_result_id: submitted.resultId }),
           ]);
+          fetchedReview = (details as AnswerReview[]) || [];
           if (refreshed) {
             setResult({
               ...submitted,
               score: refreshed.score,
               percentage: refreshed.accuracy,
-              hasPendingReview: (details || []).some((d: { review_status: string }) => d.review_status === "pending"),
+              hasPendingReview: fetchedReview.some((d) => d.review_status === "pending"),
             });
           }
         } finally {
@@ -315,6 +329,15 @@ export default function MockTestPage() {
       if (cefrRow?.cefr_band) {
         setResult((current) => (current ? { ...current, cefrScore: cefrRow.cefr_score, cefrBand: cefrRow.cefr_band } : current));
       }
+
+      // Per-question correct/incorrect breakdown, shown right below the
+      // score on this same screen. Reuse the review data already fetched
+      // above for the AI-grading branch instead of calling the RPC twice.
+      if (!fetchedReview) {
+        const { data: reviewData } = await supabase.rpc("get_my_mock_answer_review", { p_result_id: submitted.resultId });
+        fetchedReview = (reviewData as AnswerReview[]) || [];
+      }
+      setReview(fetchedReview);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : t("submitFailed"));
     } finally {
@@ -339,7 +362,7 @@ export default function MockTestPage() {
   );
 
   if (result) return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/40 p-5">
+    <div className="flex min-h-screen flex-col items-center gap-8 bg-muted/40 p-5 py-10">
       <div className="w-full max-w-xl rounded-3xl border border-border bg-background p-8 text-center shadow-sm">
         <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[hsl(var(--brand-blue-soft))] text-[hsl(var(--brand-blue-ink))]"><Trophy size={27} /></span>
         <h1 className="mt-5 text-3xl font-bold">{t("testCompleted")}</h1>
@@ -381,6 +404,30 @@ export default function MockTestPage() {
         )}
         <button onClick={() => router.push("/results")} disabled={grading} className="mt-7 rounded-xl bg-primary px-6 py-3 text-sm font-bold text-primary-foreground disabled:opacity-50">{t("toResults")}</button>
       </div>
+
+      {!result.resultsPending && review && review.length > 0 && (
+        <div className="w-full max-w-2xl">
+          <h2 className="mb-4 text-center text-xl font-bold text-foreground">{t("answerReviewTitle")}</h2>
+          <div className="space-y-2">
+            {review.map((r, i) => (
+              <div
+                key={r.question_id}
+                className={`flex items-start gap-3 rounded-2xl border p-4 ${r.is_correct ? "border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/20" : "border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/20"}`}
+              >
+                <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white ${r.is_correct ? "bg-emerald-500" : "bg-red-500"}`}>
+                  {r.is_correct ? <Check size={14} /> : i + 1}
+                </span>
+                <div className="min-w-0 flex-1 text-left">
+                  <SafeMathText content={r.question_text} className="text-sm font-medium text-foreground" />
+                  <p className={`mt-1.5 text-xs font-bold uppercase tracking-wide ${r.is_correct ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}>
+                    {r.is_correct ? t("answerCorrectLabel") : t("answerIncorrectLabel")} · {r.points_earned}/{r.max_points}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 

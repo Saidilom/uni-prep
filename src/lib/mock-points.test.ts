@@ -33,4 +33,23 @@ describe("normalizePointsTo75", () => {
     const result = normalizePointsTo75([2.2, 1, 1]);
     expect(sumPoints(result)).toBe(75);
   });
+
+  it("sums to exactly 75 for a large near-uniform draft without zeroing a question", () => {
+    // Regression: dumping the whole rounding-drift correction onto a
+    // single item used to clamp it to 0 and silently discard whatever
+    // didn't fit, undershooting 75 — this needs many equal-weight items
+    // for the per-item rounding drift to add up to more than one item's
+    // own share (reproduced at n=200, drift was -1.00 vs a 0.38 share).
+    const points = Array(200).fill(1);
+    const result = normalizePointsTo75(points);
+    expect(sumPoints(result)).toBe(75);
+  });
+
+  it("never produces a negative point value while fixing the remainder", () => {
+    for (const n of [126, 150, 180, 200, 250]) {
+      const result = normalizePointsTo75(Array(n).fill(1));
+      expect(sumPoints(result)).toBe(75);
+      expect(result.every((value) => value >= 0)).toBe(true);
+    }
+  });
 });

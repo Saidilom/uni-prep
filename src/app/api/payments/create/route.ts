@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
 
     const { data: test, error: testError } = await supabaseServer
         .from("mock_tests")
-        .select("id, title, type, price")
+        .select("id, title, type, price, status, closed_at, ends_at")
         .eq("id", mockTestId)
         .single();
 
@@ -53,8 +53,20 @@ export async function POST(req: NextRequest) {
         .eq("mock_test_id", mockTestId)
         .maybeSingle();
 
+    // Blocks starting a checkout for a test that's already closed/expired/
+    // unpublished — the common case (buying a dead test). This is
+    // deliberately NOT re-checked in the payme/click webhook handlers: by
+    // the time a webhook fires, the provider has already taken the
+    // student's real money, so rejecting there would mean charged + no
+    // access + no refund, strictly worse than just granting access. Fully
+    // closing the narrow remaining race (test expires between checkout
+    // click and webhook arrival) needs a refund flow, which doesn't exist
+    // yet — out of scope for this fix.
     const decision = evaluatePaymentCreation({
         testType: test.type,
+        testStatus: test.status,
+        closedAt: test.closed_at,
+        endsAt: test.ends_at,
         hasExistingAccess: !!existingAccess,
     });
 

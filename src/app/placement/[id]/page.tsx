@@ -86,6 +86,7 @@ export default function PlacementTestPage() {
             if (data) {
                 pageCache.invalidatePrefix("placementAssignments:");
                 if (user) pageCache.invalidate(`hasPlacementResult:${user.id}`);
+                if (user) window.localStorage.removeItem(`placement_answers_${id}_${user.id}`);
                 setResult({
                     resultId: data.resultId,
                     score: data.score,
@@ -206,10 +207,31 @@ export default function PlacementTestPage() {
             setQuestions(questionsData as Question[]);
         }
 
+        // The timer already survives a reload via the server-persisted
+        // started_at, but the picked answers themselves were pure in-memory
+        // state — a refresh mid-test wiped every selected answer even
+        // though the clock kept counting (same class of bug already fixed
+        // for the Mock exam page, src/app/mock/[id]/page.tsx).
+        try {
+            const saved = window.localStorage.getItem(`placement_answers_${id}_${user.id}`);
+            if (saved) setAnswers(JSON.parse(saved));
+        } catch {
+            window.localStorage.removeItem(`placement_answers_${id}_${user.id}`);
+        }
+
         setLoading(false);
     }, [id, user, router, toast, t]);
 
     useEffect(() => { load(); }, [load]);
+
+    useEffect(() => {
+        if (!id || !user || loading || result) return;
+        try {
+            window.localStorage.setItem(`placement_answers_${id}_${user.id}`, JSON.stringify(answers));
+        } catch {
+            // storage full/unavailable — the attempt still works, just won't survive a reload
+        }
+    }, [answers, id, user, loading, result]);
 
     useEffect(() => {
         if (timeLeft === null || timeLeft <= 0 || result) return;
@@ -365,9 +387,9 @@ export default function PlacementTestPage() {
                         )}
                         <p className="text-lg font-semibold text-foreground">{q.text}</p>
                         <div className="grid grid-cols-1 gap-3">
-                            {["a", "b", "c", "d"].map((key) => {
+                            {Object.entries(q.options || {}).map(([key, value]) => {
                                 const selected = answers[q.id] === key;
-                                return q.options[key] && (
+                                return (
                                     <button
                                         key={key}
                                         onClick={() => setAnswers((prev) => ({ ...prev, [q.id]: key }))}
@@ -376,7 +398,7 @@ export default function PlacementTestPage() {
                                         <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-bold ${selected ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"}`}>
                                             {key.toUpperCase()}
                                         </span>
-                                        <span className="text-sm font-medium text-foreground">{q.options[key]}</span>
+                                        <span className="text-sm font-medium text-foreground">{value}</span>
                                         {selected && <CheckCircle2 className="ml-auto h-5 w-5 shrink-0 text-primary" strokeWidth={2} />}
                                     </button>
                                 );

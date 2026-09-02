@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, ChevronRight, Trophy, Users, Award, Calendar, Loader2 } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import {
@@ -30,6 +30,13 @@ export default function TeacherResultsExplorer() {
     const [attempts, setAttempts] = useState<MockResultRow[]>([]);
     const [loadingAttempts, setLoadingAttempts] = useState(false);
 
+    // Guards against a slower response for a previously-opened class/student
+    // overwriting a faster one's already-rendered state — rapid switching
+    // (open A, then B before A resolves) could otherwise show A's roster
+    // under B's heading if A's fetch happens to land after B's.
+    const latestClassRequest = useRef<string | null>(null);
+    const latestStudentRequest = useRef<string | null>(null);
+
     useEffect(() => {
         if (!user) return;
         setLoadingOverview(true);
@@ -40,19 +47,23 @@ export default function TeacherResultsExplorer() {
     }, [user]);
 
     const openClass = (cls: TeacherClassSummary) => {
+        latestClassRequest.current = cls.id;
         setSelectedClass(cls);
         setSelectedStudent(null);
         setLoadingStudents(true);
         fetchClassStudentsOverview(cls.id).then((data) => {
+            if (latestClassRequest.current !== cls.id) return;
             setStudents(data);
             setLoadingStudents(false);
         });
     };
 
     const openStudent = (student: ClassStudentOverview) => {
+        latestStudentRequest.current = student.student.id;
         setSelectedStudent(student);
         setLoadingAttempts(true);
         fetchUserMockResults(student.student.id).then((data) => {
+            if (latestStudentRequest.current !== student.student.id) return;
             setAttempts(data);
             setLoadingAttempts(false);
         });
@@ -220,9 +231,12 @@ export default function TeacherResultsExplorer() {
                                             <span>{a.correct_answers}/{a.total_questions} {t("correctSuffix")}</span>
                                         </div>
                                     </div>
-                                    <span className={`shrink-0 self-start rounded-xl px-4 py-2 text-sm font-extrabold tabular-nums sm:self-auto ${accuracyColor(a.accuracy)}`}>
-                                        {a.accuracy}%
-                                    </span>
+                                    <div className="flex shrink-0 flex-col items-end gap-0.5 self-start sm:self-auto">
+                                        <span className={`rounded-xl px-4 py-2 text-sm font-extrabold tabular-nums ${accuracyColor(a.accuracy)}`}>
+                                            {a.score}/{a.max_score}
+                                        </span>
+                                        <span className="text-[10px] font-semibold text-muted-foreground">{a.accuracy}%</span>
+                                    </div>
                                 </div>
                             ))}
                         </div>

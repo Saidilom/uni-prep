@@ -2,18 +2,41 @@ import { describe, it, expect } from "vitest";
 import { evaluatePaymentCreation, evaluatePaymentConfirmation } from "./payment-rules";
 
 describe("evaluatePaymentCreation", () => {
+    const base = { testType: "paid", testStatus: "published", closedAt: null, endsAt: null, hasExistingAccess: false };
+    const now = new Date("2026-08-15T12:00:00Z");
+
     it("rejects non-paid test types", () => {
-        const result = evaluatePaymentCreation({ testType: "free", hasExistingAccess: false });
+        const result = evaluatePaymentCreation({ ...base, testType: "free" });
         expect(result.action).toBe("reject");
     });
 
     it("rejects when the user already has access", () => {
-        const result = evaluatePaymentCreation({ testType: "paid", hasExistingAccess: true });
+        const result = evaluatePaymentCreation({ ...base, hasExistingAccess: true });
         expect(result.action).toBe("reject");
     });
 
+    it("rejects a test that isn't published", () => {
+        const result = evaluatePaymentCreation({ ...base, testStatus: "draft" });
+        expect(result.action).toBe("reject");
+    });
+
+    it("rejects a manually closed test", () => {
+        const result = evaluatePaymentCreation({ ...base, closedAt: "2026-08-15T10:00:00Z" });
+        expect(result.action).toBe("reject");
+    });
+
+    it("rejects a test whose scheduled end time has already passed", () => {
+        const result = evaluatePaymentCreation({ ...base, endsAt: "2026-08-15T11:00:00Z", now });
+        expect(result.action).toBe("reject");
+    });
+
+    it("allows a test whose scheduled window hasn't started yet (pre-purchase)", () => {
+        const result = evaluatePaymentCreation({ ...base, endsAt: "2026-08-16T11:00:00Z", now });
+        expect(result).toEqual({ action: "create" });
+    });
+
     it("allows creating a payment when nothing blocks it", () => {
-        const result = evaluatePaymentCreation({ testType: "paid", hasExistingAccess: false });
+        const result = evaluatePaymentCreation(base);
         expect(result).toEqual({ action: "create" });
     });
 });

@@ -837,7 +837,7 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
                 <p className="truncate font-semibold">{test.title}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {new Date(test.created_at).toLocaleDateString(locale === "ru" ? "ru-RU" : "uz-UZ")} · {test.status}
-                  {mode === "admin" && Boolean(test.closed_at) && ` · ${t("closedLabel")}`}
+                  {Boolean(test.closed_at) && ` · ${t("closedLabel")}`}
                 </p>
               </div>
               <span className="text-sm text-muted-foreground">{SUBJECT_LABELS[test.subject_id || "other"] || test.subject_id || "—"}</span>
@@ -847,33 +847,29 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
               <div className="flex flex-wrap justify-end gap-2">
                 <Link href={`/mock/${test.id}?preview=1`} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border hover:bg-muted" title={t("previewTitle")}><Eye size={16} /></Link>
                 {mode === "teacher" && <button onClick={() => openAssignments(test)} className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground"><Send size={14} /> {t("assignAction")}</button>}
-                {mode === "admin" && (
-                  <>
-                    {test.completed_count > 0 && (
-                      <span className="hidden items-center px-1 text-xs font-semibold text-muted-foreground md:inline-flex">
-                        {t("completedCountShort").replace("{count}", String(test.completed_count))}
-                      </span>
-                    )}
-                    {Boolean(test.closed_at) && test.completed_count > 0 && (
-                      <button
-                        onClick={() => finalizeResults(test)}
-                        disabled={finalizing === test.id}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-400"
-                      >
-                        <CheckCircle2 size={13} />
-                        {finalizing === test.id ? t("finalizingLabel") : t("finalizeResultsAction")}
-                      </button>
-                    )}
-                    <button
-                      onClick={() => toggleClose(test)}
-                      disabled={togglingClose === test.id}
-                      className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-semibold transition-colors disabled:opacity-50 ${test.closed_at ? "border-border hover:bg-muted" : "border-red-200 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"}`}
-                    >
-                      {test.closed_at ? <LockOpen size={13} /> : <Lock size={13} />}
-                      {togglingClose === test.id ? t("togglingLabel") : test.closed_at ? t("reopenMock") : t("closeMock")}
-                    </button>
-                  </>
+                {test.completed_count > 0 && (
+                  <span className="hidden items-center px-1 text-xs font-semibold text-muted-foreground md:inline-flex">
+                    {t("completedCountShort").replace("{count}", String(test.completed_count))}
+                  </span>
                 )}
+                {Boolean(test.closed_at) && test.completed_count > 0 && (
+                  <button
+                    onClick={() => finalizeResults(test)}
+                    disabled={finalizing === test.id}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-400"
+                  >
+                    <CheckCircle2 size={13} />
+                    {finalizing === test.id ? t("finalizingLabel") : t("finalizeResultsAction")}
+                  </button>
+                )}
+                <button
+                  onClick={() => toggleClose(test)}
+                  disabled={togglingClose === test.id}
+                  className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-semibold transition-colors disabled:opacity-50 ${test.closed_at ? "border-border hover:bg-muted" : "border-red-200 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"}`}
+                >
+                  {test.closed_at ? <LockOpen size={13} /> : <Lock size={13} />}
+                  {togglingClose === test.id ? t("togglingLabel") : test.closed_at ? t("reopenMock") : t("closeMock")}
+                </button>
               </div>
             </div>
           ))}

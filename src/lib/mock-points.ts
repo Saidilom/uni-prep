@@ -11,12 +11,30 @@ function round2(value: number): number {
 
 function fixRemainder(values: number[], target: number): number[] {
   if (values.length === 0) return values;
-  const sum = values.reduce((total, value) => total + value, 0);
-  const diff = round2(target - sum);
-  if (diff === 0) return values;
-  const maxIndex = values.reduce((best, value, index) => (value > values[best] ? index : best), 0);
   const result = [...values];
-  result[maxIndex] = Math.max(0, round2(result[maxIndex] + diff));
+  let diff = round2(target - result.reduce((sum, value) => sum + value, 0));
+  if (diff === 0) return result;
+
+  // A negative drift grows with item count on near-uniform weights (each
+  // item rounds up by a fraction of a cent, and that compounds) — dumping
+  // the whole thing onto a single item and clamping at 0 silently drops
+  // whatever didn't fit instead of applying it, breaking the "always sums
+  // to exactly `target`" guarantee. Spread it across items largest-first,
+  // taking as much as each can give without going below 0, until the
+  // correction is fully absorbed. A positive drift never has this problem
+  // (there's no upper clamp), so it's applied to the single largest item.
+  const order = result.map((_, index) => index).sort((a, b) => result[b] - result[a]);
+  for (const index of order) {
+    if (diff === 0) break;
+    if (diff > 0) {
+      result[index] = round2(result[index] + diff);
+      diff = 0;
+    } else {
+      const take = Math.min(result[index], -diff);
+      result[index] = round2(result[index] - take);
+      diff = round2(diff + take);
+    }
+  }
   return result;
 }
 

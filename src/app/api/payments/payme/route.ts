@@ -133,13 +133,17 @@ export async function POST(req: NextRequest) {
         })
         .eq("id", order.id);
 
-      await supabaseServer.from("mock_access").insert({
+      // upsert + onConflict(user_id, mock_test_id) instead of a plain insert
+      // — Payme resends this on network timeouts (see comment above), so two
+      // overlapping deliveries could otherwise both insert a row before
+      // either commits (mock_access_user_test_unique, 062_mock_access_unique_constraint.sql).
+      await supabaseServer.from("mock_access").upsert({
         id: crypto.randomUUID(),
         user_id: order.user_id,
         mock_test_id: order.mock_test_id,
         source: "payment",
         payment_id: order.id,
-      });
+      }, { onConflict: "user_id,mock_test_id", ignoreDuplicates: true });
 
       return rpcResult(id, { transaction: order.id, perform_time: performTime, state: 2 });
     }

@@ -370,6 +370,8 @@ export type StudentMockResult = {
     student: User;
     resultId: string | null;
     score: number | null;
+    maxScore: number | null;
+    accuracy: number | null;
     correctAnswers: number | null;
     totalQuestions: number | null;
     raschScore: number | null;
@@ -388,16 +390,20 @@ export type ClassMockResultsSummary = {
     students: StudentMockResult[];
     completedCount: number;
     totalCount: number;
+    // Points-based (same scale as each student's score/maxScore), matching
+    // the "score/max" convention used everywhere else results are shown —
+    // see student-class-detail.tsx and mock/[id]/page.tsx.
+    mockMaxScore: number | null;
     avgScore: number | null;
-    maxScore: number | null;
-    minScore: number | null;
+    topScore: number | null;
+    lowScore: number | null;
 };
 
 export const fetchClassMockResults = async (classId: string, mockTestId: string): Promise<ClassMockResultsSummary> => {
     const [members, { data: test }, { data: results }] = await Promise.all([
         fetchClassMembers(classId),
         supabase.from("mock_tests").select("title").eq("id", mockTestId).single(),
-        supabase.from("mock_results").select("id, user_id, score, accuracy, correct_answers, total_questions, rasch_score, cefr_band, cefr_score, grade_level, completed_at").eq("mock_test_id", mockTestId),
+        supabase.from("mock_results").select("id, user_id, score, max_score, accuracy, correct_answers, total_questions, rasch_score, cefr_band, cefr_score, grade_level, completed_at").eq("mock_test_id", mockTestId),
     ]);
 
     const resultByStudent = new Map((results || []).map((r) => [r.user_id as string, r]));
@@ -407,7 +413,9 @@ export const fetchClassMockResults = async (classId: string, mockTestId: string)
             return {
                 student,
                 resultId: r ? (r.id as string) : null,
-                score: r ? (r.accuracy as number) : null,
+                score: r ? (r.score as number) : null,
+                maxScore: r ? (r.max_score as number) : null,
+                accuracy: r ? (r.accuracy as number) : null,
                 correctAnswers: r ? (r.correct_answers as number) : null,
                 totalQuestions: r ? (r.total_questions as number) : null,
                 raschScore: r && r.rasch_score !== null ? (r.rasch_score as number) : null,
@@ -420,15 +428,17 @@ export const fetchClassMockResults = async (classId: string, mockTestId: string)
         .sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
 
     const scores = students.map((s) => s.score).filter((s): s is number => s !== null);
+    const mockMaxScore = students.find((s) => s.maxScore !== null)?.maxScore ?? null;
 
     return {
         mockTitle: test?.title || "—",
         students,
         completedCount: scores.length,
         totalCount: members.length,
+        mockMaxScore,
         avgScore: scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null,
-        maxScore: scores.length > 0 ? Math.max(...scores) : null,
-        minScore: scores.length > 0 ? Math.min(...scores) : null,
+        topScore: scores.length > 0 ? Math.max(...scores) : null,
+        lowScore: scores.length > 0 ? Math.min(...scores) : null,
     };
 };
 
@@ -439,7 +449,12 @@ export type StudentClassSummary = { id: string; name: string; teacherName: strin
 // users_student_read_own_teacher policy (035_student_read_own_teacher.sql)
 // to resolve the teacher's display name.
 export const fetchStudentClasses = async (studentId: string): Promise<StudentClassSummary[]> => {
-    return pageCache.fetch(`studentClasses:${studentId}`, async () => {
+    // Deliberately its own cache key, distinct from profile-utils.ts's
+    // fetchStudentClasses (`studentClasses:${studentId}`) — that one returns
+    // a different shape (Class[], no teacherName) and used to collide on
+    // the same key, so whichever of the two fetched first "poisoned" the
+    // other's read for the rest of that cache entry's TTL.
+    return pageCache.fetch(`studentClassesSummary:${studentId}`, async () => {
         const { data: memberships } = await supabase.from("class_members").select("class_id").eq("student_id", studentId);
         const classIds = Array.from(new Set((memberships || []).map((m) => m.class_id as string)));
         if (classIds.length === 0) return [];

@@ -18,13 +18,27 @@ export type PaymentCreationDecision =
 // attempt at all.
 export function evaluatePaymentCreation(input: {
     testType: string;
+    testStatus: string;
+    closedAt: string | null;
+    endsAt: string | null;
     hasExistingAccess: boolean;
+    now?: Date;
 }): PaymentCreationDecision {
     if (input.testType !== "paid") {
         return { action: "reject", reason: "Этот тест не требует оплаты" };
     }
     if (input.hasExistingAccess) {
         return { action: "reject", reason: "У вас уже есть доступ к этому тесту" };
+    }
+    if (input.testStatus !== "published") {
+        return { action: "reject", reason: "Этот тест сейчас недоступен для оплаты" };
+    }
+    if (input.closedAt) {
+        return { action: "reject", reason: "Приём новых участников для этого теста закрыт" };
+    }
+    const now = input.now ?? new Date();
+    if (input.endsAt && now.getTime() > new Date(input.endsAt).getTime()) {
+        return { action: "reject", reason: "Время для этого теста уже истекло" };
     }
     return { action: "create" };
 }

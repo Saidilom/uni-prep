@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Trophy, TrendingUp, TrendingDown, CheckCircle2, ChevronDown, Circle, ListOrdered } from "lucide-react";
 import { useToast } from "@/hooks/useToast";
@@ -25,22 +25,34 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
     const [loading, setLoading] = useState(true);
     const [openResultId, setOpenResultId] = useState<string | null>(null);
     const [details, setDetails] = useState<Record<string, MockAnswerDetail[]>>({});
-    const [detailsLoading, setDetailsLoading] = useState<string | null>(null);
+    const [detailsLoading, setDetailsLoading] = useState<Set<string>>(new Set());
     const [reviewPoints, setReviewPoints] = useState<Record<string, number>>({});
     const [reviewFeedback, setReviewFeedback] = useState<Record<string, string>>({});
     const [reviewingId, setReviewingId] = useState<string | null>(null);
     const [questionStats, setQuestionStats] = useState<QuestionErrorStat[]>([]);
     const [statsLoading, setStatsLoading] = useState(true);
 
+    // Guards against a slower response for a previous classId/mockTestId
+    // pair overwriting a faster one's already-rendered state (this effect
+    // re-fires without unmounting when navigating between two different
+    // mock-results views for the same class in quick succession).
+    const latestRequestKey = useRef<string | null>(null);
+
     useEffect(() => {
+        const requestKey = `${classId}:${mockTestId}`;
+        latestRequestKey.current = requestKey;
         (async () => {
             setLoading(true);
-            setSummary(await fetchClassMockResults(classId, mockTestId));
+            const data = await fetchClassMockResults(classId, mockTestId);
+            if (latestRequestKey.current !== requestKey) return;
+            setSummary(data);
             setLoading(false);
         })();
         (async () => {
             setStatsLoading(true);
-            setQuestionStats(await fetchMockQuestionErrorStats(classId, mockTestId));
+            const data = await fetchMockQuestionErrorStats(classId, mockTestId);
+            if (latestRequestKey.current !== requestKey) return;
+            setQuestionStats(data);
             setStatsLoading(false);
         })();
     }, [classId, mockTestId]);
@@ -52,10 +64,17 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
         }
         setOpenResultId(resultId);
         if (!details[resultId]) {
-            setDetailsLoading(resultId);
+            // A Set keyed by resultId (not a single string) so opening a
+            // second student's panel while the first is still loading
+            // doesn't clear the flag globally when the first resolves.
+            setDetailsLoading((prev) => new Set(prev).add(resultId));
             const d = await fetchMockAnswerDetails(resultId);
             setDetails((prev) => ({ ...prev, [resultId]: d }));
-            setDetailsLoading(null);
+            setDetailsLoading((prev) => {
+                const next = new Set(prev);
+                next.delete(resultId);
+                return next;
+            });
         }
     };
 
@@ -65,7 +84,14 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
             const response = await fetch(`/api/mock-responses/${detail.id}/review`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ points: reviewPoints[detail.id] ?? 0, feedback: reviewFeedback[detail.id] ?? "" }),
+                // Must match the same fallback the inputs actually display
+                // (lines below: `?? d.pointsEarned` / `?? d.reviewFeedback`) —
+                // falling back to 0/"" here instead silently zeroed a real
+                // AI-assigned grade whenever the teacher only touched one of
+                // the two fields (e.g. agreed with the score, just added a
+                // comment) and left the other input showing its existing
+                // value without ever firing its own onChange.
+                body: JSON.stringify({ points: reviewPoints[detail.id] ?? detail.pointsEarned, feedback: reviewFeedback[detail.id] ?? detail.reviewFeedback ?? "" }),
             });
             const body = await response.json();
             if (!response.ok) throw new Error(body.error || t("reviewError"));
@@ -109,15 +135,21 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
                 </div>
                 <div className="rounded-2xl border border-border bg-card p-5">
                     <div className="flex items-center gap-2 text-muted-foreground"><Trophy size={15} /><span className="text-[10px] font-bold uppercase tracking-widest">{t("averageLabel")}</span></div>
-                    <p className="mt-2 text-2xl font-extrabold tabular-nums text-foreground">{summary.avgScore ?? "—"}{summary.avgScore !== null && "%"}</p>
+                    <p className="mt-2 text-2xl font-extrabold tabular-nums text-foreground">
+                        {summary.avgScore ?? "—"}{summary.avgScore !== null && summary.mockMaxScore !== null && `/${summary.mockMaxScore}`}
+                    </p>
                 </div>
                 <div className="rounded-2xl border border-border bg-card p-5">
                     <div className="flex items-center gap-2 text-muted-foreground"><TrendingUp size={15} /><span className="text-[10px] font-bold uppercase tracking-widest">{t("maxLabel")}</span></div>
-                    <p className="mt-2 text-2xl font-extrabold tabular-nums text-foreground">{summary.maxScore ?? "—"}{summary.maxScore !== null && "%"}</p>
+                    <p className="mt-2 text-2xl font-extrabold tabular-nums text-foreground">
+                        {summary.topScore ?? "—"}{summary.topScore !== null && summary.mockMaxScore !== null && `/${summary.mockMaxScore}`}
+                    </p>
                 </div>
                 <div className="rounded-2xl border border-border bg-card p-5">
                     <div className="flex items-center gap-2 text-muted-foreground"><TrendingDown size={15} /><span className="text-[10px] font-bold uppercase tracking-widest">{t("minLabel")}</span></div>
-                    <p className="mt-2 text-2xl font-extrabold tabular-nums text-foreground">{summary.minScore ?? "—"}{summary.minScore !== null && "%"}</p>
+                    <p className="mt-2 text-2xl font-extrabold tabular-nums text-foreground">
+                        {summary.lowScore ?? "—"}{summary.lowScore !== null && summary.mockMaxScore !== null && `/${summary.mockMaxScore}`}
+                    </p>
                 </div>
             </section>
 
@@ -157,7 +189,7 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
             <section>
                 <h2 className="mb-5 text-xl font-bold tracking-tight text-foreground sm:text-2xl">{t("studentsSection")}</h2>
                 <div className="space-y-3">
-                    {summary.students.map(({ student, resultId, score, correctAnswers, totalQuestions, raschScore, cefrBand, cefrScore, gradeLevel, completedAt }) => {
+                    {summary.students.map(({ student, resultId, score, maxScore, accuracy, correctAnswers, totalQuestions, raschScore, cefrBand, cefrScore, gradeLevel, completedAt }) => {
                         const isOpen = openResultId === resultId;
                         return (
                             <div key={student.id} className="overflow-hidden rounded-2xl border border-border bg-card">
@@ -196,9 +228,12 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
                                             </span>
                                         )}
                                         {score !== null ? (
-                                            <span className={`rounded-xl px-3 py-1.5 text-sm font-extrabold tabular-nums ${score >= 80 ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40" : score >= 50 ? "bg-amber-50 text-amber-700 dark:bg-amber-950/40" : "bg-red-50 text-red-700 dark:bg-red-950/40"}`}>
-                                                {score}%
-                                            </span>
+                                            <div className="flex flex-col items-end gap-0.5">
+                                                <span className={`rounded-xl px-3 py-1.5 text-sm font-extrabold tabular-nums ${(accuracy ?? 0) >= 80 ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40" : (accuracy ?? 0) >= 50 ? "bg-amber-50 text-amber-700 dark:bg-amber-950/40" : "bg-red-50 text-red-700 dark:bg-red-950/40"}`}>
+                                                    {score}{maxScore !== null && `/${maxScore}`}
+                                                </span>
+                                                {accuracy !== null && <span className="text-[10px] font-semibold text-muted-foreground">{accuracy}%</span>}
+                                            </div>
                                         ) : (
                                             <Circle size={16} className="text-muted-foreground/40" />
                                         )}
@@ -210,7 +245,7 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
 
                                 {isOpen && resultId && (
                                     <div className="border-t border-border bg-muted/30 p-4">
-                                        {detailsLoading === resultId ? (
+                                        {detailsLoading.has(resultId) ? (
                                             <div className="space-y-2">
                                                 {[1, 2, 3].map((n) => <div key={n} className="h-12 animate-pulse rounded-xl bg-muted" />)}
                                             </div>

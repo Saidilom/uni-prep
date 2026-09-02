@@ -111,13 +111,17 @@ export async function POST(req: NextRequest) {
     const abilityStdev = stdev(personAbility);
     const levelScores = personAbility.map((theta) => raschThetaToT(theta, abilityMean, abilityStdev));
 
-    await Promise.all(
+    const updateResults = await Promise.all(
         resultIds.map((id, n) => admin.from("mock_results").update({
             rasch_score: personAbility[n],
             level_score: levelScores[n],
             grade_level: gradeLevelFromScore(levelScores[n]),
         }).eq("id", id))
     );
+    const failedCount = updateResults.filter((r) => r.error).length;
+    if (failedCount > 0) {
+        console.error(`[rasch/recalculate] ${failedCount}/${resultIds.length} per-student score updates failed for mock ${mockTestId}`);
+    }
 
     return NextResponse.json({
         ok: true,
@@ -125,5 +129,6 @@ export async function POST(req: NextRequest) {
         personCount: resultIds.length,
         converged,
         iterations,
+        failedCount,
     });
 }

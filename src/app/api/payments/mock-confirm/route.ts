@@ -67,13 +67,16 @@ export async function POST(req: NextRequest) {
         })
         .eq("id", paymentId);
 
-    await supabaseServer.from("mock_access").insert({
+    // upsert + onConflict, consistent with the real payme/click webhooks —
+    // dev-only route, but same check-then-insert shape (mock_access_user_test_unique,
+    // 062_mock_access_unique_constraint.sql).
+    await supabaseServer.from("mock_access").upsert({
         id: crypto.randomUUID(),
         user_id: payment.user_id,
         mock_test_id: payment.mock_test_id,
         source: "payment",
         payment_id: paymentId,
-    });
+    }, { onConflict: "user_id,mock_test_id", ignoreDuplicates: true });
 
     return NextResponse.json({ status: "success", mockTestId: payment.mock_test_id });
 }

@@ -111,12 +111,16 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return { resultId, cefrScore: Math.round(avg * 10) / 10, cefrBand: cefrBandFromScore(avg) };
   });
 
-  await Promise.all(
+  const updateResults = await Promise.all(
     updates.map((u) => admin.from("mock_results").update({ cefr_score: u.cefrScore, cefr_band: u.cefrBand }).eq("id", u.resultId)),
   );
+  const failedCount = updateResults.filter((r) => r.error).length;
+  if (failedCount > 0) {
+    console.error(`[cefr-recalculate] ${failedCount}/${updates.length} per-student score updates failed for mock ${mockTestId}`);
+  }
 
   // Deliberately not returning `updates` — it's a per-student score list, and
   // this route is fire-and-forget from any caller who can access the test
   // (see can_access_mock check above), not scoped to only the caller's own row.
-  return NextResponse.json({ ok: true, resultCount: resultIds.length });
+  return NextResponse.json({ ok: true, resultCount: resultIds.length, failedCount });
 }

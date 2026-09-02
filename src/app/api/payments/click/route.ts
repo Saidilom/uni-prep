@@ -93,6 +93,15 @@ export async function POST(req: NextRequest) {
     }
 
     if (Number(clickError) < 0) {
+      // Click has no separate CancelTransaction call like Payme does — a
+      // post-completion reversal is this same action=1 endpoint firing
+      // again with a negative error. If access was already granted from an
+      // earlier successful Complete, it must be revoked here too, or the
+      // student keeps free access to a paid mock after the payment reverses
+      // (mirrors the wasPerformed branch in payments/payme/route.ts).
+      if (order.status === "success") {
+        await supabaseServer.from("mock_access").delete().eq("payment_id", order.id);
+      }
       await supabaseServer.from("payments").update({ status: "cancelled" }).eq("id", order.id);
       return respond({ ...base, merchant_confirm_id: order.id, error: CLICK_ERROR.SUCCESS, error_note: "Cancelled by Click" });
     }
@@ -103,13 +112,18 @@ export async function POST(req: NextRequest) {
     }
 
     await supabaseServer.from("payments").update({ status: "success", paid_at: new Date().toISOString() }).eq("id", order.id);
-    await supabaseServer.from("mock_access").insert({
+    // upsert + onConflict(user_id, mock_test_id) instead of a plain insert —
+    // Click retries this webhook on timeout, so two overlapping deliveries
+    // could otherwise both pass the `order.status === "success"` check above
+    // before either commits and both insert a row (mock_access_user_test_unique,
+    // 062_mock_access_unique_constraint.sql).
+    await supabaseServer.from("mock_access").upsert({
       id: crypto.randomUUID(),
       user_id: order.user_id,
       mock_test_id: order.mock_test_id,
       source: "payment",
       payment_id: order.id,
-    });
+    }, { onConflict: "user_id,mock_test_id", ignoreDuplicates: true });
 
     return respond({ ...base, merchant_confirm_id: order.id, error: CLICK_ERROR.SUCCESS, error_note: "Success" });
   }

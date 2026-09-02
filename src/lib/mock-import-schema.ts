@@ -116,12 +116,7 @@ export function countResponseItems(draft: ImportedMock): number {
   return draft.sections.reduce((sum, section) => sum + section.questions.length, 0);
 }
 
-// Essay/manual-review questions require a teacher or admin to actually read
-// and grade the student's free-form answer (or pay for AI grading) — a free
-// mock a teacher hands out to their own class shouldn't carry that ongoing
-// grading burden, so those question types are reserved for paid (admin)
-// mocks only.
-export function getPublicationIssues(draft: ImportedMock, mode: "admin" | "teacher" = "admin"): string[] {
+export function getPublicationIssues(draft: ImportedMock): string[] {
   const issues: string[] = [];
   if (!draft.title.trim()) issues.push("Укажите название теста");
   if (draft.sections.length === 0) issues.push("В тесте нет разделов");
@@ -157,9 +152,6 @@ export function getPublicationIssues(draft: ImportedMock, mode: "admin" | "teach
         if (autoTextType && question.acceptedAnswers.length === 0) {
           issues.push(`Задание ${label}: не указан допустимый ответ`);
         }
-      }
-      if (mode === "teacher" && (question.type === "essay" || question.requiresManualReview)) {
-        issues.push(`Задание ${label}: эссе и вопросы с ручной проверкой доступны только в платных Mock-тестах`);
       }
     });
   });

@@ -441,6 +441,8 @@ const uz: typeof ru = {
     reviewError: "Tekshirishda xatolik",
     gradeSavedToast: "Baho saqlandi",
     gradeSaveFailed: "Bahoni saqlab bo'lmadi",
+    pendingReviewBanner: "Tekshiruv kutilmoqda: {count} — baholash uchun o'quvchi kartasini oching.",
+    pendingReviewBadge: "Tekshiruv kutilmoqda ({count})",
     backToClass: "Guruhga qaytish",
     resultsSubtitle: "Guruhning ushbu Mock-test bo'yicha natijalari",
     passedLabel: "Topshirdi",

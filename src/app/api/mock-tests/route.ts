@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Для платного Mock укажите цену" }, { status: 400 });
   }
 
-  const issues = getPublicationIssues(parsed.data.draft, role === "admin" ? "admin" : "teacher");
+  const issues = getPublicationIssues(parsed.data.draft);
   if (issues.length > 0) {
     return NextResponse.json({ error: "Исправьте тест перед публикацией", issues }, { status: 422 });
   }

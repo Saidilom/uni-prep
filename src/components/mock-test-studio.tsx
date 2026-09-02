@@ -386,7 +386,7 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
 
   const publish = async () => {
     if (!draft || !importResult) return;
-    const issues = getPublicationIssues(draft, mode);
+    const issues = getPublicationIssues(draft);
     if (mode === "admin" && price <= 0) issues.unshift(t("addPricePrompt"));
     if (mode === "admin" && startsAt && !endsAt) issues.unshift(t("endsAtRequiredPrompt"));
     if (mode === "admin" && endsAt && !startsAt) issues.unshift(t("startsAtRequiredPrompt"));

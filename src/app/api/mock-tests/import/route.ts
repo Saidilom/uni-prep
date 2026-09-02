@@ -287,12 +287,22 @@ export async function POST(req: NextRequest) {
       draft,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Неизвестная ошибка Gemini";
+    const rawMessage = error instanceof Error ? error.message : "Неизвестная ошибка Gemini";
+    // The raw Gemini SDK error is a JSON blob ({"error":{"code":429,...}})
+    // — meaningless to a teacher/admin staring at a failed import. The two
+    // cases actually seen in production: prepaid credits ran out (billing,
+    // not a code problem — no retry or model switch fixes it) and the
+    // model being temporarily overloaded (genuinely transient).
+    const friendlyMessage = /prepayment credits are depleted|RESOURCE_EXHAUSTED/i.test(rawMessage)
+      ? "Закончились кредиты Gemini API — пополните баланс в AI Studio (ai.studio/projects), пока это не сделано, ни один импорт не пройдёт."
+      : /high demand|overloaded|UNAVAILABLE/i.test(rawMessage)
+        ? "Gemini временно перегружен — попробуйте ещё раз через пару минут."
+        : rawMessage;
     await supabaseServer
       .from("mock_imports")
-      .update({ status: "failed", error: message.slice(0, 2000), updated_at: new Date().toISOString() })
+      .update({ status: "failed", error: rawMessage.slice(0, 2000), updated_at: new Date().toISOString() })
       .eq("id", importId);
-    return NextResponse.json({ error: `Не удалось распознать PDF: ${message}` }, { status: 502 });
+    return NextResponse.json({ error: `Не удалось распознать PDF: ${friendlyMessage}` }, { status: 502 });
   } finally {
     await Promise.all(geminiFileNames.map((name) => ai.files.delete({ name }).catch(() => undefined)));
   }

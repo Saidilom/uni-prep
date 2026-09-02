@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Trophy, TrendingUp, TrendingDown, CheckCircle2, ChevronDown, Circle, ListOrdered } from "lucide-react";
+import { ArrowLeft, Trophy, TrendingUp, TrendingDown, CheckCircle2, ChevronDown, Circle, ListOrdered, Clock } from "lucide-react";
 import { useToast } from "@/hooks/useToast";
 import {
     fetchClassMockResults,
@@ -127,6 +127,15 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
                 <p className="mt-2 text-sm text-muted-foreground">{t("resultsSubtitle")}</p>
             </section>
 
+            {summary.pendingReviewCount > 0 && (
+                <div className="flex items-center gap-3 rounded-2xl border border-violet-200 bg-violet-50 px-5 py-4 dark:border-violet-900/50 dark:bg-violet-950/25">
+                    <Clock size={18} className="shrink-0 text-violet-700 dark:text-violet-300" />
+                    <p className="text-sm font-semibold text-violet-800 dark:text-violet-200">
+                        {t("pendingReviewBanner").replace("{count}", String(summary.pendingReviewCount))}
+                    </p>
+                </div>
+            )}
+
             <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
                 <div className="rounded-2xl border border-border bg-card p-5">
                     <div className="flex items-center gap-2 text-muted-foreground"><CheckCircle2 size={15} /><span className="text-[10px] font-bold uppercase tracking-widest">{t("passedLabel")}</span></div>
@@ -189,7 +198,7 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
             <section>
                 <h2 className="mb-5 text-xl font-bold tracking-tight text-foreground sm:text-2xl">{t("studentsSection")}</h2>
                 <div className="space-y-3">
-                    {summary.students.map(({ student, resultId, score, maxScore, accuracy, correctAnswers, totalQuestions, raschScore, cefrBand, cefrScore, gradeLevel, completedAt }) => {
+                    {summary.students.map(({ student, resultId, score, maxScore, accuracy, correctAnswers, totalQuestions, raschScore, cefrBand, cefrScore, gradeLevel, completedAt, pendingReviewCount }) => {
                         const isOpen = openResultId === resultId;
                         return (
                             <div key={student.id} className="overflow-hidden rounded-2xl border border-border bg-card">
@@ -212,6 +221,11 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
                                         </div>
                                     </div>
                                     <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto sm:shrink-0">
+                                        {pendingReviewCount > 0 && (
+                                            <span className="inline-flex items-center gap-1 rounded-xl border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-xs font-bold text-violet-700 dark:border-violet-900/50 dark:bg-violet-950/30 dark:text-violet-300">
+                                                <Clock size={12} /> {t("pendingReviewBadge").replace("{count}", String(pendingReviewCount))}
+                                            </span>
+                                        )}
                                         {cefrBand && (
                                             <span className="rounded-xl border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-bold text-blue-700 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-300" title={t("cefrScaleTitle").replace("{score}", String(cefrScore))}>
                                                 {cefrBand}

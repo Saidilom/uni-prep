@@ -439,6 +439,8 @@ const ru = {
     reviewError: "Ошибка проверки",
     gradeSavedToast: "Оценка сохранена",
     gradeSaveFailed: "Не удалось сохранить оценку",
+    pendingReviewBanner: "Ожидают проверки: {count} — раскройте карточку ученика, чтобы оценить эссе/развёрнутые ответы.",
+    pendingReviewBadge: "Ожидает проверки ({count})",
     backToClass: "Назад к группе",
     resultsSubtitle: "Результаты группы по этому Mock-тесту",
     passedLabel: "Прошли",

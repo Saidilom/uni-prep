@@ -383,6 +383,11 @@ export type StudentMockResult = {
     // Generic A+..C level (src/lib/mock-grade-level.ts) — populated for
     // every subject once a real cohort exists to standardize against.
     gradeLevel: string | null;
+    // Essay/writing questions still awaiting a teacher's manual grade
+    // (review_status 'pending' or 'ai_graded' — the latter still needs a
+    // human to confirm/adjust). Surfaced so a teacher can find who needs
+    // grading without opening every student's answer panel one by one.
+    pendingReviewCount: number;
 };
 
 export type ClassMockResultsSummary = {
@@ -397,6 +402,7 @@ export type ClassMockResultsSummary = {
     avgScore: number | null;
     topScore: number | null;
     lowScore: number | null;
+    pendingReviewCount: number;
 };
 
 export const fetchClassMockResults = async (classId: string, mockTestId: string): Promise<ClassMockResultsSummary> => {
@@ -405,6 +411,16 @@ export const fetchClassMockResults = async (classId: string, mockTestId: string)
         supabase.from("mock_tests").select("title").eq("id", mockTestId).single(),
         supabase.from("mock_results").select("id, user_id, score, max_score, accuracy, correct_answers, total_questions, rasch_score, cefr_band, cefr_score, grade_level, completed_at").eq("mock_test_id", mockTestId),
     ]);
+
+    const resultIds = (results || []).map((r) => r.id as string);
+    const { data: pendingRows } = resultIds.length > 0
+        ? await supabase.from("mock_answer_details").select("result_id").in("result_id", resultIds).in("review_status", ["pending", "ai_graded"])
+        : { data: [] as Array<{ result_id: string }> };
+    const pendingCountByResult = new Map<string, number>();
+    (pendingRows || []).forEach((row) => {
+        const id = row.result_id as string;
+        pendingCountByResult.set(id, (pendingCountByResult.get(id) || 0) + 1);
+    });
 
     const resultByStudent = new Map((results || []).map((r) => [r.user_id as string, r]));
     const students: StudentMockResult[] = members
@@ -423,6 +439,7 @@ export const fetchClassMockResults = async (classId: string, mockTestId: string)
                 cefrScore: r && r.cefr_score !== null ? (r.cefr_score as number) : null,
                 gradeLevel: r ? (r.grade_level as string | null) : null,
                 completedAt: r ? (r.completed_at as string) : null,
+                pendingReviewCount: r ? (pendingCountByResult.get(r.id as string) || 0) : 0,
             };
         })
         .sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
@@ -439,6 +456,7 @@ export const fetchClassMockResults = async (classId: string, mockTestId: string)
         avgScore: scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null,
         topScore: scores.length > 0 ? Math.max(...scores) : null,
         lowScore: scores.length > 0 ? Math.min(...scores) : null,
+        pendingReviewCount: students.reduce((sum, s) => sum + s.pendingReviewCount, 0),
     };
 };
 

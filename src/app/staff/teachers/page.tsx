@@ -74,7 +74,7 @@ export default function StaffTeachersPage() {
                         className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
                     />
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                     <span className="flex items-center gap-1 text-xs font-semibold text-muted-foreground"><ArrowUpDown size={13} /> {t("sortByLabel")}</span>
                     <button onClick={() => toggleSort("name")} className={sortButtonClass("name")}>
                         {t("sortByName")} {sortKey === "name" && (sortDir === "asc" ? "↑" : "↓")}

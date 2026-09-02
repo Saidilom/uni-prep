@@ -108,7 +108,7 @@ function TeacherMockAssignments() {
                                                 </span>
                                             )}
                                         </div>
-                                        <div className="flex shrink-0 items-center gap-3">
+                                        <div className="flex flex-wrap items-center gap-3">
                                             {s.totalCount > 0 && (
                                                 <span className="text-xs font-semibold text-muted-foreground">{t("completedCountLabel").replace("{completed}", String(s.completedCount)).replace("{total}", String(s.totalCount))}</span>
                                             )}

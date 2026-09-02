@@ -295,9 +295,9 @@ export default function AdminPlacementPage() {
                     </div>
                 )}
 
-                <div className="sticky bottom-3 flex items-center justify-between gap-4 rounded-2xl border border-border bg-background/95 p-4 shadow-xl backdrop-blur">
-                    <p className="text-sm font-bold">{draft.title} · {t("questionsCountSuffix").replace("{count}", String(draft.questions.length))}</p>
-                    <button onClick={publish} disabled={publishing} className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-bold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+                <div className="sticky bottom-3 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border bg-background/95 p-4 shadow-xl backdrop-blur">
+                    <p className="min-w-0 truncate text-sm font-bold">{draft.title} · {t("questionsCountSuffix").replace("{count}", String(draft.questions.length))}</p>
+                    <button onClick={publish} disabled={publishing} className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-bold text-primary-foreground hover:opacity-90 disabled:opacity-50">
                         {publishing ? <Loader2 size={17} className="animate-spin" /> : <Check size={17} />}
                         {publishing ? t("publishing") : t("publish")}
                     </button>
@@ -400,7 +400,7 @@ export default function AdminPlacementPage() {
                                     </div>
                                     <p className="mt-0.5 text-xs text-muted-foreground">{t("statsLineTemplate").replace("{count}", String(test.question_count)).replace("{minutes}", String(test.time_limit_minutes ?? "—"))}</p>
                                 </div>
-                                <div className="flex shrink-0 items-center gap-2">
+                                <div className="flex flex-wrap items-center justify-end gap-2 sm:shrink-0">
                                     <Link
                                         href={`/admin/placement/results?test=${test.id}`}
                                         className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-xs font-bold text-muted-foreground transition-colors hover:bg-muted"

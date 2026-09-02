@@ -169,7 +169,7 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
                 ) : (
                     <div className="space-y-2">
                         {questionStats.map((q, i) => (
-                            <div key={q.questionId} className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4">
+                            <div key={q.questionId} className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
                                 <div className="flex min-w-0 items-center gap-3">
                                     <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border bg-muted text-xs font-bold text-muted-foreground">{i + 1}</span>
                                     <p className="truncate text-sm font-medium text-foreground">{q.questionText}</p>
@@ -196,7 +196,7 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
                                 <button
                                     onClick={() => resultId && toggleDetail(resultId)}
                                     disabled={!resultId}
-                                    className="flex w-full items-center justify-between gap-3 p-4 text-left transition-colors hover:bg-muted/40 disabled:cursor-default"
+                                    className="flex w-full flex-col gap-3 p-4 text-left transition-colors hover:bg-muted/40 disabled:cursor-default sm:flex-row sm:items-center sm:justify-between"
                                 >
                                     <div className="flex items-center gap-3 min-w-0">
                                         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border bg-muted font-bold text-foreground">
@@ -211,7 +211,7 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
                                             )}
                                         </div>
                                     </div>
-                                    <div className="flex shrink-0 items-center gap-2">
+                                    <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto sm:shrink-0">
                                         {cefrBand && (
                                             <span className="rounded-xl border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-bold text-blue-700 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-300" title={t("cefrScaleTitle").replace("{score}", String(cefrScore))}>
                                                 {cefrBand}

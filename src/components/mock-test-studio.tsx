@@ -548,17 +548,20 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
           </div>
         </div>
 
-        <div className="grid min-h-[760px] gap-5 xl:grid-cols-[minmax(360px,0.85fr)_minmax(520px,1.15fr)]">
-          <aside className="xl:sticky xl:top-0 xl:h-[calc(100vh-170px)]">
+        <div className="grid gap-5 xl:min-h-[760px] xl:grid-cols-[minmax(360px,0.85fr)_minmax(520px,1.15fr)]">
+          {/* Below xl the two-pane layout stacks into one column — put the
+              actual review form first so a reviewer on a phone/tablet isn't
+              forced to scroll past a tall PDF preview before reaching it. */}
+          <aside className="order-2 xl:sticky xl:top-0 xl:order-1 xl:h-[calc(100vh-170px)]">
             {importResult.sourcePdfPaths.length > 1 && (
               <p className="mb-2 text-xs font-semibold text-muted-foreground">{t("previewShowsFirstOfN").replace("{count}", String(importResult.sourcePdfPaths.length))}</p>
             )}
             <div className="h-full overflow-hidden rounded-2xl border border-border bg-muted">
-              <iframe title={t("sourcePdfTitle")} src={importResult.previewUrl} className="h-full min-h-[640px] w-full" />
+              <iframe title={t("sourcePdfTitle")} src={importResult.previewUrl} className="h-[360px] w-full xl:h-full xl:min-h-[640px]" />
             </div>
           </aside>
 
-          <main className="space-y-5">
+          <main className="order-1 space-y-5 xl:order-2">
             <section className="rounded-2xl border border-border bg-card p-5 space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="sm:col-span-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
@@ -807,7 +810,7 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
             </button>
           )}
 
-          <div className="mt-5 flex items-center gap-3">
+          <div className="mt-5 flex flex-wrap items-center gap-3">
             <button onClick={runImport} disabled={importing} className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-bold text-primary-foreground transition hover:opacity-90 disabled:opacity-60">
               {importing ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
               {importing ? t("geminiRecognizing") : t("recognizeTest")}
@@ -840,15 +843,27 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
                   {Boolean(test.closed_at) && ` · ${t("closedLabel")}`}
                 </p>
               </div>
-              <span className="text-sm text-muted-foreground">{SUBJECT_LABELS[test.subject_id || "other"] || test.subject_id || "—"}</span>
-              <span className="text-sm font-semibold tabular-nums">{test.question_count}</span>
-              <span className="text-sm font-semibold">{mode === "admin" ? formatMoney(test.price, locale, t("currencySumSuffix")) : `${test.duration_minutes} ${t("minutesSuffix")}`}</span>
-              <span className="truncate text-sm text-muted-foreground">{test.creator_name}</span>
-              <div className="flex flex-wrap justify-end gap-2">
+              <div className="text-sm text-muted-foreground">
+                <span className="mr-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 md:hidden">{t("columnSubject")}:</span>
+                {SUBJECT_LABELS[test.subject_id || "other"] || test.subject_id || "—"}
+              </div>
+              <div className="text-sm font-semibold tabular-nums">
+                <span className="mr-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 md:hidden">{t("columnQuestions")}:</span>
+                {test.question_count}
+              </div>
+              <div className="text-sm font-semibold">
+                <span className="mr-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 md:hidden">{mode === "admin" ? t("columnPrice") : t("columnDuration")}:</span>
+                {mode === "admin" ? formatMoney(test.price, locale, t("currencySumSuffix")) : `${test.duration_minutes} ${t("minutesSuffix")}`}
+              </div>
+              <div className="truncate text-sm text-muted-foreground">
+                <span className="mr-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 md:hidden">{t("columnAuthor")}:</span>
+                {test.creator_name}
+              </div>
+              <div className="flex flex-wrap items-center justify-end gap-2">
                 <Link href={`/mock/${test.id}?preview=1`} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border hover:bg-muted" title={t("previewTitle")}><Eye size={16} /></Link>
                 {mode === "teacher" && <button onClick={() => openAssignments(test)} className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground"><Send size={14} /> {t("assignAction")}</button>}
                 {test.completed_count > 0 && (
-                  <span className="hidden items-center px-1 text-xs font-semibold text-muted-foreground md:inline-flex">
+                  <span className="inline-flex items-center px-1 text-xs font-semibold text-muted-foreground">
                     {t("completedCountShort").replace("{count}", String(test.completed_count))}
                   </span>
                 )}

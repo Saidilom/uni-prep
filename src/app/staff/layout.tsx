@@ -148,7 +148,7 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
                     </div>
                 </div>
 
-                <main className="flex-1 bg-transparent p-4 md:p-12">
+                <main className="flex-1 overflow-x-hidden bg-transparent p-4 md:p-12">
                     <div className="mx-auto max-w-5xl">{children}</div>
                 </main>
             </div>

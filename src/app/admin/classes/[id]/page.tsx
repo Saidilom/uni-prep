@@ -103,7 +103,7 @@ export default function AdminClassDetailPage() {
                 ) : (
                     <div className="space-y-3">
                         {students.map((s) => (
-                            <div key={s.student.id} className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4">
+                            <div key={s.student.id} className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
                                 <div className="flex min-w-0 items-center gap-3">
                                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border bg-muted font-bold text-foreground">
                                         {s.student.name[0]?.toUpperCase() || "?"}

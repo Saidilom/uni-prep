@@ -21,7 +21,7 @@ function renderToken(token: string, key: number): ReactNode {
       : token.slice(2, -2);
   try {
     const html = katex.renderToString(expression, { displayMode, throwOnError: false, strict: "ignore" });
-    return <span key={key} className={displayMode ? "block overflow-x-auto py-2" : "inline"} dangerouslySetInnerHTML={{ __html: html }} />;
+    return <span key={key} className={displayMode ? "block overflow-x-auto py-2" : "inline-block max-w-full overflow-x-auto align-middle"} dangerouslySetInnerHTML={{ __html: html }} />;
   } catch {
     return <Fragment key={key}>{token}</Fragment>;
   }

@@ -452,6 +452,22 @@ export default function MockTestPage() {
         </div>
         {isPreview && <div className="border-t border-[hsl(var(--brand-blue))]/15 bg-[hsl(var(--brand-blue-soft))] px-4 py-2 text-center text-xs font-semibold text-[hsl(var(--brand-blue-ink))] sm:px-6">{t("previewNotice")}</div>}
         {!isPreview && <div className="h-1 bg-muted"><div className="h-full bg-primary transition-all" style={{ width: `${questions.length ? answeredCount / questions.length * 100 : 0}%` }} /></div>}
+        {/* Mobile/tablet stand-in for the question-jump navigator, which is
+            `hidden lg:block` as a fixed aside below — without this, a student
+            on a phone has no way to jump to a specific question at all. */}
+        <div className="border-t border-border bg-background/95 px-4 py-2 sm:px-6 lg:hidden">
+          <div className="flex gap-1.5 overflow-x-auto">
+            {questions.map((question, index) => (
+              <a
+                key={question.id}
+                href={`#question-${question.id}`}
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${isAnswered(answers[question.id]) ? "bg-emerald-600 text-white" : "bg-muted text-foreground"}`}
+              >
+                {question.content?.number || index + 1}
+              </a>
+            ))}
+          </div>
+        </div>
       </header>
 
       <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_240px]">
@@ -476,7 +492,7 @@ export default function MockTestPage() {
                           {question.content?.needsSourceImage && question.source_page && (
                             <details className="mt-4 overflow-hidden rounded-xl border border-[hsl(var(--brand-blue))]/20 bg-[hsl(var(--brand-blue-soft))]/60" open>
                               <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm font-bold text-[hsl(var(--brand-blue-ink))]"><Eye size={16} /> {t("sourceImageLabel").replace("{page}", String(question.source_page))}</summary>
-                              <iframe title={t("sourceIframeTitle").replace("{number}", question.content.number || "")} src={`/api/mock-tests/${id}/source?page=${question.source_page}&file=${question.source_file_index ?? 0}`} className="h-[520px] w-full border-t border-[hsl(var(--brand-blue))]/20 bg-white" />
+                              <iframe title={t("sourceIframeTitle").replace("{number}", question.content.number || "")} src={`/api/mock-tests/${id}/source?page=${question.source_page}&file=${question.source_file_index ?? 0}`} className="h-[300px] w-full border-t border-[hsl(var(--brand-blue))]/20 bg-white sm:h-[520px]" />
                             </details>
                           )}
 

@@ -135,7 +135,7 @@ export default function AdminPaymentsPage() {
                     <option value="success">{t("statusSuccess")}</option>
                     <option value="failed">{t("statusFailed")}</option>
                 </select>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                     <input
                         type="date"
                         value={dateFrom}

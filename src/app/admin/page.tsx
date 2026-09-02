@@ -182,7 +182,10 @@ export default function AdminDashboard() {
                                     <p className="truncate text-sm font-semibold text-foreground">{r.userName}</p>
                                     <p className="mt-0.5 truncate text-xs text-muted-foreground">{r.testTitle} • {new Date(r.completedAt).toLocaleString(locale === "ru" ? "ru-RU" : "uz-UZ")}</p>
                                 </div>
-                                <span className={`shrink-0 self-start rounded-xl px-3 py-1.5 text-sm font-bold tabular-nums sm:self-auto ${accuracyColor(r.accuracy)}`}>{r.accuracy}%</span>
+                                <div className="flex shrink-0 flex-col items-end gap-0.5 self-start sm:self-auto">
+                                    <span className={`rounded-xl px-3 py-1.5 text-sm font-bold tabular-nums ${accuracyColor(r.accuracy)}`}>{r.correctAnswers}/{r.totalQuestions}</span>
+                                    <span className="text-[10px] font-semibold text-muted-foreground">{r.accuracy}%</span>
+                                </div>
                             </Link>
                         ))}
                     </div>

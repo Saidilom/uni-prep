@@ -30,6 +30,8 @@ export type RecentPlacementResult = {
     userName: string;
     testTitle: string;
     accuracy: number;
+    correctAnswers: number;
+    totalQuestions: number;
     completedAt: string;
 };
 
@@ -47,7 +49,7 @@ export const fetchAdminOverview = async () => {
             .limit(8),
         supabase
             .from("placement_results")
-            .select("id, test_id, user_name, user_surname, test_title, accuracy, completed_at")
+            .select("id, test_id, user_name, user_surname, test_title, accuracy, correct_answers, total_questions, completed_at")
             .order("completed_at", { ascending: false })
             .limit(8),
     ]);
@@ -109,6 +111,8 @@ export const fetchAdminOverview = async () => {
         userName: `${r.user_name as string} ${(r.user_surname as string) || ""}`.trim(),
         testTitle: r.test_title as string,
         accuracy: r.accuracy as number,
+        correctAnswers: r.correct_answers as number,
+        totalQuestions: r.total_questions as number,
         completedAt: r.completed_at as string,
     }));
 

@@ -71,6 +71,7 @@ const PublishSchema = z.object({
   importId: z.string().uuid(),
   sourcePdfPaths: z.array(z.string().min(1)).min(1),
   price: z.number().int().min(0),
+  isFree: z.boolean().optional(),
   startsAt: z.string().datetime().nullable().optional(),
   endsAt: z.string().datetime().nullable().optional(),
   resultsPublishAt: z.string().datetime().nullable().optional(),
@@ -85,7 +86,8 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Некорректный черновик", details: parsed.error.flatten() }, { status: 400 });
   }
-  if (role === "admin" && parsed.data.price <= 0) {
+  const isFree = role === "admin" ? Boolean(parsed.data.isFree) : false;
+  if (role === "admin" && !isFree && parsed.data.price <= 0) {
     return NextResponse.json({ error: "Для платного Mock укажите цену" }, { status: 400 });
   }
 
@@ -98,7 +100,8 @@ export async function POST(req: NextRequest) {
     ...parsed.data.draft,
     importId: parsed.data.importId,
     sourcePdfPaths: parsed.data.sourcePdfPaths,
-    price: role === "admin" ? parsed.data.price : 0,
+    isFree,
+    price: role === "admin" && !isFree ? parsed.data.price : 0,
     startsAt: role === "admin" ? parsed.data.startsAt ?? null : null,
     endsAt: role === "admin" ? parsed.data.endsAt ?? null : null,
     resultsPublishAt: role === "admin" ? parsed.data.resultsPublishAt ?? null : null,

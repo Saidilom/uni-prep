@@ -121,7 +121,6 @@ export default function MockTestPage() {
     const { data: allowed, error: accessError } = await supabase.rpc("can_access_mock", { p_mock_test_id: id });
     if (accessError || !allowed) {
       const entryState = getMockEntryState({
-        price: test.price || 0,
         startsAt: test.starts_at,
         endsAt: test.ends_at,
         hasExistingResult: false,
@@ -244,23 +243,21 @@ export default function MockTestPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mockTestId: id }),
       }).catch(() => undefined);
-      // No-ops server-side for any non-English mock test.
-      const recalculateCefr = () => fetch(`/api/mock-tests/${id}/cefr-recalculate`, { method: "POST" }).catch(() => undefined);
+      // CEFR применим только к английскому. Роут это тоже проверяет, но
+      // вызывать его для остальных предметов незачем — это лишний круг.
+      const recalculateCefr = () => (subject === "english"
+        ? fetch(`/api/mock-tests/${id}/cefr-recalculate`, { method: "POST" }).catch(() => undefined)
+        : Promise.resolve(undefined));
 
       if (submitted.resultsPending) {
-        // submit_mock already stripped score/percentage/level from the
-        // response — grading and Rasch/CEFR recalculation still run so the
-        // numbers are ready the moment resultsPublishAt passes, but nothing
-        // score-shaped is fetched back into this student's browser before then.
-        if (submitted.hasPendingReview) {
-          await fetch("/api/mock-responses/ai-grade", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ resultId: submitted.resultId }),
-          }).catch(() => undefined);
-        }
-        await recalculateRasch();
-        await recalculateCefr();
+        // Результат скрыт до публикации, поэтому считать здесь нечего и
+        // незачем. Проверка эссе, пересчёт Раша и CEFR выполняются один раз
+        // при нажатии «Готово» — по всей группе сразу.
+        //
+        // Раньше всё это запускалось на КАЖДОЙ сдаче и пересчитывало группу
+        // целиком: на 100 учениках медиана вызова пересчёта была 119 секунд,
+        // 53 из 100 не возвращались за две минуты, а ученические чтения
+        // просаживались с 2,4 до 10,2 секунды. Сложность была квадратичной.
         return;
       }
 
@@ -343,7 +340,7 @@ export default function MockTestPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [answers, durationSeconds, id, result, submitting, user, isPreview, t]);
+  }, [answers, durationSeconds, id, result, submitting, user, isPreview, subject, t]);
 
   useEffect(() => {
     if (isPreview) return;

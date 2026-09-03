@@ -35,10 +35,13 @@ describe("userHasMockAccess", () => {
         expect(userHasMockAccess(user, test, [])).toBe(true);
     });
 
-    it("denies free tests to non-Registan students with no purchased access", () => {
+    // Бесплатный админский мок открыт всем — флаг «Ученик Registan» больше не
+    // требуется (066_admin_free_mock.sql), иначе тест, созданный ради
+    // массового бесплатного прогона, не увидел бы никто.
+    it("grants free tests to non-Registan students too, with no purchased access", () => {
         const user = baseUser({ isRegistanStudent: false });
         const test = baseTest({ type: "free" });
-        expect(userHasMockAccess(user, test, [])).toBe(false);
+        expect(userHasMockAccess(user, test, [])).toBe(true);
     });
 
     it("grants class_only tests only when the class access set contains the test id", () => {

@@ -133,7 +133,10 @@ export function userHasMockAccess(
   accessList: MockAccess[],
   classAccessMockIds?: Set<string>
 ): boolean {
-  if (mockTest.type === "free" && user.isRegistanStudent) return true;
+  // Бесплатный админский мок открыт любому авторизованному ученику — без
+  // флага «Ученик Registan» и без назначения в класс. Зеркало ветки
+  // `mt.type = 'free'` в can_access_mock (066_admin_free_mock.sql).
+  if (mockTest.type === "free") return true;
   if (mockTest.type === "class_only") return classAccessMockIds?.has(mockTest.id) ?? false;
   return accessList.some((a) => a.mockTestId === mockTest.id);
 }

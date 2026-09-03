@@ -3,6 +3,11 @@ import { createClient } from "@supabase/supabase-js";
 import { createRouteHandlerClient } from "@/lib/supabase/server";
 import { estimateRasch, Observation } from "@/lib/rasch";
 import { raschThetaToT, writingPointsToScore, cefrBandFromScore, mean, stdev } from "@/lib/english-cefr";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
+
+// Считается по всей группе, поэтому на большой группе долго. Раньше лимит
+// времени не задавался вовсе.
+export const maxDuration = 300;
 
 // Runs after an English Mock submission (and after AI essay grading, so the
 // Writing score is final) to compute the official CEFR scoring — see
@@ -46,11 +51,22 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (!results || results.length === 0) return NextResponse.json({ ok: true, resultCount: 0 });
   const resultIds = results.map((r) => r.id as string);
 
-  const { data: answers } = await admin
-    .from("mock_answer_details")
-    .select("result_id, question_id, is_correct, points_earned")
-    .in("result_id", resultIds);
-  if (!answers) return NextResponse.json({ ok: true, resultCount: 0 });
+  // Постранично — иначе матрицы listening/reading считаются по обрезанному
+  // набору, а сумма баллов writing по недошедшим строкам читается как 0, и
+  // ученик получает полосу на один-два уровня ниже. CEFR — сертифицируемое
+  // утверждение, здесь молчаливое усечение недопустимо особенно.
+  const { data: answers, error: answersError } = await fetchAllRows<{ result_id: string; question_id: string; is_correct: boolean; points_earned: number }>(
+    (from, to) => admin
+      .from("mock_answer_details")
+      .select("result_id, question_id, is_correct, points_earned")
+      .in("result_id", resultIds)
+      .order("id")
+      .range(from, to)
+  );
+  if (answersError) {
+    return NextResponse.json({ error: `Не удалось прочитать ответы: ${answersError.message}` }, { status: 500 });
+  }
+  if (answers.length === 0) return NextResponse.json({ ok: true, resultCount: 0 });
 
   const sectionKindById = new Map(sections.map((s) => [s.id as string, s.kind as string]));
   const questionById = new Map(questions.map((q) => [q.id as string, q]));

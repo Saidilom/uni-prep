@@ -3,6 +3,12 @@ import { createClient } from "@supabase/supabase-js";
 import { createRouteHandlerClient } from "@/lib/supabase/server";
 import { estimateRasch, Observation, mean, stdev, raschThetaToT } from "@/lib/rasch";
 import { gradeLevelFromScore } from "@/lib/mock-grade-level";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
+
+// Пересчёт идёт по всей группе целиком, поэтому на большой группе он долгий.
+// Без явного maxDuration функция Vercel обрывалась по умолчанию, а вызывающая
+// сторона делала это «в фоне» и молча глотала сбой.
+export const maxDuration = 300;
 
 // Recalibrates the Rasch item difficulties + person abilities for one Mock
 // test, across every attempt that test has on record — a single new
@@ -52,11 +58,23 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true, itemCount: 0, personCount: 0 });
     }
 
-    const { data: answers } = await admin
-        .from("mock_answer_details")
-        .select("result_id, question_id, is_correct")
-        .in("result_id", resultIds);
-    if (!answers || answers.length === 0) {
+    // Постранично: строк здесь takers × questions (100 × 35 = 3500), а
+    // PostgREST режет ответ по `max_rows` молча. При усечении личный список
+    // ниже строится по ПОЛНОМУ набору результатов, поэтому ученики без
+    // дошедших наблюдений всё равно получали записанную оценку и уровень —
+    // вырожденный, но показанный им на экране. См. lib/supabase/fetch-all.ts.
+    const { data: answers, error: answersError } = await fetchAllRows<{ result_id: string; question_id: string; is_correct: boolean }>(
+        (from, to) => admin
+            .from("mock_answer_details")
+            .select("result_id, question_id, is_correct")
+            .in("result_id", resultIds)
+            .order("id")
+            .range(from, to)
+    );
+    if (answersError) {
+        return NextResponse.json({ error: `Не удалось прочитать ответы: ${answersError.message}` }, { status: 500 });
+    }
+    if (answers.length === 0) {
         return NextResponse.json({ ok: true, itemCount: 0, personCount: 0 });
     }
 

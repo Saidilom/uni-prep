@@ -78,6 +78,56 @@ function pickRubric(ctx: EssayGradingContext): string {
   return GENERIC_RUBRIC;
 }
 
+// Проверка группы по одному заданию за один запрос. Заменяет вызов модели на
+// каждый ответ: на группе из 100 учеников с двумя эссе это было ~200
+// обращений, теперь несколько. Побочная выгода важнее экономии — модель видит
+// сразу много работ по одному и тому же заданию и ставит баллы по одной планке,
+// вместо того чтобы калибровать каждую работу заново.
+export const BATCH_ESSAY_GRADING_SYSTEM_PROMPT = `You are an official National Certificate exam grader for written work (English letters/essays, Russian essays, Uzbek esse). You are given SEVERAL students' answers to the SAME task and you grade all of them in one pass against the real published rubric, returning strict JSON: {"grades": [{"id": string, "score": number, "feedback": string}, ...]}.
+
+Rules:
+- Return exactly one entry for EVERY answer id given, using the id verbatim. Never merge, skip, reorder-and-relabel, or invent ids.
+- "score" must be a number between 0 and the given maximum, using the exact official conversion table when one is provided below — do not invent your own scale.
+- Count words in each student's actual answer yourself; apply the disqualification and word-count-penalty rules exactly as specified.
+- Grade every answer on its own merits against the rubric — NOT relative to the other answers in this batch. Seeing the batch is meant to keep your standard consistent, not to grade on a curve.
+- "feedback" is 2-4 sentences in Russian, addressed to that student: what was strong, what cost points, concrete next step. Never mention that you are an AI or reference internal criteria names verbatim — write like a teacher's comment.
+- If an answer is empty, off-topic, or clearly not an attempt at the task, apply the automatic disqualification score from the rubric.
+- Be consistent and strict but fair — these scores are final and shown to students, so do not hedge or round in their favor.
+Return only valid JSON, no markdown fences.`;
+
+export type BatchEssayGradingContext = {
+  language: string | null;
+  maxPoints: number;
+  taskPrompt: string;
+  sharedStimulus?: string | null;
+  rubricNote?: string | null;
+  answers: Array<{ id: string; text: string }>;
+};
+
+export function buildBatchEssayGradingPrompt(ctx: BatchEssayGradingContext): string {
+  const rubric = pickRubric({
+    language: ctx.language,
+    maxPoints: ctx.maxPoints,
+    taskPrompt: ctx.taskPrompt,
+    studentAnswer: "",
+  });
+  const answers = ctx.answers
+    .map((a) => `--- ANSWER id=${a.id} ---\n${a.text || "(пусто — ответ не был отправлен)"}`)
+    .join("\n\n");
+  return `${rubric}
+
+Maximum possible score for this task: ${ctx.maxPoints}
+${ctx.rubricNote ? `\nImport-time rubric note (context, not a substitute for the rules above):\n${ctx.rubricNote}\n` : ""}
+Task given to the students:
+${ctx.taskPrompt}
+${ctx.sharedStimulus ? `\nShared prompt/topic text:\n${ctx.sharedStimulus}\n` : ""}
+There are ${ctx.answers.length} answers to grade. Return exactly ${ctx.answers.length} entries, one per id.
+
+${answers}
+
+Return the JSON verdict now.`;
+}
+
 export function buildEssayGradingPrompt(ctx: EssayGradingContext): string {
   const rubric = pickRubric(ctx);
   return `${rubric}

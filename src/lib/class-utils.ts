@@ -1,6 +1,7 @@
 import supabase from "./supabase/client";
 import { User, Class, MockTest } from "./firestore-schema";
 import { pageCache } from "./page-cache";
+import { fetchAllRows } from "./supabase/fetch-all";
 
 // Same reasoning as registan-utils.ts's STUDENT_CACHE_TTL — short enough
 // that a just-created class/assignment shows up on its own, long enough that
@@ -413,8 +414,19 @@ export const fetchClassMockResults = async (classId: string, mockTestId: string)
     ]);
 
     const resultIds = (results || []).map((r) => r.id as string);
+    // Постранично: строк здесь takers × заданий с ручной проверкой, и на
+    // большой группе PostgREST обрезал бы ответ молча. Занижение тут особенно
+    // скверное — учитель видит «проверять нечего», непроверенные эссе остаются
+    // с нулём баллов, и он жмёт «Готово», что необратимо.
     const { data: pendingRows } = resultIds.length > 0
-        ? await supabase.from("mock_answer_details").select("result_id").in("result_id", resultIds).in("review_status", ["pending", "ai_graded"])
+        ? await fetchAllRows<{ result_id: string }>((from, to) =>
+            supabase
+                .from("mock_answer_details")
+                .select("result_id")
+                .in("result_id", resultIds)
+                .in("review_status", ["pending", "ai_graded"])
+                .order("id")
+                .range(from, to))
         : { data: [] as Array<{ result_id: string }> };
     const pendingCountByResult = new Map<string, number>();
     (pendingRows || []).forEach((row) => {
@@ -595,10 +607,17 @@ export const fetchMockQuestionErrorStats = async (classId: string, mockTestId: s
     const resultIds = (results || []).map((r) => r.id as string);
     if (resultIds.length === 0) return [];
 
-    const { data: details } = await supabase
-        .from("mock_answer_details")
-        .select("question_id, question_text, is_correct")
-        .in("result_id", resultIds);
+    // Постранично: 15 учеников × 71 вопрос уже превышают одну страницу. При
+    // усечении доли ошибок считались неверно, а вопросы, чьи строки обрезались
+    // целиком, вообще исчезали из рейтинга — учитель разбирал не ту тему.
+    const { data: details } = await fetchAllRows<{ question_id: string | null; question_text: string; is_correct: boolean }>(
+        (from, to) => supabase
+            .from("mock_answer_details")
+            .select("question_id, question_text, is_correct")
+            .in("result_id", resultIds)
+            .order("id")
+            .range(from, to)
+    );
 
     const byQuestion = new Map<string, { questionText: string; wrong: number; total: number }>();
     (details || []).forEach((d) => {

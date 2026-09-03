@@ -211,16 +211,15 @@ function StudentMockCatalog() {
     };
 
     // Only show tests this student could actually ever unlock: paid tests are
-    // always actionable (they can buy access), and already-completed ones
-    // stay visible for review — but a "free" test gated to Registan students
-    // when this student isn't one, or a class_only test not assigned to
-    // their class, can never become available for them, so listing it as a
-    // permanently "Заблокирован" row is just noise, not something for the
-    // student to act on.
+    // always actionable (they can buy access), free admin tests are open to
+    // everyone, and already-completed ones stay visible for review — but a
+    // class_only test not assigned to their class can never become available
+    // for them, so listing it as a permanently "Заблокирован" row is just
+    // noise, not something for the student to act on.
     const visibleTests = tests.filter((test) => {
         if (test.type === "paid") return true;
         if (results.has(test.id)) return true;
-        if (test.type === "free") return user?.isRegistanStudent ?? false;
+        if (test.type === "free") return true;
         if (test.type === "class_only") return classAccessIds.has(test.id);
         return true;
     });
@@ -257,7 +256,6 @@ function StudentMockCatalog() {
                             const status = getStatus(test);
                             const StatusIcon = statusLabel[status].icon;
                             const entryState = getMockEntryState({
-                                price: test.price,
                                 startsAt: test.startsAt,
                                 endsAt: test.endsAt,
                                 hasExistingResult: results.has(test.id),

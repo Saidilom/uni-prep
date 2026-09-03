@@ -1,4 +1,5 @@
 import supabase from "./supabase/client";
+import { fetchAllRows } from "./supabase/fetch-all";
 
 const throwIfError = (error: { message?: string } | null | undefined, context: string) => {
     if (error) {
@@ -36,12 +37,20 @@ export type RecentPlacementResult = {
 };
 
 export const fetchAdminOverview = async () => {
+    // Первые три запроса — постранично. Это агрегаты по всей платформе без
+    // фильтров, а PostgREST режет ответ по `max_rows` молча: выручка
+    // занижалась, счётчик учеников упирался в потолок и больше не рос, а
+    // `waitingForMock` наоборот ЗАВЫШАЛСЯ — уже сдавшие числились ожидающими,
+    // потому что их результаты не попали в обрезанную выборку.
     const [usersRes, paymentsRes, resultsRes, recentPaymentsRes, recentPlacementRes] = await Promise.all([
-        supabase.from("users").select("id, role"),
+        fetchAllRows<Record<string, unknown>>((from, to) =>
+            supabase.from("users").select("id, role").order("id").range(from, to)),
         // Only successful payments carry real access grants — pending/failed
         // rows must not count toward revenue or the "waiting for their test" set.
-        supabase.from("payments").select("user_id, mock_test_id, mock_test_title, amount").eq("status", "success"),
-        supabase.from("mock_results").select("user_id, mock_test_id"),
+        fetchAllRows<Record<string, unknown>>((from, to) =>
+            supabase.from("payments").select("user_id, mock_test_id, mock_test_title, amount").eq("status", "success").order("id").range(from, to)),
+        fetchAllRows<Record<string, unknown>>((from, to) =>
+            supabase.from("mock_results").select("user_id, mock_test_id").order("id").range(from, to)),
         supabase
             .from("payments")
             .select("id, user_name, mock_test_title, amount, currency, status, created_at")

@@ -154,6 +154,11 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
   const [importResult, setImportResult] = useState<MockImportResponse | null>(null);
   const [draft, setDraft] = useState<ImportedMock | null>(null);
   const [price, setPrice] = useState(0);
+  // Админ выбирает тип теста переключателем: платный (по умолчанию, как было)
+  // или бесплатный. Бесплатный сохраняет всю логику платного — окно
+  // проведения, ручное закрытие, ручную публикацию результатов — просто без
+  // оплаты. Учителю переключатель не показывается, его тесты всегда class_only.
+  const [isFree, setIsFree] = useState(false);
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
   const [resultsPublishAt, setResultsPublishAt] = useState("");
@@ -179,11 +184,12 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
     try {
       const raw = sessionStorage.getItem(draftStorageKey);
       if (raw) {
-        const saved = JSON.parse(raw) as { draft: ImportedMock; importResult: MockImportResponse; price: number };
+        const saved = JSON.parse(raw) as { draft: ImportedMock; importResult: MockImportResponse; price: number; isFree?: boolean };
         if (saved?.draft && saved?.importResult) {
           setDraft(normalizeDraftPoints(saved.draft));
           setImportResult(saved.importResult);
           if (typeof saved.price === "number") setPrice(saved.price);
+          if (typeof saved.isFree === "boolean") setIsFree(saved.isFree);
         }
       }
     } catch {
@@ -199,14 +205,14 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
     }
     try {
       if (draft && importResult) {
-        sessionStorage.setItem(draftStorageKey, JSON.stringify({ draft, importResult, price }));
+        sessionStorage.setItem(draftStorageKey, JSON.stringify({ draft, importResult, price, isFree }));
       } else {
         sessionStorage.removeItem(draftStorageKey);
       }
     } catch {
       // storage full/unavailable — recognized draft still works, just won't survive a reload
     }
-  }, [draft, importResult, price, draftStorageKey]);
+  }, [draft, importResult, price, isFree, draftStorageKey]);
 
   useEffect(() => {
     if (!draft || !importResult) return;
@@ -387,7 +393,7 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
   const publish = async () => {
     if (!draft || !importResult) return;
     const issues = getPublicationIssues(draft);
-    if (mode === "admin" && price <= 0) issues.unshift(t("addPricePrompt"));
+    if (mode === "admin" && !isFree && price <= 0) issues.unshift(t("addPricePrompt"));
     if (mode === "admin" && startsAt && !endsAt) issues.unshift(t("endsAtRequiredPrompt"));
     if (mode === "admin" && endsAt && !startsAt) issues.unshift(t("startsAtRequiredPrompt"));
     if (mode === "admin" && startsAt && endsAt && new Date(endsAt) <= new Date(startsAt)) {
@@ -411,7 +417,8 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
           draft,
           importId: importResult.importId,
           sourcePdfPaths: importResult.sourcePdfPaths,
-          price: mode === "admin" ? price : 0,
+          isFree: mode === "admin" ? isFree : false,
+          price: mode === "admin" && !isFree ? price : 0,
           startsAt: mode === "admin" && startsAt ? new Date(startsAt).toISOString() : null,
           endsAt: mode === "admin" && endsAt ? new Date(endsAt).toISOString() : null,
           resultsPublishAt: mode === "admin" && resultsPublishAt ? new Date(resultsPublishAt).toISOString() : null,
@@ -422,10 +429,11 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
         if (Array.isArray(body.issues)) setPublishIssues(body.issues);
         throw new Error(body.error || t("publishFailedGeneric"));
       }
-      toast.success(mode === "admin" ? t("paidMockPublishedToast") : t("freeMockCreatedToast"));
+      toast.success(mode === "admin" && !isFree ? t("paidMockPublishedToast") : t("freeMockCreatedToast"));
       setDraft(null);
       setImportResult(null);
       setPrice(0);
+      setIsFree(false);
       setStartsAt("");
       setEndsAt("");
       setResultsPublishAt("");
@@ -505,10 +513,36 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
   const finalizeResults = async (test: TestRow) => {
     setFinalizing(test.id);
     try {
+      // Сначала письменные задания всей группы — пачками, один заход в модель
+      // на пачку. Роут возобновляемый и возвращает `remaining`, поэтому просто
+      // дёргаем его, пока непроверенные не закончатся. Балл за эссе должен
+      // быть окончательным ДО публикации: перевзвешивание по сложности
+      // считается уже по нему.
+      let guard = 0;
+      for (;;) {
+        const gradeResponse = await fetch(`/api/mock-tests/${test.id}/grade-essays`, { method: "POST" });
+        const gradeBody = await gradeResponse.json();
+        if (!gradeResponse.ok) throw new Error(gradeBody.error || t("gradeEssaysFailed"));
+        if (gradeBody.graded > 0) {
+          toast.info(t("gradeEssaysProgress").replace("{graded}", String(gradeBody.graded)));
+        }
+        // Останавливаемся, когда проверять нечего, либо когда заход не сдвинул
+        // счётчик — иначе при устойчивой ошибке модели цикл был бы бесконечным.
+        if (!gradeBody.remaining || gradeBody.graded === 0 || ++guard >= 10) {
+          if (gradeBody.remaining > 0) {
+            toast.warning(t("gradeEssaysLeftover").replace("{count}", String(gradeBody.remaining)));
+          }
+          break;
+        }
+      }
+
       const response = await fetch(`/api/mock-tests/${test.id}/finalize-results`, { method: "POST" });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || t("finalizeResultsFailed"));
       toast.success(t("finalizeResultsSuccessToast"));
+      if (Array.isArray(body.recalcErrors) && body.recalcErrors.length > 0) {
+        toast.warning(t("recalcPartialWarning"), { description: body.recalcErrors.join("; ") });
+      }
       await loadTests({ force: true });
     } catch (error) {
       toast.error(t("finalizeResultsFailed"), { description: error instanceof Error ? error.message : String(error) });
@@ -573,12 +607,36 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
                   <input type="number" min={1} value={draft.durationMinutes} onChange={(event) => setDraft({ ...draft, durationMinutes: Number(event.target.value) })} className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3 text-foreground" />
                 </label>
                 {mode === "admin" && (
+                  <div className="sm:col-span-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{t("pricingModeLabel")}</span>
+                    <div className="mt-2 inline-flex w-full rounded-xl border border-border bg-muted p-1 sm:w-auto">
+                      <button
+                        type="button"
+                        onClick={() => setIsFree(false)}
+                        className={`flex-1 rounded-lg px-5 py-2 text-sm font-bold transition-all sm:flex-none ${!isFree ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                      >
+                        {t("pricingPaidOption")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setIsFree(true); setPrice(0); }}
+                        className={`flex-1 rounded-lg px-5 py-2 text-sm font-bold transition-all sm:flex-none ${isFree ? "bg-card text-emerald-700 shadow-sm dark:text-emerald-400" : "text-muted-foreground hover:text-foreground"}`}
+                      >
+                        {t("pricingFreeOption")}
+                      </button>
+                    </div>
+                    {isFree && (
+                      <span className="mt-2 block text-[11px] font-normal normal-case text-muted-foreground">{t("pricingFreeHint")}</span>
+                    )}
+                  </div>
+                )}
+                {mode === "admin" && !isFree && (
                   <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                     {t("priceUzsLabel")}
                     <input type="number" min={1} value={price || ""} onChange={(event) => setPrice(Number(event.target.value))} placeholder={t("pricePlaceholder")} className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3 text-foreground" />
                   </label>
                 )}
-                {mode === "admin" && price > 0 && (
+                {mode === "admin" && (
                   <>
                     <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                       {t("startsAtLabel")}
@@ -853,7 +911,11 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
               </div>
               <div className="text-sm font-semibold">
                 <span className="mr-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 md:hidden">{mode === "admin" ? t("columnPrice") : t("columnDuration")}:</span>
-                {mode === "admin" ? formatMoney(test.price, locale, t("currencySumSuffix")) : `${test.duration_minutes} ${t("minutesSuffix")}`}
+                {mode !== "admin"
+                  ? `${test.duration_minutes} ${t("minutesSuffix")}`
+                  : test.price > 0
+                    ? formatMoney(test.price, locale, t("currencySumSuffix"))
+                    : <span className="text-emerald-700 dark:text-emerald-400">{t("freeColumnValue")}</span>}
               </div>
               <div className="truncate text-sm text-muted-foreground">
                 <span className="mr-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 md:hidden">{t("columnAuthor")}:</span>

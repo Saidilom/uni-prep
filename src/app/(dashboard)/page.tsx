@@ -75,15 +75,20 @@ export default function HomePage() {
     };
     const duration = (test: MockTest) => (test as unknown as { duration_minutes?: number }).duration_minutes ?? test.durationMinutes ?? 0;
 
-    const premiumTests = tests.filter((t) => t.type === "paid").slice(0, 3);
-    // "free" tests are open to every student, so they're always actionable here.
-    // class_only tests are not — only show ones actually assigned
+    // Витрина Premium — это официальные тесты, созданные в админ-панели, и
+    // платные, и бесплатные. Бесплатный админский мок ('free') раньше сюда не
+    // попадал и уезжал в блок ниже, хотя создавали его там же и ждали именно
+    // здесь. Единственная разница для ученика — вместо цены бейдж
+    // «Бесплатно» и кнопка «Начать» вместо оплаты.
+    const premiumTests = tests.filter((t) => t.type === "paid" || t.type === "free").slice(0, 3);
+    // Ниже остаются только тесты учителя, назначенные этому ученику —
+    // class_only. Админские бесплатные не дублируем: они уже в Premium.
     // to this student (individually or via their class), otherwise every
     // teacher's class test in the system would clutter this widget.
     // Already-completed tests are excluded — this widget is for freshly
     // assigned tests, not a place to relaunch ones already taken.
     const freeTests = tests
-        .filter((t) => (t.type === "free" || (t.type === "class_only" && classAccessIds.has(t.id))) && !completedIds.has(t.id))
+        .filter((t) => t.type === "class_only" && classAccessIds.has(t.id) && !completedIds.has(t.id))
         .slice(0, 4);
     const recentResults = results.slice(0, 3);
     // `score` is raw points earned (sum of question.points), not a percentage —
@@ -192,9 +197,15 @@ export default function HomePage() {
                                             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[hsl(var(--brand-olive-soft))] text-[hsl(var(--brand-olive-ink))]">
                                                 <Crown size={16} />
                                             </div>
-                                            <span className="inline-flex items-center rounded-full bg-red-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-red-600 dark:bg-red-950/40 dark:text-red-300">
-                                                {test.price.toLocaleString()} UZS
-                                            </span>
+                                            {test.price > 0 ? (
+                                                <span className="inline-flex items-center rounded-full bg-red-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-red-600 dark:bg-red-950/40 dark:text-red-300">
+                                                    {test.price.toLocaleString()} UZS
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                                                    {t("freeBadge")}
+                                                </span>
+                                            )}
                                         </div>
                                         <p className="mt-3 font-semibold text-foreground">{test.title}</p>
                                         {test.description ? (

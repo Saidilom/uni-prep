@@ -123,12 +123,22 @@ async function extractDraftWithGemini(
   // fail once and let the user re-run it deliberately instead.
   const candidates = getGeminiModelCandidates();
 
+  // Раньше цикл крутился ровно candidates.length раз, а getGeminiModelCandidates()
+  // схлопывает список через Set. Если GEMINI_MODEL и GEMINI_FALLBACK_MODEL заданы
+  // одинаково (или обе не заданы — дефолт у них общий), кандидат остаётся ОДИН, и
+  // повтор не делался никогда: первая же 503 «high demand» роняла импорт, хотя
+  // isRetryableGeminiError считает её повторяемой. Подтверждено на проде — в
+  // mock_imports подряд лежат падения с 503 через 86с и с 504 через 254с, и ни в
+  // одном не было второй попытки.
+  //
+  // Теперь после исчерпания моделей даётся один дополнительный заход, но только
+  // на быстрой временной ошибке. Таймаут так не повторяем: он уже израсходовал
+  // весь бюджет времени, и второй такой же заход просто досидит до того же конца.
   let lastError: unknown;
-  for (let attempt = 0; attempt < candidates.length; attempt++) {
-    const model = candidates[attempt];
-    if (attempt > 0 && isRetryableGeminiError(lastError) && !isTimeoutGeminiError(lastError)) {
-      await sleep(3_000);
-    }
+  let attempt = 0;
+  let extraRetryUsed = false;
+  for (;;) {
+    const model = candidates[Math.min(attempt, candidates.length - 1)];
     try {
       const response = await ai.models.generateContent({
         model,
@@ -151,6 +161,21 @@ async function extractDraftWithGemini(
       lastError = error;
       if (!isRetryableGeminiError(error) && !isTimeoutGeminiError(error)) throw error;
     }
+
+    attempt++;
+    const fastRetryable = isRetryableGeminiError(lastError) && !isTimeoutGeminiError(lastError);
+
+    if (attempt < candidates.length) {
+      // Есть ещё не опробованная модель — переходим к ней.
+      if (fastRetryable) await sleep(3_000);
+      continue;
+    }
+    if (!extraRetryUsed && fastRetryable) {
+      extraRetryUsed = true;
+      await sleep(5_000);
+      continue;
+    }
+    break;
   }
 
   throw lastError instanceof Error ? lastError : new Error("Gemini временно недоступен");

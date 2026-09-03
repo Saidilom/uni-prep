@@ -136,6 +136,25 @@ export default function MockTestPage() {
       return;
     }
 
+    // Один ученик — одна попытка. Раньше повторный заход ничем не
+    // ограничивался: can_access_mock пропускает того, у кого уже есть
+    // результат, и вторая сдача создавала ВТОРУЮ строку в mock_results.
+    // Проверяем до показа вопросов, а не при отправке, иначе ученик прошёл бы
+    // весь тест ради отказа в конце.
+    if (!isPreview) {
+      const { data: existing } = await supabase
+        .from("mock_results")
+        .select("id")
+        .eq("mock_test_id", id)
+        .eq("user_id", user.id)
+        .limit(1);
+      if (existing && existing.length > 0) {
+        setError(t("alreadyCompleted"));
+        setLoading(false);
+        return;
+      }
+    }
+
     setTitle(test.title);
     setSubject(test.subject_id);
     const rawSeconds = Math.max(60, Number(test.duration_minutes || 60) * 60);

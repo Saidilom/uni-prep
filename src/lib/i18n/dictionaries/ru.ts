@@ -211,6 +211,7 @@ const ru = {
     minutesSuffix: "мин",
     enroll: "Enroll",
     repeat: "Повторить",
+    viewResult: "Смотреть результат",
     start: "Начать",
     availableMockTests: "Доступные Mock-тесты",
     noAvailableMocksYet: "Пока нет доступных Mock-тестов.",
@@ -221,6 +222,7 @@ const ru = {
   },
   mockRunner: {
     notAssigned: "Этот Mock-тест вам не назначен или ещё не опубликован.",
+    alreadyCompleted: "Вы уже проходили этот тест. Результат — на странице «Результаты».",
     testNotFound: "Тест не найден.",
     opensAtNotice: "Этот тест откроется {date}.",
     entryWindowClosed: "Время для входа в этот тест истекло — доступ закрыт.",
@@ -289,6 +291,7 @@ const ru = {
     opensAtLabel: "Откроется {date}",
     entryClosedLabel: "Время для входа истекло",
     repeat: "Повторить",
+    viewResult: "Смотреть результат",
     start: "Начать",
   },
   checkout: {

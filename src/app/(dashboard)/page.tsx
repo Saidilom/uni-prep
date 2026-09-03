@@ -220,12 +220,20 @@ export default function HomePage() {
                                         >
                                             {t("enroll")}
                                         </button>
+                                    ) : status === "completed" ? (
+                                        // Пересдачи нет: одна попытка на ученика.
+                                        <Link
+                                            href="/results"
+                                            className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-muted px-4 py-2.5 text-sm font-semibold text-muted-foreground transition-all hover:text-foreground"
+                                        >
+                                            {t("viewResult")}
+                                        </Link>
                                     ) : (
                                         <Link
                                             href={`/mock/${test.id}`}
                                             className="inline-flex items-center justify-center gap-2 rounded-xl bg-[hsl(var(--brand-blue-ink))] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
                                         >
-                                            {status === "completed" ? t("repeat") : t("start")}
+                                            {t("start")}
                                         </Link>
                                     )}
                                 </div>

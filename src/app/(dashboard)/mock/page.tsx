@@ -294,12 +294,21 @@ function StudentMockCatalog() {
                                         <span className="shrink-0 rounded-xl border border-border bg-muted px-5 py-2.5 text-center text-sm font-semibold text-muted-foreground">
                                             {t("entryClosedLabel")}
                                         </span>
+                                    ) : status === "completed" ? (
+                                        // Пересдачи нет: одна попытка на ученика.
+                                        // Вместо «Повторить» ведём к результату.
+                                        <Link
+                                            href="/results"
+                                            className="shrink-0 inline-flex items-center gap-2 rounded-xl border border-border bg-muted px-5 py-2.5 text-sm font-semibold text-muted-foreground transition-all hover:text-foreground"
+                                        >
+                                            {t("viewResult")}
+                                        </Link>
                                     ) : (
                                         <Link
                                             href={`/mock/${test.id}`}
                                             className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:opacity-90 active:scale-[0.97]"
                                         >
-                                            {status === "completed" ? t("repeat") : t("start")}
+                                            {t("start")}
                                         </Link>
                                     )}
                                 </div>

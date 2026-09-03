@@ -213,6 +213,7 @@ const uz: typeof ru = {
     minutesSuffix: "daq",
     enroll: "Enroll",
     repeat: "Qayta topshirish",
+    viewResult: "Natijani ko'rish",
     start: "Boshlash",
     availableMockTests: "Mavjud Mock-testlar",
     noAvailableMocksYet: "Hozircha mavjud Mock-testlar yo'q.",
@@ -223,6 +224,7 @@ const uz: typeof ru = {
   },
   mockRunner: {
     notAssigned: "Bu Mock-test sizga tayinlanmagan yoki hali e'lon qilinmagan.",
+    alreadyCompleted: "Siz bu testni allaqachon topshirgansiz. Natija «Natijalar» sahifasida.",
     testNotFound: "Test topilmadi.",
     opensAtNotice: "Bu test {date} da ochiladi.",
     entryWindowClosed: "Bu testga kirish vaqti tugadi — kirish yopiq.",
@@ -291,6 +293,7 @@ const uz: typeof ru = {
     opensAtLabel: "{date} da ochiladi",
     entryClosedLabel: "Kirish vaqti tugadi",
     repeat: "Qayta topshirish",
+    viewResult: "Natijani ko'rish",
     start: "Boshlash",
   },
   checkout: {

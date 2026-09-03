@@ -18,7 +18,31 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (!authData.user) return NextResponse.json({ error: "Не авторизован" }, { status: 401 });
 
   const { data, error } = await client.rpc("finalize_mock_group_results", { p_mock_test_id: params.id });
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) {
+    // Функция бросает исключения по-английски, а видит их администратор.
+    // Самая частая причина отказа — заданная при создании дата публикации
+    // результатов ещё не наступила; без подстановки самой даты сообщение
+    // «Cannot finalize before the announced results date» ничего не объясняет.
+    let message = error.message;
+    if (/before the announced results date/i.test(error.message)) {
+      const { data: test } = await supabaseServer
+        .from("mock_tests")
+        .select("results_publish_at")
+        .eq("id", params.id)
+        .single();
+      const when = test?.results_publish_at
+        ? new Date(test.results_publish_at as string).toLocaleString("ru-RU", { timeZone: "Asia/Tashkent" })
+        : null;
+      message = when
+        ? `Публикация результатов откроется ${when} — эта дата задана в тесте при создании.`
+        : "Публикация результатов ещё не открыта — дата задана в тесте при создании.";
+    } else if (/Close the mock to new entries/i.test(error.message)) {
+      message = "Сначала закройте тест кнопкой «Закрыть» — публиковать можно только закрытый.";
+    } else if (/Not authorized/i.test(error.message)) {
+      message = "Нет прав публиковать результаты этого теста.";
+    }
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
 
   const revealedCount = (data as { revealedCount?: number } | null)?.revealedCount ?? 0;
 

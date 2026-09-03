@@ -406,9 +406,25 @@ export type ClassMockResultsSummary = {
     pendingReviewCount: number;
 };
 
-export const fetchClassMockResults = async (classId: string, mockTestId: string): Promise<ClassMockResultsSummary> => {
+// Все, кто сдавал этот тест, независимо от класса. Нужно для админских моков
+// (type 'paid'/'free'): их проходят ученики, ни в какой класс не входящие,
+// поэтому список участников неоткуда взять — только из самих результатов.
+export const fetchMockTakers = async (mockTestId: string): Promise<User[]> => {
+    const { data: results } = await supabase
+        .from("mock_results")
+        .select("user_id")
+        .eq("mock_test_id", mockTestId);
+    const ids = Array.from(new Set((results || []).map((r) => r.user_id as string)));
+    if (ids.length === 0) return [];
+    const { data: users } = await fetchAllRows<Record<string, unknown>>((from, to) =>
+        supabase.from("users").select("*").in("id", ids).order("id").range(from, to));
+    return (users || []).map(toUser);
+};
+
+// classId = null — режим «весь тест», для админского мока без класса.
+export const fetchClassMockResults = async (classId: string | null, mockTestId: string): Promise<ClassMockResultsSummary> => {
     const [members, { data: test }, { data: results }] = await Promise.all([
-        fetchClassMembers(classId),
+        classId ? fetchClassMembers(classId) : fetchMockTakers(mockTestId),
         supabase.from("mock_tests").select("title").eq("id", mockTestId).single(),
         supabase.from("mock_results").select("id, user_id, score, max_score, accuracy, correct_answers, total_questions, rasch_score, cefr_band, cefr_score, grade_level, completed_at").eq("mock_test_id", mockTestId),
     ]);
@@ -595,15 +611,15 @@ export type QuestionErrorStat = {
 // the class's students got each question wrong, ranked worst-first. Powers
 // the "hardest question" ranking on the class-mock results page (#24) — a
 // natural extension of the per-student breakdown already shown there.
-export const fetchMockQuestionErrorStats = async (classId: string, mockTestId: string): Promise<QuestionErrorStat[]> => {
-    const members = await fetchClassMembers(classId);
-    if (members.length === 0) return [];
-
-    const { data: results } = await supabase
-        .from("mock_results")
-        .select("id")
-        .eq("mock_test_id", mockTestId)
-        .in("user_id", members.map((m) => m.id));
+export const fetchMockQuestionErrorStats = async (classId: string | null, mockTestId: string): Promise<QuestionErrorStat[]> => {
+    // classId = null — считаем по всем сдававшим (админский мок без класса).
+    let query = supabase.from("mock_results").select("id").eq("mock_test_id", mockTestId);
+    if (classId) {
+        const members = await fetchClassMembers(classId);
+        if (members.length === 0) return [];
+        query = query.in("user_id", members.map((m) => m.id));
+    }
+    const { data: results } = await query;
     const resultIds = (results || []).map((r) => r.id as string);
     if (resultIds.length === 0) return [];
 

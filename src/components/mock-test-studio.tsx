@@ -7,8 +7,10 @@ import {
   ArrowLeft,
   Check,
   CheckCircle2,
+  CalendarClock,
   Eye,
   FileText,
+  ListChecks,
   Lock,
   LockOpen,
   Loader2,
@@ -49,6 +51,8 @@ type TestRow = {
   question_count: number;
   created_at: string;
   closed_at: string | null;
+  starts_at: string | null;
+  results_publish_at: string | null;
   completed_count: number;
 };
 
@@ -170,6 +174,12 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
   const [assigning, setAssigning] = useState<string | null>(null);
   const [togglingClose, setTogglingClose] = useState<string | null>(null);
   const [finalizing, setFinalizing] = useState<string | null>(null);
+  // Дата публикации результатов задавалась только при создании и потом была
+  // недоступна — а до её наступления finalize_mock_group_results отказывает
+  // публиковать. Админ упирался в это без возможности что-либо изменить.
+  const [editingPublishAt, setEditingPublishAt] = useState<TestRow | null>(null);
+  const [publishAtDraft, setPublishAtDraft] = useState("");
+  const [savingPublishAt, setSavingPublishAt] = useState(false);
 
   // The reviewed-but-unpublished draft must survive an accidental page reload
   // (dev-server hot reload, browser refresh, tab restore) — losing a fully
@@ -551,6 +561,43 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
     }
   };
 
+  // datetime-local работает в местном времени, а в базе лежит ISO в UTC.
+  const toLocalInput = (iso: string | null) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const openPublishAtEditor = (test: TestRow) => {
+    setEditingPublishAt(test);
+    setPublishAtDraft(toLocalInput(test.results_publish_at));
+  };
+
+  const savePublishAt = async (clear: boolean) => {
+    if (!editingPublishAt) return;
+    const test = editingPublishAt;
+    // То же правило, что проверяет publish_imported_mock при создании: дата
+    // публикации не может быть раньше начала теста.
+    if (!clear && publishAtDraft && test.starts_at && new Date(publishAtDraft) < new Date(test.starts_at)) {
+      toast.error(t("resultsBeforeStartPrompt"));
+      return;
+    }
+    setSavingPublishAt(true);
+    try {
+      const value = clear || !publishAtDraft ? null : new Date(publishAtDraft).toISOString();
+      const { error } = await supabase.from("mock_tests").update({ results_publish_at: value }).eq("id", test.id);
+      if (error) throw error;
+      toast.success(clear || !publishAtDraft ? t("publishAtClearedToast") : t("publishAtSavedToast"));
+      setEditingPublishAt(null);
+      await loadTests({ force: true });
+    } catch (error) {
+      toast.error(t("publishAtSaveFailed"), { description: error instanceof Error ? error.message : String(error) });
+    } finally {
+      setSavingPublishAt(false);
+    }
+  };
+
   const itemCount = draft ? countResponseItems(draft) : 0;
   const missingKeys = useMemo(() => {
     if (!draft) return 0;
@@ -885,73 +932,170 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
           <span className="text-xs text-muted-foreground">{t("totalCountLabel").replace("{count}", String(tests.length))}</span>
         </div>
         <div className="overflow-hidden rounded-2xl border border-border bg-card">
-          <div className="hidden grid-cols-[minmax(220px,1.5fr)_140px_100px_120px_minmax(140px,1fr)_auto] gap-4 border-b border-border bg-muted/50 px-5 py-3 text-[11px] font-bold uppercase tracking-wider text-muted-foreground md:grid">
-            <span>{t("columnTitle")}</span><span>{t("columnSubject")}</span><span>{t("columnQuestions")}</span><span>{mode === "admin" ? t("columnPrice") : t("columnDuration")}</span><span>{t("columnAuthor")}</span><span />
+          {/* Табличная раскладка включается только с lg. На md (планшет в
+              портрете, 768px) шесть колонок в сумме давали ~800px плюс блок
+              действий с пятью кнопками — при overflow-hidden у контейнера
+              кнопки просто обрезались и до них было не дотянуться.
+              Колонка автора убрана из сетки: это второстепенные данные, они
+              переехали в подпись под названием и освободили место действиям. */}
+          <div className="hidden grid-cols-[minmax(200px,1.6fr)_130px_90px_120px_auto] gap-4 border-b border-border bg-muted/50 px-5 py-3 text-[11px] font-bold uppercase tracking-wider text-muted-foreground lg:grid">
+            <span>{t("columnTitle")}</span><span>{t("columnSubject")}</span><span>{t("columnQuestions")}</span><span>{mode === "admin" ? t("columnPrice") : t("columnDuration")}</span><span />
           </div>
           {loading ? (
             <div className="flex items-center justify-center py-16"><Loader2 className="animate-spin text-muted-foreground" /></div>
           ) : tests.length === 0 ? (
             <div className="py-16 text-center"><FileText className="mx-auto text-muted-foreground/40" /><p className="mt-3 font-semibold text-muted-foreground">{t("noTestsYet")}</p></div>
           ) : tests.map((test) => (
-            <div key={test.id} className="grid gap-3 border-b border-border px-5 py-4 last:border-0 md:grid-cols-[minmax(220px,1.5fr)_140px_100px_120px_minmax(140px,1fr)_auto] md:items-center md:gap-4">
+            <div key={test.id} className="grid gap-3 border-b border-border px-4 py-4 last:border-0 sm:px-5 lg:grid-cols-[minmax(200px,1.6fr)_130px_90px_120px_auto] lg:items-center lg:gap-4">
               <div className="min-w-0">
-                <p className="truncate font-semibold">{test.title}</p>
+                <p className="font-semibold lg:truncate">{test.title}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {new Date(test.created_at).toLocaleDateString(locale === "ru" ? "ru-RU" : "uz-UZ")} · {test.status}
                   {Boolean(test.closed_at) && ` · ${t("closedLabel")}`}
+                  <span className="lg:hidden"> · {test.creator_name}</span>
                 </p>
+                <span className="mt-1 hidden text-xs text-muted-foreground lg:block">{test.creator_name}</span>
               </div>
-              <div className="text-sm text-muted-foreground">
-                <span className="mr-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 md:hidden">{t("columnSubject")}:</span>
-                {SUBJECT_LABELS[test.subject_id || "other"] || test.subject_id || "—"}
+              {/* До lg предмет, число вопросов и цена идут одной переносимой
+                  строкой, а не тремя подписанными блоками: на телефоне так
+                  экономится три строки высоты на каждый тест. */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground lg:block lg:text-inherit">
+                <span className="lg:hidden text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">{t("columnSubject")}</span>
+                <span>{SUBJECT_LABELS[test.subject_id || "other"] || test.subject_id || "—"}</span>
+                <span className="lg:hidden" aria-hidden="true">·</span>
+                <span className="font-semibold tabular-nums lg:hidden">{test.question_count} {t("columnQuestions").toLowerCase()}</span>
+                <span className="lg:hidden" aria-hidden="true">·</span>
+                <span className="font-semibold lg:hidden">
+                  {mode !== "admin"
+                    ? `${test.duration_minutes} ${t("minutesSuffix")}`
+                    : test.price > 0
+                      ? formatMoney(test.price, locale, t("currencySumSuffix"))
+                      : <span className="text-emerald-700 dark:text-emerald-400">{t("freeColumnValue")}</span>}
+                </span>
               </div>
-              <div className="text-sm font-semibold tabular-nums">
-                <span className="mr-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 md:hidden">{t("columnQuestions")}:</span>
-                {test.question_count}
-              </div>
-              <div className="text-sm font-semibold">
-                <span className="mr-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 md:hidden">{mode === "admin" ? t("columnPrice") : t("columnDuration")}:</span>
+              <div className="hidden text-sm font-semibold tabular-nums lg:block">{test.question_count}</div>
+              <div className="hidden text-sm font-semibold lg:block">
                 {mode !== "admin"
                   ? `${test.duration_minutes} ${t("minutesSuffix")}`
                   : test.price > 0
                     ? formatMoney(test.price, locale, t("currencySumSuffix"))
                     : <span className="text-emerald-700 dark:text-emerald-400">{t("freeColumnValue")}</span>}
               </div>
-              <div className="truncate text-sm text-muted-foreground">
-                <span className="mr-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 md:hidden">{t("columnAuthor")}:</span>
-                {test.creator_name}
-              </div>
-              <div className="flex flex-wrap items-center justify-end gap-2">
+              <div className="flex flex-wrap items-center gap-2 lg:justify-end">
                 <Link href={`/mock/${test.id}?preview=1`} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border hover:bg-muted" title={t("previewTitle")}><Eye size={16} /></Link>
-                {mode === "teacher" && <button onClick={() => openAssignments(test)} className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground"><Send size={14} /> {t("assignAction")}</button>}
+                {mode === "teacher" && <button onClick={() => openAssignments(test)} title={t("assignAction")} aria-label={t("assignAction")} className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground"><Send size={14} /> <span className="hidden xl:inline">{t("assignAction")}</span></button>}
                 {test.completed_count > 0 && (
                   <span className="inline-flex items-center px-1 text-xs font-semibold text-muted-foreground">
                     {t("completedCountShort").replace("{count}", String(test.completed_count))}
                   </span>
                 )}
+                {/* Результаты и ручная проверка эссе. Для админского мока это
+                    единственный путь: он не привязан к классу, поэтому экран
+                    результатов класса для него недоступен. */}
+                {mode === "admin" && test.completed_count > 0 && (
+                  <Link
+                    href={`/admin/mock-tests/${test.id}/results`}
+                    title={t("openResultsAction")}
+                    aria-label={t("openResultsAction")}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-2 text-xs font-semibold hover:bg-muted"
+                  >
+                    <ListChecks size={13} /> <span className="hidden xl:inline">{t("openResultsAction")}</span>
+                  </Link>
+                )}
+                {mode === "admin" && (
+                  <button
+                    onClick={() => openPublishAtEditor(test)}
+                    title={t("publishAtAction")}
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-semibold transition-colors ${
+                      test.results_publish_at && new Date(test.results_publish_at) > new Date()
+                        ? "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300"
+                        : "border-border hover:bg-muted"
+                    }`}
+                  >
+                    <CalendarClock size={13} />
+                    {/* Назначенную дату показываем всегда — это предупреждение,
+                        из-за которого публикация откажет. Общую подпись без
+                        даты прячем до xl, чтобы не раздувать строку. */}
+                    {test.results_publish_at && new Date(test.results_publish_at) > new Date()
+                      ? <span>{new Date(test.results_publish_at).toLocaleString(locale === "uz" ? "uz-UZ" : "ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
+                      : <span className="hidden xl:inline">{t("publishAtAction")}</span>}
+                  </button>
+                )}
                 {Boolean(test.closed_at) && test.completed_count > 0 && (
                   <button
                     onClick={() => finalizeResults(test)}
                     disabled={finalizing === test.id}
+                    title={t("finalizeResultsAction")}
+                    aria-label={t("finalizeResultsAction")}
                     className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-400"
                   >
                     <CheckCircle2 size={13} />
-                    {finalizing === test.id ? t("finalizingLabel") : t("finalizeResultsAction")}
+                    {/* Идёт публикация — показываем всегда: это единственный
+                        признак, что нажатие сработало и процесс идёт. */}
+                    {finalizing === test.id
+                      ? <span>{t("finalizingLabel")}</span>
+                      : <span className="hidden xl:inline">{t("finalizeResultsAction")}</span>}
                   </button>
                 )}
                 <button
                   onClick={() => toggleClose(test)}
                   disabled={togglingClose === test.id}
+                  title={test.closed_at ? t("reopenMock") : t("closeMock")}
+                  aria-label={test.closed_at ? t("reopenMock") : t("closeMock")}
                   className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-semibold transition-colors disabled:opacity-50 ${test.closed_at ? "border-border hover:bg-muted" : "border-red-200 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"}`}
                 >
                   {test.closed_at ? <LockOpen size={13} /> : <Lock size={13} />}
-                  {togglingClose === test.id ? t("togglingLabel") : test.closed_at ? t("reopenMock") : t("closeMock")}
+                  {togglingClose === test.id
+                    ? <span>{t("togglingLabel")}</span>
+                    : <span className="hidden xl:inline">{test.closed_at ? t("reopenMock") : t("closeMock")}</span>}
                 </button>
               </div>
             </div>
           ))}
         </div>
       </section>
+
+      {editingPublishAt && (
+        <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm" onClick={() => setEditingPublishAt(null)}>
+          <div className="w-full max-w-md overflow-hidden rounded-3xl border border-border bg-background shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-start justify-between border-b border-border p-6">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-primary">{t("publishAtTitle")}</p>
+                <h2 className="mt-1 text-lg font-bold">{editingPublishAt.title}</h2>
+              </div>
+              <button onClick={() => setEditingPublishAt(null)} className="rounded-xl p-2 hover:bg-muted"><X size={18} /></button>
+            </div>
+            <div className="space-y-4 p-6">
+              <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                {t("resultsPublishAtLabel")}
+                <input
+                  type="datetime-local"
+                  value={publishAtDraft}
+                  onChange={(event) => setPublishAtDraft(event.target.value)}
+                  className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3 text-foreground"
+                />
+              </label>
+              <p className="text-[11px] leading-relaxed text-muted-foreground">{t("publishAtHint")}</p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => savePublishAt(false)}
+                  disabled={savingPublishAt}
+                  className="flex-1 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground disabled:opacity-50"
+                >
+                  {savingPublishAt ? t("publishAtSavingLabel") : t("publishAtSaveAction")}
+                </button>
+                <button
+                  onClick={() => savePublishAt(true)}
+                  disabled={savingPublishAt || !editingPublishAt.results_publish_at}
+                  className="rounded-xl border border-border px-4 py-3 text-sm font-semibold hover:bg-muted disabled:opacity-40"
+                >
+                  {t("publishAtClearAction")}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {assigningTest && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm" onClick={() => setAssigningTest(null)}>

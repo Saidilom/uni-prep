@@ -15,7 +15,10 @@ import {
 import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
-export default function ClassMockResultsView({ classId, mockTestId, backHref }: { classId: string; mockTestId: string; backHref: string }) {
+// classId = null — режим «весь тест»: участники берутся из самих результатов,
+// а не из состава класса. Так экран проверки работает и для админского мока,
+// который проходят ученики вне классов.
+export default function ClassMockResultsView({ classId, mockTestId, backHref }: { classId?: string | null; mockTestId: string; backHref: string }) {
     const router = useRouter();
     const { locale } = useLocale();
     const t = useTranslations("classMockResults");
@@ -43,14 +46,14 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
         latestRequestKey.current = requestKey;
         (async () => {
             setLoading(true);
-            const data = await fetchClassMockResults(classId, mockTestId);
+            const data = await fetchClassMockResults(classId ?? null, mockTestId);
             if (latestRequestKey.current !== requestKey) return;
             setSummary(data);
             setLoading(false);
         })();
         (async () => {
             setStatsLoading(true);
-            const data = await fetchMockQuestionErrorStats(classId, mockTestId);
+            const data = await fetchMockQuestionErrorStats(classId ?? null, mockTestId);
             if (latestRequestKey.current !== requestKey) return;
             setQuestionStats(data);
             setStatsLoading(false);
@@ -97,7 +100,7 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
             if (!response.ok) throw new Error(body.error || t("reviewError"));
             const refreshed = await fetchMockAnswerDetails(resultId);
             setDetails((current) => ({ ...current, [resultId]: refreshed }));
-            setSummary(await fetchClassMockResults(classId, mockTestId));
+            setSummary(await fetchClassMockResults(classId ?? null, mockTestId));
             toast.success(t("gradeSavedToast"));
         } catch (error) {
             toast.error(t("gradeSaveFailed"), { description: error instanceof Error ? error.message : String(error) });
@@ -287,7 +290,7 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
                                                                 <div className="mt-2 flex flex-wrap items-center gap-2">
                                                                     <input type="number" min={0} max={d.maxPoints} step={0.1} value={reviewPoints[d.id] ?? 0} onChange={(event) => setReviewPoints((current) => ({ ...current, [d.id]: Number(event.target.value) }))} className="w-20 rounded-lg border border-violet-200 bg-background px-3 py-2 text-sm" />
                                                                     <span className="text-xs text-muted-foreground">{t("ofPointsSuffix").replace("{max}", String(d.maxPoints))}</span>
-                                                                    <input value={reviewFeedback[d.id] ?? ""} onChange={(event) => setReviewFeedback((current) => ({ ...current, [d.id]: event.target.value }))} placeholder={t("commentPlaceholder")} className="min-w-[220px] flex-1 rounded-lg border border-violet-200 bg-background px-3 py-2 text-sm" />
+                                                                    <input value={reviewFeedback[d.id] ?? ""} onChange={(event) => setReviewFeedback((current) => ({ ...current, [d.id]: event.target.value }))} placeholder={t("commentPlaceholder")} className="w-full flex-1 sm:w-auto sm:min-w-[220px] rounded-lg border border-violet-200 bg-background px-3 py-2 text-sm" />
                                                                     <button onClick={() => reviewResponse(resultId, d)} disabled={reviewingId === d.id} className="rounded-lg bg-violet-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{reviewingId === d.id ? t("saving") : t("save")}</button>
                                                                 </div>
                                                             </div>
@@ -301,7 +304,7 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
                                                                 <div className="mt-2 flex flex-wrap items-center gap-2">
                                                                     <input type="number" min={0} max={d.maxPoints} step={0.1} value={reviewPoints[d.id] ?? d.pointsEarned} onChange={(event) => setReviewPoints((current) => ({ ...current, [d.id]: Number(event.target.value) }))} className="w-20 rounded-lg border border-blue-200 bg-background px-3 py-2 text-sm" />
                                                                     <span className="text-xs text-muted-foreground">{t("ofPointsSuffix").replace("{max}", String(d.maxPoints))}</span>
-                                                                    <input value={reviewFeedback[d.id] ?? d.reviewFeedback ?? ""} onChange={(event) => setReviewFeedback((current) => ({ ...current, [d.id]: event.target.value }))} placeholder={t("commentPlaceholder")} className="min-w-[220px] flex-1 rounded-lg border border-blue-200 bg-background px-3 py-2 text-sm" />
+                                                                    <input value={reviewFeedback[d.id] ?? d.reviewFeedback ?? ""} onChange={(event) => setReviewFeedback((current) => ({ ...current, [d.id]: event.target.value }))} placeholder={t("commentPlaceholder")} className="w-full flex-1 sm:w-auto sm:min-w-[220px] rounded-lg border border-blue-200 bg-background px-3 py-2 text-sm" />
                                                                     <button onClick={() => reviewResponse(resultId, d)} disabled={reviewingId === d.id} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{reviewingId === d.id ? t("saving") : t("fixGrade")}</button>
                                                                 </div>
                                                             </div>

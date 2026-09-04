@@ -15,7 +15,11 @@ function resolveRedirectTarget(request: NextRequest) {
 // /login before the route handler ever ran, silently breaking payments in
 // production. These routes authenticate the caller themselves (Basic Auth
 // / MD5 signature), not via Supabase auth.
-const PUBLIC_API_PATHS = ["/api/payments/payme", "/api/payments/click"];
+// Авто-публикация результатов по времени — тоже вызов без сессии (планировщик
+// зовёт её со своей стороны), и авторизуется она общим секретом CRON_SECRET
+// внутри самого роута, а не Supabase-сессией. Без этой строки middleware
+// заворачивал её на /login, и роут не отрабатывал никогда.
+const PUBLIC_API_PATHS = ["/api/payments/payme", "/api/payments/click", "/api/cron/auto-finalize"];
 
 export async function middleware(request: NextRequest) {
   if (PUBLIC_API_PATHS.some((path) => request.nextUrl.pathname === path)) {

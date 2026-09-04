@@ -8,6 +8,7 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { fetchAvailableMockTests, fetchUserMockAccess, fetchUserClassMockAccess, fetchUserMockResults, fetchHasPlacementResult, userHasMockAccess, MockTest, MockAccess, MockResultRow } from "@/lib/registan-utils";
 import { pageCache } from "@/lib/page-cache";
 import { accuracyColor } from "@/lib/status-colors";
+import { MOCK_SCALE_MAX } from "@/lib/rasch";
 import PaymentModal from "@/components/payment-modal";
 import TeacherHome from "@/components/teacher-home";
 import LandingView from "@/components/landing";
@@ -58,6 +59,9 @@ export default function HomePage() {
     // else falls into the student view, which would be wrong for staff).
     useEffect(() => {
         if (user?.role === "staff") router.push("/staff");
+        // Админ филиала — та же логика: у него свой раздел, а этот дашборд
+        // без явной ветки показал бы ему ученический вид.
+        if (user?.role === "branch_admin") router.push("/branch");
     }, [user, router]);
 
     const copyStudentId = () => {
@@ -90,14 +94,23 @@ export default function HomePage() {
     const freeTests = tests
         .filter((t) => t.type === "class_only" && classAccessIds.has(t.id) && !completedIds.has(t.id))
         .slice(0, 4);
-    const recentResults = results.slice(0, 3);
-    // `score` is raw points earned (sum of question.points), not a percentage —
-    // `accuracy` is the pre-computed correct/total percentage from submit_mock.
-    const avgScore = results.length > 0 ? Math.round(results.reduce((sum, r) => sum + r.accuracy, 0) / results.length) : null;
+    const recentResults = results.filter((r) => r.revealed_at).slice(0, 3);
+    // Средний по всем мокам — в процентах (`accuracy`), а не в баллах: разные
+    // тесты имеют разный максимум, и сложить их сырые баллы значит выдать
+    // бессмысленное число. Балл за один конкретный мок при этом показывается по
+    // шкале Раша — см. «Правило отображения баллов» в design/FIX.md.
+    //
+    // Считаем только по опубликованным результатам: без этого фильтра главная
+    // подмешивала в среднее ещё не раскрытые попытки и расходилась с /results,
+    // где фильтр был с самого начала.
+    const revealedResults = results.filter((r) => r.revealed_at);
+    const avgScore = revealedResults.length > 0
+        ? Math.round(revealedResults.reduce((sum, r) => sum + r.accuracy, 0) / revealedResults.length)
+        : null;
 
     if (!user) return <LandingView />;
     if (user.role === "teacher") return <TeacherHome />;
-    if (user.role === "staff") return null;
+    if (user.role === "staff" || user.role === "branch_admin") return null;
 
     return (
         <div className="flex flex-col gap-10 py-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -197,7 +210,10 @@ export default function HomePage() {
                                             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[hsl(var(--brand-olive-soft))] text-[hsl(var(--brand-olive-ink))]">
                                                 <Crown size={16} />
                                             </div>
-                                            {test.price > 0 ? (
+                                            {/* По типу, а не по цене: у бесплатного теста цена
+                                                остаётся в колонке, чтобы админ мог вернуть его
+                                                в платные, не вводя её заново. */}
+                                            {test.type === "paid" ? (
                                                 <span className="inline-flex items-center rounded-full bg-red-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-red-600 dark:bg-red-950/40 dark:text-red-300">
                                                     {test.price.toLocaleString()} UZS
                                                 </span>
@@ -323,9 +339,18 @@ export default function HomePage() {
                                             {new Date(r.completed_at).toLocaleDateString(locale === "ru" ? "ru-RU" : "uz-UZ", { day: "numeric", month: "short" })}
                                         </p>
                                     </div>
-                                    <span className={`shrink-0 rounded-xl px-3 py-1.5 text-sm font-bold tabular-nums ${accuracyColor(r.accuracy)}`}>
-                                        {r.accuracy}%
-                                    </span>
+                                    {/* Балл за конкретный мок — по шкале Раша, как и на
+                                        остальных экранах. Процент остаётся только в
+                                        карточке среднего выше. */}
+                                    {r.level_score != null ? (
+                                        <span className={`shrink-0 rounded-xl px-3 py-1.5 text-sm font-bold tabular-nums ${accuracyColor(Math.round((r.level_score / MOCK_SCALE_MAX) * 100))}`}>
+                                            {r.level_score}/{MOCK_SCALE_MAX}
+                                        </span>
+                                    ) : (
+                                        <span className="shrink-0 rounded-xl border border-border bg-muted px-3 py-1.5 text-[10px] font-semibold text-muted-foreground">
+                                            {t("levelPendingShort")}
+                                        </span>
+                                    )}
                                 </div>
                             ))}
                         </div>

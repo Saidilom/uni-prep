@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Plus, Users, GraduationCap, X, FileUp } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useToast } from "@/hooks/useToast";
 import { fetchTeacherClasses, createClass, ClassWithCount } from "@/lib/class-utils";
+import { CORE_SUBJECTS, CoreSubject } from "@/lib/mock-import-schema";
 import { pluralizeRu } from "@/lib/pluralize-ru";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
@@ -13,11 +14,22 @@ export default function TeacherDashboard() {
     const { user } = useAuthStore();
     const { locale } = useLocale();
     const t = useTranslations("teacherDashboard");
+    const tSubjects = useTranslations("mockTestStudio");
+    const subjectLabels: Record<CoreSubject, string> = useMemo(() => ({
+        math: tSubjects("subjectMath"),
+        physics: tSubjects("subjectPhysics"),
+        chemistry: tSubjects("subjectChemistry"),
+        biology: tSubjects("subjectBiology"),
+        history: tSubjects("subjectHistory"),
+        english: tSubjects("subjectEnglish"),
+        native: tSubjects("subjectNative"),
+    }), [tSubjects]);
     const toast = useToast();
     const [classes, setClasses] = useState<ClassWithCount[]>([]);
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
     const [newName, setNewName] = useState("");
+    const [newSubject, setNewSubject] = useState<CoreSubject | "">("");
     const [saving, setSaving] = useState(false);
 
     const load = async () => {
@@ -33,11 +45,12 @@ export default function TeacherDashboard() {
     }, [user]);
 
     const handleCreate = async () => {
-        if (!user || newName.trim().length < 1) return;
+        if (!user || newName.trim().length < 1 || !newSubject) return;
         setSaving(true);
         try {
-            await createClass(user.id, newName.trim());
+            await createClass(user.id, newName.trim(), newSubject);
             setNewName("");
+            setNewSubject("");
             setCreating(false);
             toast.success(t("groupCreatedToast"));
             load();
@@ -101,7 +114,7 @@ export default function TeacherDashboard() {
                 </div>
 
                 {creating && (
-                    <div className="mb-4 flex items-center gap-3 rounded-2xl border border-border bg-card p-4">
+                    <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 sm:flex-row sm:items-center">
                         <input
                             autoFocus
                             value={newName}
@@ -110,15 +123,27 @@ export default function TeacherDashboard() {
                             placeholder={t("groupNamePlaceholder")}
                             className="flex-1 rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15"
                         />
+                        {/* Предмет обязателен: по нему группа получает свой тест из
+                            комплекта «Ойлик тест» (design/FIX.md, §6). */}
+                        <select
+                            value={newSubject}
+                            onChange={(e) => setNewSubject(e.target.value as CoreSubject)}
+                            className="rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15"
+                        >
+                            <option value="">{t("subjectPlaceholder")}</option>
+                            {CORE_SUBJECTS.map((subject) => (
+                                <option key={subject} value={subject}>{subjectLabels[subject]}</option>
+                            ))}
+                        </select>
                         <button
                             onClick={handleCreate}
-                            disabled={saving || newName.trim().length < 1}
+                            disabled={saving || newName.trim().length < 1 || !newSubject}
                             className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-all hover:opacity-90 disabled:opacity-50"
                         >
                             {saving ? t("creating") : t("create")}
                         </button>
                         <button
-                            onClick={() => { setCreating(false); setNewName(""); }}
+                            onClick={() => { setCreating(false); setNewName(""); setNewSubject(""); }}
                             className="rounded-xl p-2.5 text-muted-foreground transition-colors hover:bg-muted"
                             aria-label={t("cancel")}
                         >

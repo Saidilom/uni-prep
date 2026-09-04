@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Search, UserPlus, UserMinus, Trash2, Plus, ClipboardList, ClipboardCheck, X } from "lucide-react";
+import { ArrowLeft, Search, UserPlus, UserMinus, Trash2, Plus, ClipboardList, ClipboardCheck, X, ChevronDown, Lock, LockOpen } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useToast } from "@/hooks/useToast";
 import {
@@ -19,6 +19,11 @@ import {
     assignMockToClass,
     unassignMockFromClass,
     unassignMockFromStudent,
+    setClassAssignmentClosed,
+    fetchClassStudentsOverview,
+    fetchClassStudentMockScores,
+    ClassStudentOverview,
+    StudentMockScore,
     fetchAssignablePlacementTests,
     fetchStudentActivePlacementTestIds,
     assignPlacementToStudent,
@@ -27,6 +32,10 @@ import {
     AssignablePlacementTest,
 } from "@/lib/class-utils";
 import { Class, User, MockTest } from "@/lib/firestore-schema";
+import { pageCache } from "@/lib/page-cache";
+import { accuracyColor } from "@/lib/status-colors";
+import { MOCK_SCALE_MAX } from "@/lib/rasch";
+import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 export default function TeacherClassDetail() {
@@ -42,6 +51,10 @@ export default function TeacherClassDetail() {
     const [members, setMembers] = useState<User[]>([]);
     const [assignments, setAssignments] = useState<ClassMockAssignment[]>([]);
     const [studentAssignments, setStudentAssignments] = useState<ClassStudentMockAssignment[]>([]);
+    const [overview, setOverview] = useState<Map<string, ClassStudentOverview>>(new Map());
+    const [mockScores, setMockScores] = useState<Map<string, StudentMockScore[]>>(new Map());
+    const [expandedStudent, setExpandedStudent] = useState<string | null>(null);
+    const [togglingClose, setTogglingClose] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
 
     const [searchId, setSearchId] = useState("");
@@ -58,18 +71,39 @@ export default function TeacherClassDetail() {
     const [activePlacementIds, setActivePlacementIds] = useState<Set<string>>(new Set());
     const [assigningPlacement, setAssigningPlacement] = useState(false);
 
+    // §7: учитель сам закрывает мок своей группы, когда все сдали. Закрывается
+    // именно назначение, не тест целиком — у того же теста могут быть другие
+    // группы, которые ещё пишут.
+    const toggleAssignmentClosed = async (assignment: ClassMockAssignment) => {
+        setTogglingClose(assignment.id);
+        try {
+            await setClassAssignmentClosed(assignment.id, !assignment.closedAt);
+            toast.success(assignment.closedAt ? t("groupMockReopenedToast") : t("groupMockClosedToast"));
+            pageCache.invalidate(`classMockAssignments:${classId}`);
+            await load();
+        } catch (error) {
+            toast.error(t("groupMockCloseFailed"), { description: error instanceof Error ? error.message : String(error) });
+        } finally {
+            setTogglingClose(null);
+        }
+    };
+
     const load = async () => {
         setLoading(true);
-        const [c, m, a, sa] = await Promise.all([
+        const [c, m, a, sa, ov, ms] = await Promise.all([
             fetchClassById(classId),
             fetchClassMembers(classId),
             fetchClassMockAssignments(classId),
             fetchClassStudentMockAssignments(classId),
+            fetchClassStudentsOverview(classId),
+            fetchClassStudentMockScores(classId),
         ]);
         setCls(c);
         setMembers(m);
         setAssignments(a);
         setStudentAssignments(sa);
+        setOverview(new Map(ov.map((row) => [row.student.id, row])));
+        setMockScores(ms);
         setLoading(false);
     };
 
@@ -305,33 +339,90 @@ export default function TeacherClassDetail() {
                     </div>
                 ) : (
                     <div className="space-y-3">
-                        {members.map((m) => (
-                            <div key={m.id} className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4">
-                                <div className="flex items-center gap-3 min-w-0">
-                                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border bg-muted font-bold text-foreground">
-                                        {m.name[0]?.toUpperCase() || "?"}
+                        {members.map((m) => {
+                            const stats = overview.get(m.id);
+                            const scores = mockScores.get(m.id) || [];
+                            const isOpen = expandedStudent === m.id;
+                            return (
+                            <div key={m.id} className="rounded-2xl border border-border bg-card">
+                                <div className="flex items-center justify-between gap-3 p-4">
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border bg-muted font-bold text-foreground">
+                                            {m.name[0]?.toUpperCase() || "?"}
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="truncate text-sm font-semibold text-foreground">{m.name} {m.surname || ""}</p>
+                                            <p className="font-mono text-xs text-muted-foreground">{m.shortId}</p>
+                                        </div>
                                     </div>
-                                    <div className="min-w-0">
-                                        <p className="truncate text-sm font-semibold text-foreground">{m.name} {m.surname || ""}</p>
-                                        <p className="font-mono text-xs text-muted-foreground">{m.shortId}</p>
+                                    <div className="flex shrink-0 items-center gap-2">
+                                        {/* Средний по всем мокам ученика — в процентах: разные
+                                            тесты, разный максимум. Балл за отдельный мок ниже —
+                                            уже по шкале Раша (design/FIX.md). */}
+                                        {stats?.avgAccuracy != null && (
+                                            <span className={`hidden rounded-xl px-3 py-1.5 text-xs font-extrabold tabular-nums sm:inline-flex ${accuracyColor(stats.avgAccuracy)}`}>
+                                                {stats.avgAccuracy}%
+                                            </span>
+                                        )}
+                                        <button
+                                            onClick={() => setExpandedStudent(isOpen ? null : m.id)}
+                                            disabled={scores.length === 0}
+                                            className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted disabled:opacity-40"
+                                        >
+                                            {t("mockScoresAction").replace("{count}", String(scores.length))}
+                                            <ChevronDown size={13} className={`transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                                        </button>
+                                        <button
+                                            onClick={() => openPlacementPicker(m)}
+                                            className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted"
+                                        >
+                                            <ClipboardCheck size={13} /> {t("schoolLabel")}
+                                        </button>
+                                        <button
+                                            onClick={() => handleRemove(m)}
+                                            className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
+                                        >
+                                            <UserMinus size={13} /> {t("remove")}
+                                        </button>
                                     </div>
                                 </div>
-                                <div className="flex shrink-0 items-center gap-2">
-                                    <button
-                                        onClick={() => openPlacementPicker(m)}
-                                        className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted"
-                                    >
-                                        <ClipboardCheck size={13} /> {t("schoolLabel")}
-                                    </button>
-                                    <button
-                                        onClick={() => handleRemove(m)}
-                                        className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
-                                    >
-                                        <UserMinus size={13} /> {t("remove")}
-                                    </button>
-                                </div>
+                                {isOpen && scores.length > 0 && (
+                                    <div className="space-y-2 border-t border-border p-4">
+                                        {scores.map((score) => (
+                                            <div key={score.mockTestId} className="flex items-center justify-between gap-3 rounded-xl bg-muted/50 px-3 py-2">
+                                                <div className="min-w-0">
+                                                    <p className="truncate text-sm font-medium text-foreground">{score.title}</p>
+                                                    <p className="text-[11px] text-muted-foreground">
+                                                        {new Date(score.completedAt).toLocaleDateString(locale === "ru" ? "ru-RU" : "uz-UZ", { day: "numeric", month: "long", year: "numeric" })}
+                                                    </p>
+                                                </div>
+                                                <div className="flex shrink-0 items-center gap-2">
+                                                    {score.gradeLevel && (
+                                                        <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-300">
+                                                            {gradeLevelDisplay(score.gradeLevel as GradeLevel, locale)}
+                                                        </span>
+                                                    )}
+                                                    {!score.revealed ? (
+                                                        <span className="rounded-lg border border-border bg-background px-2 py-1 text-[10px] font-semibold text-muted-foreground">
+                                                            {t("resultsPendingLabel")}
+                                                        </span>
+                                                    ) : score.levelScore != null ? (
+                                                        <span className={`rounded-lg px-2.5 py-1 text-xs font-extrabold tabular-nums ${accuracyColor(Math.round((score.levelScore / MOCK_SCALE_MAX) * 100))}`}>
+                                                            {score.levelScore}/{MOCK_SCALE_MAX}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="rounded-lg border border-border bg-background px-2 py-1 text-[10px] font-semibold text-muted-foreground">
+                                                            {t("levelPendingShort")}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
             </section>
@@ -370,12 +461,25 @@ export default function TeacherClassDetail() {
                                                 {t("durationCompletedTemplate").replace("{duration}", String(a.durationMinutes)).replace("{completed}", String(a.completedCount)).replace("{total}", String(members.length))}
                                             </p>
                                         </div>
-                                        <button
-                                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleUnassign(a); }}
-                                            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
-                                        >
-                                            <X size={13} /> {t("unassign")}
-                                        </button>
+                                        <div className="flex shrink-0 items-center gap-2">
+                                            <button
+                                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleAssignmentClosed(a); }}
+                                                disabled={togglingClose === a.id}
+                                                className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition-colors disabled:opacity-50 ${
+                                                    a.closedAt
+                                                        ? "border-border text-muted-foreground hover:bg-muted"
+                                                        : "border-red-200 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                                }`}
+                                            >
+                                                {a.closedAt ? <><LockOpen size={13} /> {t("reopenGroupMock")}</> : <><Lock size={13} /> {t("closeGroupMock")}</>}
+                                            </button>
+                                            <button
+                                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleUnassign(a); }}
+                                                className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
+                                            >
+                                                <X size={13} /> {t("unassign")}
+                                            </button>
+                                        </div>
                                     </Link>
                                 ))}
                             </div>

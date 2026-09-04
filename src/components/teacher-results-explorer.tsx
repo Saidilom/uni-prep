@@ -12,6 +12,7 @@ import {
 } from "@/lib/class-utils";
 import { fetchUserMockResults, MockResultRow } from "@/lib/registan-utils";
 import { accuracyColor } from "@/lib/status-colors";
+import { MOCK_SCALE_MAX } from "@/lib/rasch";
 import { pluralizeRu } from "@/lib/pluralize-ru";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
@@ -231,11 +232,20 @@ export default function TeacherResultsExplorer() {
                                             <span>{a.correct_answers}/{a.total_questions} {t("correctSuffix")}</span>
                                         </div>
                                     </div>
+                                    {/* Балл за конкретный мок — по модели Раша, 0-75.
+                                        Средние по классам и ученикам ниже остаются в
+                                        процентах: они складывают разные тесты, и только
+                                        доля от максимума между ними сопоставима. */}
                                     <div className="flex shrink-0 flex-col items-end gap-0.5 self-start sm:self-auto">
-                                        <span className={`rounded-xl px-4 py-2 text-sm font-extrabold tabular-nums ${accuracyColor(a.accuracy)}`}>
-                                            {a.score}/{a.max_score}
-                                        </span>
-                                        <span className="text-[10px] font-semibold text-muted-foreground">{a.accuracy}%</span>
+                                        {a.level_score != null ? (
+                                            <span className={`rounded-xl px-4 py-2 text-sm font-extrabold tabular-nums ${accuracyColor(Math.round((a.level_score / MOCK_SCALE_MAX) * 100))}`}>
+                                                {a.level_score}/{MOCK_SCALE_MAX}
+                                            </span>
+                                        ) : (
+                                            <span className="rounded-xl border border-border bg-muted px-4 py-2 text-[10px] font-semibold text-muted-foreground">
+                                                {t("levelPendingShort")}
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
                             ))}

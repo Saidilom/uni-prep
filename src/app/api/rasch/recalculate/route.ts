@@ -4,6 +4,7 @@ import { createRouteHandlerClient } from "@/lib/supabase/server";
 import { estimateRasch, Observation, mean, stdev, raschThetaToT } from "@/lib/rasch";
 import { gradeLevelFromScore } from "@/lib/mock-grade-level";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
+import { isInternalCall } from "@/lib/internal-auth";
 
 // Пересчёт идёт по всей группе целиком, поэтому на большой группе он долгий.
 // Без явного maxDuration функция Vercel обрывалась по умолчанию, а вызывающая
@@ -32,11 +33,15 @@ export async function POST(req: NextRequest) {
     // recalculation is meaningful (they have a result on this test, own it,
     // or are admin), since this route always fires right after the caller's
     // own submission and has no other legitimate trigger.
-    const sessionClient = createRouteHandlerClient();
-    const { data: authData } = await sessionClient.auth.getUser();
-    if (!authData.user) return NextResponse.json({ error: "Не авторизован" }, { status: 401 });
-    const { data: allowed } = await sessionClient.rpc("can_access_mock", { p_mock_test_id: mockTestId });
-    if (!allowed) return NextResponse.json({ error: "Нет доступа" }, { status: 403 });
+    // Второй вызывающий — авто-публикация (§15): у неё нет сессии, а
+    // пересчитать уровень после раскрытия результатов обязательно.
+    if (!isInternalCall(req)) {
+        const sessionClient = createRouteHandlerClient();
+        const { data: authData } = await sessionClient.auth.getUser();
+        if (!authData.user) return NextResponse.json({ error: "Не авторизован" }, { status: 401 });
+        const { data: allowed } = await sessionClient.rpc("can_access_mock", { p_mock_test_id: mockTestId });
+        if (!allowed) return NextResponse.json({ error: "Нет доступа" }, { status: 403 });
+    }
 
     const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
 
@@ -119,21 +124,27 @@ export async function POST(req: NextRequest) {
     }
 
     // Standardize this cohort's abilities onto the same 0-75 scale used for
-    // English's official CEFR scoring (Z-score against the people who took
-    // THIS mock, not a fixed/absolute scale) — meaningful once there's a
-    // real cohort; with <2 distinct ability estimates raschThetaToT falls
-    // back to 50 (scale center) for everyone, which is why a level shown
-    // right after the first-ever attempt on a brand new mock isn't
-    // trustworthy yet and should be read as provisional.
+    // English's official CEFR scoring — Z-score against the people who took
+    // THIS mock, not a fixed/absolute scale.
+    //
+    // Стандартизовать не по чему, пока когорта вырождена (меньше двух
+    // различающихся оценок способности): raschThetaToT в этом случае отдаёт 50,
+    // середину шкалы, всем подряд. Пока Rasch-балл был вторым числом на экране,
+    // это читалось как «предварительно»; теперь он ГЛАВНЫЙ балл мока, и
+    // подставная середина — просто неверный результат, одинаковый у отличника и
+    // у двоечника. Пишем NULL: интерфейс умеет показать честное «балл появится
+    // позже», а пересчёт идёт после каждой сдачи, так что как только когорта
+    // дорастёт, балл проставится сам.
     const abilityMean = mean(personAbility);
     const abilityStdev = stdev(personAbility);
+    const cohortIsDegenerate = !Number.isFinite(abilityStdev) || abilityStdev < 1e-6;
     const levelScores = personAbility.map((theta) => raschThetaToT(theta, abilityMean, abilityStdev));
 
     const updateResults = await Promise.all(
         resultIds.map((id, n) => admin.from("mock_results").update({
             rasch_score: personAbility[n],
-            level_score: levelScores[n],
-            grade_level: gradeLevelFromScore(levelScores[n]),
+            level_score: cohortIsDegenerate ? null : levelScores[n],
+            grade_level: cohortIsDegenerate ? null : gradeLevelFromScore(levelScores[n]),
         }).eq("id", id))
     );
     const failedCount = updateResults.filter((r) => r.error).length;

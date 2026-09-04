@@ -50,10 +50,18 @@ describe("getPublicationIssues", () => {
     expect(getPublicationIssues(draft)).toContain("Задание 1: не указан правильный вариант");
   });
 
-  it("blocks a draft whose points don't sum to 75", () => {
+  it("accepts any positive points total", () => {
+    // Сумма больше не приводится к 75 — тест на 10 баллов так же валиден, как
+    // на 75 (см. «Две шкалы 75» в design/FIX.md).
     const draft = structuredClone(baseDraft);
     draft.sections[0].questions[0].points = 10;
-    expect(getPublicationIssues(draft)).toContain("Сумма баллов должна быть равна 75 (сейчас: 10)");
+    expect(getPublicationIssues(draft)).toEqual([]);
+  });
+
+  it("blocks a draft where every question is worth zero", () => {
+    const draft = structuredClone(baseDraft);
+    draft.sections[0].questions.forEach((question) => { question.points = 0; });
+    expect(getPublicationIssues(draft)).toContain("Сумма баллов теста должна быть больше нуля");
   });
 
   it("allows an essay without an automatic answer key", () => {

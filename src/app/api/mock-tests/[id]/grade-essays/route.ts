@@ -5,6 +5,7 @@ import { BATCH_ESSAY_GRADING_JSON_SCHEMA, BatchEssayGradingResultSchema } from "
 import { buildBatchEssayGradingPrompt, BATCH_ESSAY_GRADING_SYSTEM_PROMPT } from "@/lib/essay-grading-prompt";
 import { getGeminiThinkingConfig } from "@/lib/gemini-config";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
+import { isInternalCall } from "@/lib/internal-auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -41,9 +42,12 @@ function parseBatchVerdict(text: string) {
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const startedAt = Date.now();
+  // Второй вызывающий, кроме админа/учителя, — авто-публикация (§15): она
+  // делает ровно то же самое, но без человека и без сессии.
+  const internal = isInternalCall(req);
   const client = createRouteHandlerClient();
   const { data: authData } = await client.auth.getUser();
-  if (!authData.user) return NextResponse.json({ error: "Не авторизован" }, { status: 401 });
+  if (!internal && !authData.user) return NextResponse.json({ error: "Не авторизован" }, { status: 401 });
 
   const mockTestId = params.id;
   const { data: mockTest } = await supabaseServer
@@ -55,9 +59,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   // Право проверять сверяет сама RPC (владелец или админ), но отказать до
   // обращения к модели дешевле — иначе за 403 уже заплатили бы токенами.
-  const { data: isAdmin } = await client.rpc("is_admin");
-  if (mockTest.created_by !== authData.user.id && !isAdmin) {
-    return NextResponse.json({ error: "Нет доступа" }, { status: 403 });
+  if (!internal) {
+    const { data: isAdmin } = await client.rpc("is_admin");
+    if (mockTest.created_by !== authData.user!.id && !isAdmin) {
+      return NextResponse.json({ error: "Нет доступа" }, { status: 403 });
+    }
   }
 
   const { data: results } = await supabaseServer.from("mock_results").select("id").eq("mock_test_id", mockTestId);
@@ -145,11 +151,18 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           .map((g) => ({ detailId: labelToDetailId.get(g.id), points: g.score, feedback: g.feedback }));
 
         if (payload.length > 0) {
-          // Через сессионный клиент: RPC сама сверяет права по auth.uid().
-          const { data: rpcData, error: rpcError } = await client.rpc("ai_grade_mock_responses_batch", {
-            p_mock_test_id: mockTestId,
-            p_grades: payload,
-          });
+          // Человек — через сессионный клиент: RPC сама сверяет права по
+          // auth.uid(). У авто-публикации auth.uid() пустой, поэтому для неё
+          // отдельная _system-версия с теми же действиями (миграция 071).
+          const { data: rpcData, error: rpcError } = internal
+            ? await supabaseServer.rpc("ai_grade_mock_responses_batch_system", {
+                p_mock_test_id: mockTestId,
+                p_grades: payload,
+              })
+            : await client.rpc("ai_grade_mock_responses_batch", {
+                p_mock_test_id: mockTestId,
+                p_grades: payload,
+              });
           if (rpcError) throw rpcError;
           graded += Number((rpcData as { graded?: number } | null)?.graded ?? 0);
         }

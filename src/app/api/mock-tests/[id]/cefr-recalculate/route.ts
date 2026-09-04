@@ -4,6 +4,7 @@ import { createRouteHandlerClient } from "@/lib/supabase/server";
 import { estimateRasch, Observation } from "@/lib/rasch";
 import { raschThetaToT, writingPointsToScore, cefrBandFromScore, mean, stdev } from "@/lib/english-cefr";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
+import { isInternalCall } from "@/lib/internal-auth";
 
 // Считается по всей группе, поэтому на большой группе долго. Раньше лимит
 // времени не задавался вовсе.
@@ -25,11 +26,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
   const mockTestId = params.id;
 
-  const sessionClient = createRouteHandlerClient();
-  const { data: authData } = await sessionClient.auth.getUser();
-  if (!authData.user) return NextResponse.json({ error: "Не авторизован" }, { status: 401 });
-  const { data: allowed } = await sessionClient.rpc("can_access_mock", { p_mock_test_id: mockTestId });
-  if (!allowed) return NextResponse.json({ error: "Нет доступа" }, { status: 403 });
+  // Второй вызывающий — авто-публикация (§15), без сессии.
+  if (!isInternalCall(req)) {
+    const sessionClient = createRouteHandlerClient();
+    const { data: authData } = await sessionClient.auth.getUser();
+    if (!authData.user) return NextResponse.json({ error: "Не авторизован" }, { status: 401 });
+    const { data: allowed } = await sessionClient.rpc("can_access_mock", { p_mock_test_id: mockTestId });
+    if (!allowed) return NextResponse.json({ error: "Нет доступа" }, { status: 403 });
+  }
 
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
 

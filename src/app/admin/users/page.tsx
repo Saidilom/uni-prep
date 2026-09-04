@@ -4,15 +4,18 @@ import { useEffect, useState } from "react";
 import { Phone, Mail, Calendar, UserCheck, IdCard } from "lucide-react";
 import { User as UserType } from "@/lib/firestore-schema";
 import supabase from "@/lib/supabase/client";
+import { fetchBranches, Branch } from "@/lib/class-utils";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
-type AdminUser = UserType & { registeredVia?: string; shortid?: string };
-type RoleFilter = "all" | "student" | "teacher" | "staff" | "admin";
-const ROLE_FILTERS: RoleFilter[] = ["all", "student", "teacher", "staff", "admin"];
-const ROLE_FILTER_LABEL_KEYS: Partial<Record<RoleFilter, "roleStudent" | "roleTeacher" | "roleStaff" | "roleAdmin">> = {
+type AdminUser = UserType & { registeredVia?: string; shortid?: string; branch_id?: string | null };
+type AssignableRole = "student" | "teacher" | "staff" | "branch_admin" | "admin";
+type RoleFilter = "all" | AssignableRole;
+const ROLE_FILTERS: RoleFilter[] = ["all", "student", "teacher", "staff", "branch_admin", "admin"];
+const ROLE_FILTER_LABEL_KEYS: Partial<Record<RoleFilter, "roleStudent" | "roleTeacher" | "roleStaff" | "roleBranchAdmin" | "roleAdmin">> = {
     student: "roleStudent",
     teacher: "roleTeacher",
     staff: "roleStaff",
+    branch_admin: "roleBranchAdmin",
     admin: "roleAdmin",
 };
 
@@ -28,6 +31,7 @@ export default function AdminUsersPage() {
     const [users, setUsers] = useState<AdminUser[]>([]);
     const [search, setSearch] = useState("");
     const [roleFilter, setRoleFilter] = useState<RoleFilter>("all");
+    const [branches, setBranches] = useState<Branch[]>([]);
     const [loading, setLoading] = useState(true);
     const { locale } = useLocale();
     const t = useTranslations("adminUsers");
@@ -39,6 +43,7 @@ export default function AdminUsersPage() {
             .select("*")
             .order("createdAt", { ascending: false });
         if (!error && data) setUsers(data as AdminUser[]);
+        setBranches(await fetchBranches());
         setLoading(false);
     };
 
@@ -49,11 +54,18 @@ export default function AdminUsersPage() {
         load();
     };
 
-    const setRole = async (u: AdminUser, role: "student" | "teacher" | "admin" | "staff") => {
+    const setRole = async (u: AdminUser, role: AssignableRole) => {
         if (role === u.role) return;
         if (role === "admin" && !confirm(t("confirmMakeAdmin").replace("{name}", `${u.name} ${u.surname || ""}`.trim()))) return;
         if (role === "staff" && !confirm(t("confirmMakeStaff").replace("{name}", `${u.name} ${u.surname || ""}`.trim()))) return;
         await supabase.from("users").update({ role }).eq("id", u.id);
+        load();
+    };
+
+    // Филиал живёт отдельно от роли: он нужен и админу филиала (что он видит),
+    // и учителю (какой филиал унаследуют его группы).
+    const setBranch = async (u: AdminUser, branchId: string) => {
+        await supabase.from("users").update({ branch_id: branchId || null }).eq("id", u.id);
         load();
     };
 
@@ -155,12 +167,14 @@ export default function AdminUsersPage() {
                                     ) : (
                                         <select
                                             value={u.role}
-                                            onChange={(e) => setRole(u, e.target.value as "student" | "teacher" | "admin" | "staff")}
+                                            onChange={(e) => setRole(u, e.target.value as AssignableRole)}
                                             className={`rounded-xl border px-3 py-2 text-xs font-semibold transition-all ${
                                                 u.role === "admin"
                                                     ? "border-amber-200 bg-amber-50 text-amber-700 dark:bg-amber-950/40"
                                                     : u.role === "staff"
                                                     ? "border-blue-200 bg-blue-50 text-blue-700 dark:bg-blue-950/40"
+                                                    : u.role === "branch_admin"
+                                                    ? "border-teal-200 bg-teal-50 text-teal-700 dark:bg-teal-950/40"
                                                     : u.role === "teacher"
                                                     ? "border-violet-200 bg-violet-50 text-violet-700 dark:bg-violet-950/40"
                                                     : "border-border bg-card text-muted-foreground"
@@ -169,7 +183,23 @@ export default function AdminUsersPage() {
                                             <option value="student">{t("roleStudent")}</option>
                                             <option value="teacher">{t("roleTeacher")}</option>
                                             <option value="staff">{t("roleStaff")}</option>
+                                            <option value="branch_admin">{t("roleBranchAdmin")}</option>
                                             <option value="admin">{t("roleAdmin")}</option>
+                                        </select>
+                                    )}
+                                    {/* Филиал показываем только тем, кому он что-то
+                                        значит: администратору филиала — что он видит,
+                                        учителю — какой филиал унаследуют его группы. */}
+                                    {(u.role === "branch_admin" || u.role === "teacher") && branches.length > 0 && (
+                                        <select
+                                            value={u.branch_id || ""}
+                                            onChange={(e) => setBranch(u, e.target.value)}
+                                            className="rounded-xl border border-border bg-card px-3 py-2 text-xs font-semibold text-muted-foreground"
+                                        >
+                                            <option value="">{t("noBranchOption")}</option>
+                                            {branches.map((branch) => (
+                                                <option key={branch.id} value={branch.id}>{branch.name}</option>
+                                            ))}
                                         </select>
                                     )}
                                 </div>

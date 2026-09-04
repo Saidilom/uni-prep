@@ -203,13 +203,23 @@ export function stdev(values: number[]): number {
     return Math.sqrt(variance);
 }
 
+// Верх шкалы, в которой ученику показывается балл за мок. Единственная шкала
+// «из 75», оставшаяся в проекте (см. design/FIX.md, «Две шкалы 75») — та же,
+// что у Агентства знаний для национального сертификата.
+export const MOCK_SCALE_MAX = 75;
+
 export function raschThetaToT(theta: number, cohortMean: number, cohortStdev: number): number {
     // With fewer than ~2 meaningfully-different ability estimates, a
     // population stdev is not a meaningful yardstick (and would divide by
     // ~0) — fall back to the scale's center point until there's enough data
     // to standardize against, rather than producing NaN/Infinity.
+    //
+    // Вызывающая сторона (/api/rasch/recalculate) отдельно проверяет тот же
+    // признак и в этом случае пишет NULL вместо возвращённых отсюда 50: балл
+    // теперь главный, и подставная середина шкалы была бы просто неверным
+    // числом, одинаковым у всех.
     if (!Number.isFinite(cohortStdev) || cohortStdev < 1e-6) return 50;
     const z = (theta - cohortMean) / cohortStdev;
     const t = z * 10 + 50;
-    return Math.max(0, Math.min(75, Math.round(t)));
+    return Math.max(0, Math.min(MOCK_SCALE_MAX, Math.round(t)));
 }

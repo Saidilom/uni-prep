@@ -29,6 +29,8 @@ const toClass = (row: Record<string, unknown>): Class => ({
     id: row.id as string,
     teacherId: row.teacher_id as string,
     name: row.name as string,
+    subjectId: (row.subject_id as string | null) ?? null,
+    branchId: (row.branch_id as string | null) ?? null,
     createdAt: row.created_at as string,
 });
 
@@ -61,12 +63,15 @@ export const fetchClassById = async (classId: string): Promise<Class | null> => 
     }, TEACHER_CACHE_TTL);
 };
 
-export const createClass = async (teacherId: string, name: string): Promise<Class> => {
+// subjectId обязателен: по нему комплект «Ойлик тест» раздаёт группе её
+// предметный тест (см. publish_oylik_set, миграция 073). Филиал группы
+// проставляет триггер из карточки учителя, клиент его не передаёт.
+export const createClass = async (teacherId: string, name: string, subjectId: string): Promise<Class> => {
     const id = crypto.randomUUID();
-    const { error } = await supabase.from("classes").insert({ id, teacher_id: teacherId, name });
+    const { error } = await supabase.from("classes").insert({ id, teacher_id: teacherId, name, subject_id: subjectId });
     if (error) throw error;
     pageCache.invalidate(`teacherClasses:${teacherId}`);
-    return { id, teacherId, name, createdAt: new Date().toISOString() };
+    return { id, teacherId, name, subjectId, branchId: null, createdAt: new Date().toISOString() };
 };
 
 export const deleteClass = async (classId: string): Promise<void> => {
@@ -122,6 +127,10 @@ export type ClassMockAssignment = {
     title: string;
     durationMinutes: number;
     completedCount: number;
+    // Закрытие назначения этой конкретной группы (миграция 073). Тест может
+    // оставаться открытым для остальных групп — учитель закрывает свою, когда
+    // все его ученики сдали.
+    closedAt: string | null;
 };
 
 export const fetchAssignableMockTests = async (teacherId: string): Promise<MockTest[]> => {
@@ -141,7 +150,7 @@ export const fetchClassMockAssignments = async (classId: string): Promise<ClassM
     return pageCache.fetch(`classMockAssignments:${classId}`, async () => {
         const { data: assignments } = await supabase
             .from("mock_class_assignments")
-            .select("id, mock_test_id")
+            .select("id, mock_test_id, closed_at")
             .eq("class_id", classId);
         if (!assignments || assignments.length === 0) return [];
 
@@ -171,6 +180,7 @@ export const fetchClassMockAssignments = async (classId: string): Promise<ClassM
                 title: test?.title || "—",
                 durationMinutes: (test?.duration_minutes as number) || 0,
                 completedCount,
+                closedAt: (a.closed_at as string | null) ?? null,
             });
         }
         return results;
@@ -381,6 +391,10 @@ export type StudentMockResult = {
     // src/lib/english-cefr.ts) — null for every other subject.
     cefrBand: string | null;
     cefrScore: number | null;
+    // Балл по модели Раша, шкала 0-75 — ГЛАВНЫЙ балл мока (см. «Две шкалы 75»
+    // в design/FIX.md). null, пока когорта слишком мала, чтобы было с чем
+    // стандартизовать; тогда показываем не подставную середину, а заглушку.
+    levelScore: number | null;
     // Generic A+..C level (src/lib/mock-grade-level.ts) — populated for
     // every subject once a real cohort exists to standardize against.
     gradeLevel: string | null;
@@ -426,7 +440,7 @@ export const fetchClassMockResults = async (classId: string | null, mockTestId: 
     const [members, { data: test }, { data: results }] = await Promise.all([
         classId ? fetchClassMembers(classId) : fetchMockTakers(mockTestId),
         supabase.from("mock_tests").select("title").eq("id", mockTestId).single(),
-        supabase.from("mock_results").select("id, user_id, score, max_score, accuracy, correct_answers, total_questions, rasch_score, cefr_band, cefr_score, grade_level, completed_at").eq("mock_test_id", mockTestId),
+        supabase.from("mock_results").select("id, user_id, score, max_score, accuracy, correct_answers, total_questions, rasch_score, cefr_band, cefr_score, level_score, grade_level, completed_at").eq("mock_test_id", mockTestId),
     ]);
 
     const resultIds = (results || []).map((r) => r.id as string);
@@ -465,14 +479,18 @@ export const fetchClassMockResults = async (classId: string | null, mockTestId: 
                 raschScore: r && r.rasch_score !== null ? (r.rasch_score as number) : null,
                 cefrBand: r ? (r.cefr_band as string | null) : null,
                 cefrScore: r && r.cefr_score !== null ? (r.cefr_score as number) : null,
+                levelScore: r && r.level_score !== null ? Number(r.level_score) : null,
                 gradeLevel: r ? (r.grade_level as string | null) : null,
                 completedAt: r ? (r.completed_at as string) : null,
                 pendingReviewCount: r ? (pendingCountByResult.get(r.id as string) || 0) : 0,
             };
         })
-        .sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+        // Сортируем и считаем сводку по Rasch-баллу — это то число, которое
+        // видит учитель. Пока когорта мала и он null, падаем обратно на сырой
+        // балл, иначе список схлопнется в произвольный порядок.
+        .sort((a, b) => (b.levelScore ?? b.score ?? -1) - (a.levelScore ?? a.score ?? -1));
 
-    const scores = students.map((s) => s.score).filter((s): s is number => s !== null);
+    const scores = students.map((s) => s.levelScore ?? s.score).filter((s): s is number => s !== null);
     const mockMaxScore = students.find((s) => s.maxScore !== null)?.maxScore ?? null;
 
     return {
@@ -526,7 +544,7 @@ export type StudentClassMock = {
     title: string;
     durationMinutes: number;
     price: number;
-    myResult: { score: number; maxScore: number; accuracy: number; gradeLevel: string | null; revealed: boolean } | null;
+    myResult: { score: number; maxScore: number; accuracy: number; levelScore: number | null; gradeLevel: string | null; revealed: boolean } | null;
 };
 
 // Every mock assigned to this class (whole-class or individually to this
@@ -547,7 +565,7 @@ export const fetchStudentClassMocks = async (classId: string, studentId: string)
 
     const [{ data: tests }, { data: results }] = await Promise.all([
         supabase.from("mock_tests").select("id, title, duration_minutes, price").in("id", mockTestIds),
-        supabase.from("mock_results").select("mock_test_id, score, max_score, accuracy, grade_level, revealed_at").eq("user_id", studentId).in("mock_test_id", mockTestIds),
+        supabase.from("mock_results").select("mock_test_id, score, max_score, accuracy, level_score, grade_level, revealed_at").eq("user_id", studentId).in("mock_test_id", mockTestIds),
     ]);
     const resultMap = new Map((results || []).map((r) => [r.mock_test_id as string, r]));
 
@@ -566,6 +584,7 @@ export const fetchStudentClassMocks = async (classId: string, studentId: string)
                 score: r.score as number,
                 maxScore: r.max_score as number,
                 accuracy: r.accuracy as number,
+                levelScore: r.level_score !== null && r.level_score !== undefined ? Number(r.level_score) : null,
                 gradeLevel: (r.grade_level as string | null) ?? null,
                 revealed: Boolean(r.revealed_at),
             } : null,
@@ -740,12 +759,70 @@ export const fetchClassStudentsOverview = async (classId: string): Promise<Class
     }, TEACHER_CACHE_TTL);
 };
 
+export type StudentMockScore = {
+    mockTestId: string;
+    title: string;
+    // Балл по модели Раша, 0-75 — то же число, что видит сам ученик. null,
+    // пока сдавших слишком мало для стандартизации.
+    levelScore: number | null;
+    gradeLevel: string | null;
+    completedAt: string;
+    revealed: boolean;
+};
+
+// Балл каждого ученика группы по КАЖДОМУ моку, который он сдавал — то, чего не
+// хватало на странице группы: там был только общий рейтинг, а посмотреть
+// отдельный мок ученика было негде (§9 в design/FIX.md).
+//
+// Один батч-запрос на всю группу, а не запрос на ученика: группа в 30 человек
+// иначе давала бы 30 круговых обращений при каждом открытии страницы.
+export const fetchClassStudentMockScores = async (classId: string): Promise<Map<string, StudentMockScore[]>> => {
+    return pageCache.fetch(`classStudentMockScores:${classId}`, async () => {
+        const members = await fetchClassMembers(classId);
+        if (members.length === 0) return new Map<string, StudentMockScore[]>();
+        const studentIds = members.map((m) => m.id);
+
+        const { data: results } = await fetchAllRows<{
+            user_id: string; mock_test_id: string; mock_test_title: string;
+            level_score: number | null; grade_level: string | null;
+            completed_at: string; revealed_at: string | null;
+        }>((from, to) =>
+            supabase.from("mock_results")
+                .select("user_id, mock_test_id, mock_test_title, level_score, grade_level, completed_at, revealed_at")
+                .in("user_id", studentIds).order("id").range(from, to));
+
+        const byStudent = new Map<string, StudentMockScore[]>();
+        (results || []).forEach((r) => {
+            const list = byStudent.get(r.user_id) || [];
+            list.push({
+                mockTestId: r.mock_test_id,
+                title: r.mock_test_title,
+                levelScore: r.level_score !== null ? Number(r.level_score) : null,
+                gradeLevel: r.grade_level,
+                completedAt: r.completed_at,
+                revealed: Boolean(r.revealed_at),
+            });
+            byStudent.set(r.user_id, list);
+        });
+        for (const list of Array.from(byStudent.values())) {
+            list.sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime());
+        }
+        return byStudent;
+    }, TEACHER_CACHE_TTL);
+};
+
 export type TeacherClassSummary = ClassWithCount & { avgAccuracy: number | null; attemptCount: number };
 export type TeacherTopStudent = { student: User; className: string; avgAccuracy: number; attemptCount: number };
 export type TeacherResultsOverview = {
     classes: TeacherClassSummary[];
     topClass: TeacherClassSummary | null;
     topStudent: TeacherTopStudent | null;
+    // Средний результат всех учеников учителя по всем их мокам, в процентах —
+    // агрегат по разным тестам, поэтому именно доля от максимума, а не баллы
+    // (см. «Правило отображения баллов» в design/FIX.md). Показывается на
+    // главной учителя.
+    overallAvgAccuracy: number | null;
+    overallAttemptCount: number;
 };
 
 // One pass across every class the teacher owns: per-class average accuracy
@@ -755,7 +832,7 @@ export type TeacherResultsOverview = {
 export const fetchTeacherResultsOverview = async (teacherId: string): Promise<TeacherResultsOverview> => {
     return pageCache.fetch(`teacherResultsOverview:${teacherId}`, async () => {
         const classes = await fetchTeacherClasses(teacherId);
-        if (classes.length === 0) return { classes: [], topClass: null, topStudent: null };
+        if (classes.length === 0) return { classes: [], topClass: null, topStudent: null, overallAvgAccuracy: null, overallAttemptCount: 0 };
 
         const { data: memberships } = await supabase
             .from("class_members")
@@ -763,11 +840,17 @@ export const fetchTeacherResultsOverview = async (teacherId: string): Promise<Te
             .in("class_id", classes.map((c) => c.id));
         const studentIds = Array.from(new Set((memberships || []).map((m) => m.student_id as string)));
         if (studentIds.length === 0) {
-            return { classes: classes.map((c) => ({ ...c, avgAccuracy: null, attemptCount: 0 })), topClass: null, topStudent: null };
+            return { classes: classes.map((c) => ({ ...c, avgAccuracy: null, attemptCount: 0 })), topClass: null, topStudent: null, overallAvgAccuracy: null, overallAttemptCount: 0 };
         }
 
+        // Через fetchAllRows: PostgREST молча обрезает выборку по max_rows, и
+        // без пагинации средний балл у большого учителя считался бы по куску
+        // результатов, без единой ошибки. revealed_at — чтобы в среднее не
+        // попадали ещё не опубликованные попытки.
         const [{ data: results }, { data: users }] = await Promise.all([
-            supabase.from("mock_results").select("user_id, accuracy").in("user_id", studentIds),
+            fetchAllRows<{ user_id: string; accuracy: number }>((from, to) =>
+                supabase.from("mock_results").select("user_id, accuracy")
+                    .in("user_id", studentIds).not("revealed_at", "is", null).order("id").range(from, to)),
             supabase.from("users").select("*").in("id", studentIds),
         ]);
         const userMap = new Map((users || []).map((u) => [u.id as string, toUser(u)]));
@@ -812,7 +895,12 @@ export const fetchTeacherResultsOverview = async (teacherId: string): Promise<Te
             }
         }
 
-        return { classes: classSummaries, topClass, topStudent };
+        const allScores = (results || []).map((r) => r.accuracy as number);
+        const overallAvgAccuracy = allScores.length
+            ? Math.round(allScores.reduce((a, b) => a + b, 0) / allScores.length)
+            : null;
+
+        return { classes: classSummaries, topClass, topStudent, overallAvgAccuracy, overallAttemptCount: allScores.length };
     }, TEACHER_CACHE_TTL);
 };
 
@@ -867,4 +955,277 @@ export const fetchAdminClassesOverview = async (): Promise<AdminClassSummary[]> 
             };
         });
     }, TEACHER_CACHE_TTL);
+};
+
+export type AdminTeacherOverview = {
+    teacherId: string;
+    classCount: number;
+    studentCount: number;
+    attemptCount: number;
+    avgAccuracy: number | null;
+};
+
+// Та же арифметика, что в fetchAdminClassesOverview, но сгруппированная по
+// учителю, а не по группе — для колонки «Средний скор» в /admin/teachers, где
+// до этого было только количество групп.
+//
+// Средний в процентах, а не в баллах: у учителя обычно несколько тестов с
+// разной суммой баллов, и складывать их сырые баллы бессмысленно
+// (design/FIX.md, «Правило отображения баллов»).
+export const fetchAdminTeachersOverview = async (): Promise<Map<string, AdminTeacherOverview>> => {
+    return pageCache.fetch("adminTeachersOverview", async () => {
+        const { data: classes } = await supabase.from("classes").select("id, teacher_id");
+        const classRows = (classes || []) as Array<{ id: string; teacher_id: string }>;
+        if (classRows.length === 0) return new Map<string, AdminTeacherOverview>();
+
+        const { data: members } = await supabase
+            .from("class_members")
+            .select("class_id, student_id")
+            .in("class_id", classRows.map((c) => c.id));
+        const memberRows = (members || []) as Array<{ class_id: string; student_id: string }>;
+        const studentIds = Array.from(new Set(memberRows.map((m) => m.student_id)));
+
+        // Пагинация обязательна: PostgREST обрезает выборку по max_rows молча,
+        // без ошибки, и на большой платформе средний считался бы по случайному
+        // куску результатов.
+        const { data: results } = studentIds.length > 0
+            ? await fetchAllRows<{ user_id: string; accuracy: number }>((from, to) =>
+                supabase.from("mock_results").select("user_id, accuracy")
+                    .in("user_id", studentIds).not("revealed_at", "is", null).order("id").range(from, to))
+            : { data: [] as Array<{ user_id: string; accuracy: number }> };
+
+        const scoresByStudent = new Map<string, number[]>();
+        (results || []).forEach((r) => {
+            const list = scoresByStudent.get(r.user_id) || [];
+            list.push(r.accuracy);
+            scoresByStudent.set(r.user_id, list);
+        });
+
+        const studentsByClass = new Map<string, string[]>();
+        memberRows.forEach((m) => {
+            const list = studentsByClass.get(m.class_id) || [];
+            list.push(m.student_id);
+            studentsByClass.set(m.class_id, list);
+        });
+
+        const overview = new Map<string, AdminTeacherOverview>();
+        for (const cls of classRows) {
+            const entry = overview.get(cls.teacher_id) || {
+                teacherId: cls.teacher_id, classCount: 0, studentCount: 0, attemptCount: 0, avgAccuracy: null,
+            };
+            entry.classCount += 1;
+            overview.set(cls.teacher_id, entry);
+        }
+        // Ученик может состоять в двух группах одного учителя — тогда его
+        // результаты попали бы в средний дважды. Считаем по уникальным ученикам.
+        const studentsByTeacher = new Map<string, Set<string>>();
+        for (const cls of classRows) {
+            const set = studentsByTeacher.get(cls.teacher_id) || new Set<string>();
+            (studentsByClass.get(cls.id) || []).forEach((id) => set.add(id));
+            studentsByTeacher.set(cls.teacher_id, set);
+        }
+        for (const [teacherId, students] of Array.from(studentsByTeacher.entries())) {
+            const entry = overview.get(teacherId);
+            if (!entry) continue;
+            const scores = Array.from(students).flatMap((id) => scoresByStudent.get(id) || []);
+            entry.studentCount = students.size;
+            entry.attemptCount = scores.length;
+            entry.avgAccuracy = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
+        }
+        return overview;
+    }, TEACHER_CACHE_TTL);
+};
+
+// --- Филиалы (§5 в design/FIX.md) ---
+
+export type Branch = { id: string; name: string; createdAt: string };
+
+export type BranchOverview = {
+    branchId: string;
+    branchName: string;
+    classCount: number;
+    teacherCount: number;
+    studentCount: number;
+    // Среднее из средних баллов групп филиала, в процентах — именно так его
+    // определил владелец. Это НЕ то же самое, что среднее по всем попыткам:
+    // большая группа здесь не перевешивает маленькую.
+    avgAccuracy: number | null;
+};
+
+// Считается целиком в SQL (get_branch_overview, миграция 072), а не сборкой в
+// браузере: клиентская выборка mock_results без пагинации молча обрезается по
+// max_rows PostgREST, и средний по платформе считался бы по куску строк.
+export const fetchBranchOverview = async (): Promise<BranchOverview[]> => {
+    return pageCache.fetch("branchOverview", async () => {
+        const { data, error } = await supabase.rpc("get_branch_overview");
+        if (error) throw error;
+        return ((data || []) as Array<Record<string, unknown>>).map((row) => ({
+            branchId: row.branch_id as string,
+            branchName: row.branch_name as string,
+            classCount: (row.class_count as number) ?? 0,
+            teacherCount: (row.teacher_count as number) ?? 0,
+            studentCount: (row.student_count as number) ?? 0,
+            avgAccuracy: row.avg_accuracy !== null && row.avg_accuracy !== undefined ? Number(row.avg_accuracy) : null,
+        }));
+    }, TEACHER_CACHE_TTL);
+};
+
+export const fetchBranches = async (): Promise<Branch[]> => {
+    const { data } = await supabase.from("branches").select("id, name, created_at").order("name");
+    return ((data || []) as Array<Record<string, unknown>>).map((row) => ({
+        id: row.id as string,
+        name: row.name as string,
+        createdAt: row.created_at as string,
+    }));
+};
+
+export const createBranch = async (name: string): Promise<void> => {
+    const { error } = await supabase.from("branches").insert({ name });
+    if (error) throw error;
+    pageCache.invalidate("branchOverview");
+};
+
+export const renameBranch = async (branchId: string, name: string): Promise<void> => {
+    const { error } = await supabase.from("branches").update({ name }).eq("id", branchId);
+    if (error) throw error;
+    pageCache.invalidate("branchOverview");
+};
+
+// --- Рейтинг ученика (§7 в design/FIX.md) ---
+
+export type RatingKind = "overall" | "oylik";
+export type RatingScope = "class" | "branch" | "platform";
+
+export type MyRating = {
+    myRank: number;
+    totalStudents: number;
+    myAvgAccuracy: number;
+    myAttempts: number;
+};
+
+// Через RPC, а не выборкой: get_my_rating (миграция 074) считает место на
+// сервере и возвращает ТОЛЬКО собственную строку ученика. Чужие баллы наружу
+// не уходят — тот же принцип, что у get_my_class_subject_ranking.
+export const fetchMyRating = async (kind: RatingKind, scope: RatingScope): Promise<MyRating | null> => {
+    const { data, error } = await supabase.rpc("get_my_rating", { p_kind: kind, p_scope: scope });
+    if (error) throw error;
+    const row = ((data || []) as Array<Record<string, unknown>>)[0];
+    if (!row) return null;
+    return {
+        myRank: Number(row.my_rank),
+        totalStudents: Number(row.total_students),
+        myAvgAccuracy: Number(row.my_avg_accuracy),
+        myAttempts: Number(row.my_attempts),
+    };
+};
+
+
+// --- Комплекты «Ойлик тест» (§6 в design/FIX.md) ---
+
+export type OylikSet = {
+    id: string;
+    title: string;
+    createdAt: string;
+    publishedAt: string | null;
+    tests: Array<{ id: string; title: string; subjectId: string | null; closedAt: string | null; assignedCount: number }>;
+};
+
+export const fetchOylikSets = async (): Promise<OylikSet[]> => {
+    const { data: sets } = await supabase
+        .from("oylik_sets")
+        .select("id, title, created_at, published_at")
+        .order("created_at", { ascending: false });
+    const setRows = (sets || []) as Array<Record<string, unknown>>;
+    if (setRows.length === 0) return [];
+
+    const setIds = setRows.map((row) => row.id as string);
+    const { data: tests } = await supabase
+        .from("mock_tests")
+        .select("id, title, subject_id, closed_at, oylik_set_id")
+        .in("oylik_set_id", setIds);
+    const testRows = (tests || []) as Array<Record<string, unknown>>;
+
+    // Сколько групп получили каждый тест — по нему видно, разослан комплект
+    // или ещё нет.
+    const { data: assignments } = testRows.length > 0
+        ? await supabase.from("mock_class_assignments").select("mock_test_id").in("mock_test_id", testRows.map((r) => r.id as string))
+        : { data: [] as Array<{ mock_test_id: string }> };
+    const assignedByTest = new Map<string, number>();
+    (assignments || []).forEach((row) => {
+        const key = row.mock_test_id as string;
+        assignedByTest.set(key, (assignedByTest.get(key) || 0) + 1);
+    });
+
+    return setRows.map((row) => ({
+        id: row.id as string,
+        title: row.title as string,
+        createdAt: row.created_at as string,
+        publishedAt: (row.published_at as string | null) ?? null,
+        tests: testRows
+            .filter((test) => test.oylik_set_id === row.id)
+            .map((test) => ({
+                id: test.id as string,
+                title: test.title as string,
+                subjectId: (test.subject_id as string | null) ?? null,
+                closedAt: (test.closed_at as string | null) ?? null,
+                assignedCount: assignedByTest.get(test.id as string) || 0,
+            })),
+    }));
+};
+
+export const createOylikSet = async (title: string, createdBy: string): Promise<string> => {
+    const { data, error } = await supabase.from("oylik_sets").insert({ title, created_by: createdBy }).select("id").single();
+    if (error) throw error;
+    return data.id as string;
+};
+
+// Раздача идёт внутри RPC (publish_oylik_set, миграция 073): назначений может
+// быть под сотню, и делать их по одному из браузера значит получить
+// полураспределённый комплект при первом обрыве связи.
+export const publishOylikSet = async (setId: string): Promise<{ testCount: number; assignedCount: number }> => {
+    const { data, error } = await supabase.rpc("publish_oylik_set", { p_set_id: setId });
+    if (error) throw error;
+    const result = data as { testCount?: number; assignedCount?: number } | null;
+    return { testCount: result?.testCount ?? 0, assignedCount: result?.assignedCount ?? 0 };
+};
+
+export const closeMockForAllClasses = async (mockTestId: string): Promise<number> => {
+    const { data, error } = await supabase.rpc("close_mock_for_all_classes", { p_mock_test_id: mockTestId });
+    if (error) throw error;
+    return (data as { closedAssignments?: number } | null)?.closedAssignments ?? 0;
+};
+
+export type MockClassAssignmentRow = {
+    id: string;
+    classId: string;
+    className: string;
+    closedAt: string | null;
+};
+
+export const fetchMockClassAssignments = async (mockTestId: string): Promise<MockClassAssignmentRow[]> => {
+    const { data } = await supabase
+        .from("mock_class_assignments")
+        .select("id, class_id, closed_at")
+        .eq("mock_test_id", mockTestId);
+    const rows = (data || []) as Array<Record<string, unknown>>;
+    if (rows.length === 0) return [];
+    const { data: classes } = await supabase.from("classes").select("id, name").in("id", rows.map((r) => r.class_id as string));
+    const nameById = new Map(((classes || []) as Array<Record<string, unknown>>).map((c) => [c.id as string, c.name as string]));
+    return rows.map((row) => ({
+        id: row.id as string,
+        classId: row.class_id as string,
+        className: nameById.get(row.class_id as string) || "—",
+        closedAt: (row.closed_at as string | null) ?? null,
+    }));
+};
+
+// Закрытие одной группы — обычный UPDATE: политика
+// mock_class_assignments_teacher_close (073) разрешает его учителю своей
+// группы, а админу — уже существующая admin-политика.
+export const setClassAssignmentClosed = async (assignmentId: string, closed: boolean): Promise<void> => {
+    const { error } = await supabase
+        .from("mock_class_assignments")
+        .update({ closed_at: closed ? new Date().toISOString() : null })
+        .eq("id", assignmentId);
+    if (error) throw error;
 };

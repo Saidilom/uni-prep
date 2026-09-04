@@ -10,38 +10,38 @@ import { usePathname } from "next/navigation";
 import { APP_NAME } from "@/lib/app-config";
 import { useTranslations } from "@/lib/i18n/locale-provider";
 import LocaleSwitcher from "@/components/locale-switcher";
+import { logOut } from "@/lib/auth-utils";
 import {
-    LayoutDashboard,
-    ArrowLeft,
-    Users,
-    UsersRound,
+    LogOut,
     Building2,
-    ClipboardCheck,
-    ListChecks,
     GraduationCap,
-    FileText,
-    Gift,
-    CalendarDays,
-    CreditCard,
-    QrCode,
+    UsersRound,
     PanelLeftClose,
     PanelLeft,
 } from "lucide-react";
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+// Отдельный изолированный раздел для роли 'branch_admin' (миграция 072), по
+// образцу /staff — а НЕ урезанный /admin.
+//
+// Причина: is_admin() зашит в RLS почти всех таблиц проекта, и пускать сюда
+// вторую роль означало бы переписывать все эти политики и рисковать текущими
+// правами супер-админа. Админ филиала получает собственные узкие политики
+// (users_branch_admin_read, classes_branch_admin_read и т.д.) и вот эти
+// страницы — свой филиал, его группы и его учителя, больше ничего.
+export default function BranchLayout({ children }: { children: React.ReactNode }) {
     const { user, isLoading } = useAuthStore();
     const { isCollapsed, toggleCollapsed } = useSidebarStore();
     const router = useRouter();
     const pathname = usePathname();
-    const t = useTranslations("adminLayout");
+    const t = useTranslations("branchLayout");
 
     useEffect(() => {
-        if (!isLoading && (!user || user.role !== "admin")) {
+        if (!isLoading && (!user || user.role !== "branch_admin")) {
             router.push("/");
         }
     }, [user, isLoading, router]);
 
-    if (isLoading || !user || user.role !== "admin") {
+    if (isLoading || !user || user.role !== "branch_admin") {
         return (
             <div className="flex min-h-screen items-center justify-center bg-transparent">
                 <div className="h-1 w-8 overflow-hidden rounded-full bg-muted">
@@ -52,18 +52,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }
 
     const menuItems = [
-        { name: t("navPanel"), href: "/admin", icon: LayoutDashboard },
-        { name: t("navUsers"), href: "/admin/users", icon: Users },
-        { name: t("navTeachers"), href: "/admin/teachers", icon: GraduationCap },
-        { name: t("navClasses"), href: "/admin/classes", icon: UsersRound },
-        { name: t("navBranches"), href: "/admin/branches", icon: Building2 },
-        { name: t("navSchool"), href: "/admin/placement", icon: ClipboardCheck },
-        { name: t("navSchoolResults"), href: "/admin/placement/results", icon: ListChecks },
-        { name: t("navMockTests"), href: "/admin/mock-tests", icon: FileText },
-        { name: t("navFreeMockResults"), href: "/admin/free-mock-results", icon: Gift },
-        { name: t("navOylik"), href: "/admin/oylik", icon: CalendarDays },
-        { name: t("navPayments"), href: "/admin/payments", icon: CreditCard },
-        { name: t("navQr"), href: "/admin/qr", icon: QrCode },
+        { name: t("navOverview"), href: "/branch", icon: Building2 },
+        { name: t("navClasses"), href: "/branch/classes", icon: UsersRound },
+        { name: t("navTeachers"), href: "/branch/teachers", icon: GraduationCap },
     ];
 
     return (
@@ -77,7 +68,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     {!isCollapsed && (
                         <div className="min-w-0">
                             <p className="truncate font-bold tracking-tight text-white">{APP_NAME}</p>
-                            <p className="text-[11px] font-semibold uppercase tracking-widest text-white/60">{t("superAdmin")}</p>
+                            <p className="text-[11px] font-semibold uppercase tracking-widest text-white/60">{t("branchAdmin")}</p>
                         </div>
                     )}
                     <button
@@ -122,16 +113,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                             <LocaleSwitcher />
                         </div>
                     )}
-                    <Link
-                        href="/"
-                        title={isCollapsed ? t("goBack") : undefined}
-                        className={`flex items-center rounded-lg text-sm font-medium text-white/65 transition-all hover:bg-white/10 hover:text-white ${
+                    <button
+                        onClick={() => logOut().then(() => router.push("/login"))}
+                        title={isCollapsed ? t("logOut") : undefined}
+                        className={`flex w-full items-center rounded-lg text-sm font-medium text-white/65 transition-all hover:bg-white/10 hover:text-white ${
                             isCollapsed ? "justify-center px-0 py-3" : "gap-3 px-4 py-3"
                         }`}
                     >
-                        <ArrowLeft size={18} className="shrink-0" />
-                        {!isCollapsed && t("goBack")}
-                    </Link>
+                        <LogOut size={18} className="shrink-0" />
+                        {!isCollapsed && t("logOut")}
+                    </button>
                 </div>
             </aside>
 
@@ -156,13 +147,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                                 </Link>
                             );
                         })}
-                        <Link
-                            href="/"
-                            className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap text-white/65 hover:bg-white/10 hover:text-white transition-all shrink-0 ml-auto"
-                        >
-                            <ArrowLeft size={14} />
-                            {t("backShort")}
-                        </Link>
                     </div>
                 </div>
 

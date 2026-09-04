@@ -13,6 +13,7 @@ import {
     LayoutDashboard,
     CircleUserRound,
     GraduationCap,
+    Trophy,
     FileText,
     BarChart3,
     Shield,
@@ -40,6 +41,7 @@ function Sidebar() {
         ...(isTeacher ? [{ name: t("myTests"), href: "/teacher/mock-tests", icon: FileText }] : []),
         { name: t("mockTests"), href: "/mock", icon: FileText },
         { name: t("results"), href: "/results", icon: BarChart3 },
+        ...(isStudent ? [{ name: t("rating"), href: "/rating", icon: Trophy }] : []),
         { name: t("profile"), href: "/profile", icon: CircleUserRound },
         ...(isAdmin ? [{ name: t("admin"), href: "/admin", icon: Shield }] : []),
     ];

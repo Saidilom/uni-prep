@@ -2,13 +2,15 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Search, Mail, Phone, Users } from "lucide-react";
+import { Search, Mail, Phone, Users, Trophy } from "lucide-react";
 import supabase from "@/lib/supabase/client";
 import { User as UserType } from "@/lib/firestore-schema";
 import { pluralizeRu } from "@/lib/pluralize-ru";
+import { fetchAdminTeachersOverview } from "@/lib/class-utils";
+import { accuracyColor } from "@/lib/status-colors";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
-type TeacherRow = UserType & { shortid?: string; classCount: number };
+type TeacherRow = UserType & { shortid?: string; classCount: number; avgAccuracy: number | null; attemptCount: number };
 
 export default function AdminTeachersPage() {
     const [teachers, setTeachers] = useState<TeacherRow[]>([]);
@@ -22,10 +24,15 @@ export default function AdminTeachersPage() {
         const { data: users } = await supabase.from("users").select("*").eq("role", "teacher").order("createdAt", { ascending: false });
         const teacherRows = (users ?? []) as TeacherRow[];
         if (teacherRows.length > 0) {
-            const { data: classes } = await supabase.from("classes").select("teacher_id").in("teacher_id", teacherRows.map((t) => t.id));
-            const counts = new Map<string, number>();
-            (classes || []).forEach((c) => counts.set(c.teacher_id, (counts.get(c.teacher_id) || 0) + 1));
-            teacherRows.forEach((t) => { t.classCount = counts.get(t.id) || 0; });
+            // Один проход по всем группам платформы вместо запроса на учителя:
+            // отсюда же берётся и количество групп, и средний скор учеников.
+            const overview = await fetchAdminTeachersOverview();
+            teacherRows.forEach((row) => {
+                const stats = overview.get(row.id);
+                row.classCount = stats?.classCount ?? 0;
+                row.avgAccuracy = stats?.avgAccuracy ?? null;
+                row.attemptCount = stats?.attemptCount ?? 0;
+            });
         }
         setTeachers(teacherRows);
         setLoading(false);
@@ -89,9 +96,26 @@ export default function AdminTeachersPage() {
                                         </div>
                                     </div>
                                 </div>
-                                <span className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-xl border border-border bg-muted px-3 py-2 text-xs font-semibold text-muted-foreground sm:self-auto">
-                                    <Users size={13} /> {teacher.classCount} {locale === "ru" ? pluralizeRu(teacher.classCount, ["группа", "группы", "групп"]) : t("groupWord")}
-                                </span>
+                                <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:self-auto">
+                                    <span className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-muted px-3 py-2 text-xs font-semibold text-muted-foreground">
+                                        <Users size={13} /> {teacher.classCount} {locale === "ru" ? pluralizeRu(teacher.classCount, ["группа", "группы", "групп"]) : t("groupWord")}
+                                    </span>
+                                    {/* Средний скор учеников этого учителя по всем их мокам.
+                                        В процентах: агрегат складывает разные тесты с разным
+                                        максимумом (design/FIX.md, «Правило отображения баллов»). */}
+                                    <span className="inline-flex flex-col items-center rounded-xl border border-border px-3 py-1.5">
+                                        <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">{t("avgScoreLabel")}</span>
+                                        {teacher.avgAccuracy !== null ? (
+                                            <span className={`mt-0.5 rounded-lg px-2 py-0.5 text-xs font-extrabold tabular-nums ${accuracyColor(teacher.avgAccuracy)}`}>
+                                                {teacher.avgAccuracy}%
+                                            </span>
+                                        ) : (
+                                            <span className="mt-0.5 flex items-center gap-1 text-xs font-semibold text-muted-foreground">
+                                                <Trophy size={11} /> {t("noScoresYet")}
+                                            </span>
+                                        )}
+                                    </span>
+                                </div>
                             </div>
                         ))}
                     </div>

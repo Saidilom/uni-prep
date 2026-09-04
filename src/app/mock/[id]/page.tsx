@@ -8,6 +8,7 @@ import {
   Check,
   CheckCircle2,
   Clock,
+  ExternalLink,
   Eye,
   Loader2,
   Send,
@@ -20,6 +21,7 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { invalidateStudentMockCaches } from "@/lib/registan-utils";
 import { getMockEntryState } from "@/lib/mock-schedule";
 import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
+import { MOCK_SCALE_MAX } from "@/lib/rasch";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 type AnswerValue = string | string[] | Record<string, string>;
@@ -149,8 +151,10 @@ export default function MockTestPage() {
         .eq("user_id", user.id)
         .limit(1);
       if (existing && existing.length > 0) {
-        setError(t("alreadyCompleted"));
-        setLoading(false);
+        // Ученик пришёл по ссылке на уже сданный тест — везти его на
+        // страницу-ошибку незачем, ему нужен свой результат. replace, а не
+        // push: иначе «назад» возвращает сюда же и снова редиректит.
+        router.replace("/results");
         return;
       }
     }
@@ -208,7 +212,7 @@ export default function MockTestPage() {
     }
     setSections(loaded);
     setLoading(false);
-  }, [id, user, isPreview, t]);
+  }, [id, user, isPreview, t, router]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
@@ -277,6 +281,13 @@ export default function MockTestPage() {
         // целиком: на 100 учениках медиана вызова пересчёта была 119 секунд,
         // 53 из 100 не возвращались за две минуты, а ученические чтения
         // просаживались с 2,4 до 10,2 секунды. Сложность была квадратичной.
+        //
+        // Единственное, что делаем, — будим авто-публикацию (§15): сдача
+        // только что изменила состав сдавших, и, возможно, этот ученик был
+        // последним. Само условие роут пересчитывает на сервере, здесь мы
+        // лишь сообщаем, что момент проверить наступил. Fire-and-forget:
+        // ученику ждать проверку эссе всей группы незачем.
+        fetch(`/api/mock-tests/${id}/auto-finalize`, { method: "POST" }).catch(() => undefined);
         return;
       }
 
@@ -391,23 +402,32 @@ export default function MockTestPage() {
           </p>
         ) : (
           <>
-            <p className="mt-8 text-6xl font-black tabular-nums">{result.score} <span className="text-3xl text-muted-foreground">/ {result.maxScore}</span></p>
-            <p className="mt-1 text-xs font-bold uppercase tracking-widest text-muted-foreground">{t("pointsLabel")}</p>
-            <p className="mt-2 text-sm text-muted-foreground">{t("percentageSecondary").replace("{percent}", String(result.percentage))}</p>
-            {result.levelScore != null && (
-              result.gradeLevel ? (
-                <div className="mx-auto mt-4 inline-flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 dark:border-emerald-900 dark:bg-emerald-950/30">
-                  <span className="text-lg font-black text-emerald-700 dark:text-emerald-400">{gradeLevelDisplay(result.gradeLevel as GradeLevel, locale)}</span>
-                  <span className="text-xs font-semibold text-emerald-700/70 dark:text-emerald-400/70">{result.levelScore} {t("levelScaleSuffix")}</span>
-                </div>
-              ) : (
-                <p className="mx-auto mt-4 max-w-xs text-xs text-muted-foreground">{t("noCertificateNotice")}</p>
-              )
+            {/* Главный балл — по модели Раша, шкала 0-75: логиты, приведённые
+                к когорте сдававших этот тест, как у Агентства знаний. Сырая
+                сумма баллов за вопросы (result.score) больше не показывается —
+                это была вторая, самодельная шкала «из 75», и рядом с настоящей
+                она читалась как второй, противоречащий балл.
+                См. design/FIX.md, раздел «Две шкалы 75». */}
+            {result.levelScore != null ? (
+              <>
+                <p className="mt-8 text-6xl font-black tabular-nums">{result.levelScore} <span className="text-3xl text-muted-foreground">/ {MOCK_SCALE_MAX}</span></p>
+                <p className="mt-1 text-xs font-bold uppercase tracking-widest text-muted-foreground">{t("pointsLabel")}</p>
+                {result.gradeLevel && (
+                  <div className="mx-auto mt-4 inline-flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 dark:border-emerald-900 dark:bg-emerald-950/30">
+                    <span className="text-lg font-black text-emerald-700 dark:text-emerald-400">{gradeLevelDisplay(result.gradeLevel as GradeLevel, locale)}</span>
+                  </div>
+                )}
+              </>
+            ) : (
+              // Когорта ещё слишком мала, чтобы стандартизовать способность:
+              // балл появится сам, пересчёт идёт после каждой новой сдачи.
+              <p className="mx-auto mt-8 max-w-xs rounded-2xl border border-border bg-muted px-5 py-4 text-sm font-semibold text-muted-foreground">
+                {t("levelPendingCohort")}
+              </p>
             )}
             {result.cefrBand && (
               <div className="mx-auto mt-4 inline-flex items-center gap-2 rounded-2xl border border-[hsl(var(--brand-blue))]/20 bg-[hsl(var(--brand-blue-soft))] px-4 py-2">
                 <span className="text-lg font-black text-[hsl(var(--brand-blue-ink))]">{result.cefrBand}</span>
-                <span className="text-xs font-semibold text-[hsl(var(--brand-blue-ink))]/70">{result.cefrScore} {t("cefrScaleSuffix")}</span>
               </div>
             )}
             {grading && (
@@ -505,12 +525,21 @@ export default function MockTestPage() {
                           <SafeMathText content={question.text} className="text-[15px] font-semibold sm:text-base" />
                           {question.points > 0 && <p className="mt-1 text-xs text-muted-foreground">{t("pointsSuffix").replace("{points}", String(question.points))}</p>}
 
-                          {question.content?.needsSourceImage && question.source_page && (
-                            <details className="mt-4 overflow-hidden rounded-xl border border-[hsl(var(--brand-blue))]/20 bg-[hsl(var(--brand-blue-soft))]/60" open>
-                              <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm font-bold text-[hsl(var(--brand-blue-ink))]"><Eye size={16} /> {t("sourceImageLabel").replace("{page}", String(question.source_page))}</summary>
-                              <iframe title={t("sourceIframeTitle").replace("{number}", question.content.number || "")} src={`/api/mock-tests/${id}/source?page=${question.source_page}&file=${question.source_file_index ?? 0}`} className="h-[300px] w-full border-t border-[hsl(var(--brand-blue))]/20 bg-white sm:h-[520px]" />
-                            </details>
-                          )}
+                          {question.content?.needsSourceImage && question.source_page && (() => {
+                            const sourceUrl = `/api/mock-tests/${id}/source?page=${question.source_page}&file=${question.source_file_index ?? 0}`;
+                            return (
+                              <details className="mt-4 overflow-hidden rounded-xl border border-[hsl(var(--brand-blue))]/20 bg-[hsl(var(--brand-blue-soft))]/60" open>
+                                <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm font-bold text-[hsl(var(--brand-blue-ink))]"><Eye size={16} /> {t("sourceImageLabel").replace("{page}", String(question.source_page))}</summary>
+                                <iframe title={t("sourceIframeTitle").replace("{number}", question.content.number || "")} src={sourceUrl} className="h-[300px] w-full border-t border-[hsl(var(--brand-blue))]/20 bg-white sm:h-[520px]" />
+                                {/* iOS Safari and Android Chrome refuse to render a PDF inside an
+                                    iframe at all — without this the figure is simply missing on a
+                                    phone, whatever the frame headers say. */}
+                                <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 border-t border-[hsl(var(--brand-blue))]/20 px-4 py-3 text-xs font-semibold text-[hsl(var(--brand-blue-ink))] underline underline-offset-2">
+                                  <ExternalLink size={13} /> {t("sourceImageOpenInNewTab")}
+                                </a>
+                              </details>
+                            );
+                          })()}
 
                           {["single_choice", "true_false", "matching"].includes(question.question_type || "single_choice") && (
                             <div className="mt-5 grid gap-2">

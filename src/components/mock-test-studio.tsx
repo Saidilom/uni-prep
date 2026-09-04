@@ -19,6 +19,7 @@ import {
   Trash2,
   UploadCloud,
   Users,
+  Wallet,
   X,
 } from "lucide-react";
 import supabase from "@/lib/supabase/client";
@@ -34,7 +35,8 @@ import {
   MOCK_QUESTION_TYPES,
   MockImportResponse,
 } from "@/lib/mock-import-schema";
-import { MOCK_TOTAL_POINTS, normalizePointsTo75, sumPoints } from "@/lib/mock-points";
+import { sumPoints } from "@/lib/mock-points";
+import { fetchOylikSets, OylikSet } from "@/lib/class-utils";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 type StudioMode = "admin" | "teacher";
@@ -71,25 +73,6 @@ function formatMoney(value: number, locale: "ru" | "uz", sumWord: string) {
 
 function isChoiceQuestion(question: ImportedQuestion) {
   return ["single_choice", "multiple_choice", "true_false", "matching"].includes(question.type);
-}
-
-// Gemini's per-question weights (or a human's printed-points transcription)
-// almost never sum to exactly 75 on their own — applied right when a draft
-// comes back from import, so the review screen already shows the correct
-// total by default instead of making the reviewer hunt for a "fix it"
-// button. Manual point edits after this can still drift the sum away from
-// 75 again; getPublicationIssues() catches that at publish time.
-function normalizeDraftPoints(draft: ImportedMock): ImportedMock {
-  const questions = draft.sections.flatMap((section) => section.questions);
-  const normalized = normalizePointsTo75(questions.map((question) => question.points));
-  let cursor = 0;
-  return {
-    ...draft,
-    sections: draft.sections.map((section) => ({
-      ...section,
-      questions: section.questions.map((question) => ({ ...question, points: normalized[cursor++] })),
-    })),
-  };
 }
 
 function emptyQuestion(order: number, reviewNote: string): ImportedQuestion {
@@ -163,6 +146,11 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
   // проведения, ручное закрытие, ручную публикацию результатов — просто без
   // оплаты. Учителю переключатель не показывается, его тесты всегда class_only.
   const [isFree, setIsFree] = useState(false);
+  // Комплект «Ойлик тест»: если выбран, тест публикуется как class_only и
+  // раздаётся группам по предмету (миграция 073), а платность и цена к нему
+  // не применяются.
+  const [oylikSetId, setOylikSetId] = useState("");
+  const [oylikSets, setOylikSets] = useState<OylikSet[]>([]);
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
   const [resultsPublishAt, setResultsPublishAt] = useState("");
@@ -180,6 +168,10 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
   const [editingPublishAt, setEditingPublishAt] = useState<TestRow | null>(null);
   const [publishAtDraft, setPublishAtDraft] = useState("");
   const [savingPublishAt, setSavingPublishAt] = useState(false);
+  const [editingPricing, setEditingPricing] = useState<TestRow | null>(null);
+  const [pricingFreeDraft, setPricingFreeDraft] = useState(false);
+  const [pricingPriceDraft, setPricingPriceDraft] = useState(0);
+  const [savingPricing, setSavingPricing] = useState(false);
 
   // The reviewed-but-unpublished draft must survive an accidental page reload
   // (dev-server hot reload, browser refresh, tab restore) — losing a fully
@@ -196,7 +188,7 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
       if (raw) {
         const saved = JSON.parse(raw) as { draft: ImportedMock; importResult: MockImportResponse; price: number; isFree?: boolean };
         if (saved?.draft && saved?.importResult) {
-          setDraft(normalizeDraftPoints(saved.draft));
+          setDraft(saved.draft);
           setImportResult(saved.importResult);
           if (typeof saved.price === "number") setPrice(saved.price);
           if (typeof saved.isFree === "boolean") setIsFree(saved.isFree);
@@ -251,6 +243,13 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
   }, [toast, mode, t]);
 
   useEffect(() => { loadTests(); }, [loadTests]);
+
+  // Список комплектов нужен только админу и только чтобы привязать к ним
+  // публикуемый тест — учителю он не показывается вовсе.
+  useEffect(() => {
+    if (mode !== "admin") return;
+    fetchOylikSets().then(setOylikSets).catch(() => setOylikSets([]));
+  }, [mode]);
 
   const addTestFiles = (fileList: FileList | File[] | null | undefined) => {
     if (!fileList) return;
@@ -316,7 +315,7 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || t("importErrorGeneric"));
       setImportResult(body as MockImportResponse);
-      setDraft(normalizeDraftPoints((body as MockImportResponse).draft));
+      setDraft((body as MockImportResponse).draft);
       setPendingTests([]);
       setPendingAnswers(null);
       toast.success(t("pdfRecognizedToast"), { description: t("reviewBeforePublishToast") });
@@ -363,7 +362,7 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
   const removeQuestion = (sectionIndex: number, questionIndex: number) => {
     setDraft((current) => {
       if (!current) return current;
-      return normalizeDraftPoints({
+      return ({
         ...current,
         sections: current.sections.map((section, sIndex) =>
           sIndex === sectionIndex
@@ -377,7 +376,7 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
   const addQuestion = (sectionIndex: number) => {
     setDraft((current) => {
       if (!current) return current;
-      return normalizeDraftPoints({
+      return ({
         ...current,
         sections: current.sections.map((section, index) => index === sectionIndex
           ? { ...section, questions: [...section.questions, emptyQuestion(section.questions.length, t("addedManually"))] }
@@ -396,14 +395,14 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
         order: current.sections.length,
         questions: [emptyQuestion(0, t("addedManually"))],
       };
-      return normalizeDraftPoints({ ...current, sections: [...current.sections, section] });
+      return ({ ...current, sections: [...current.sections, section] });
     });
   };
 
   const publish = async () => {
     if (!draft || !importResult) return;
     const issues = getPublicationIssues(draft);
-    if (mode === "admin" && !isFree && price <= 0) issues.unshift(t("addPricePrompt"));
+    if (mode === "admin" && !isFree && !oylikSetId && price <= 0) issues.unshift(t("addPricePrompt"));
     if (mode === "admin" && startsAt && !endsAt) issues.unshift(t("endsAtRequiredPrompt"));
     if (mode === "admin" && endsAt && !startsAt) issues.unshift(t("startsAtRequiredPrompt"));
     if (mode === "admin" && startsAt && endsAt && new Date(endsAt) <= new Date(startsAt)) {
@@ -428,7 +427,8 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
           importId: importResult.importId,
           sourcePdfPaths: importResult.sourcePdfPaths,
           isFree: mode === "admin" ? isFree : false,
-          price: mode === "admin" && !isFree ? price : 0,
+          price: mode === "admin" && !isFree && !oylikSetId ? price : 0,
+          oylikSetId: mode === "admin" && oylikSetId ? oylikSetId : null,
           startsAt: mode === "admin" && startsAt ? new Date(startsAt).toISOString() : null,
           endsAt: mode === "admin" && endsAt ? new Date(endsAt).toISOString() : null,
           resultsPublishAt: mode === "admin" && resultsPublishAt ? new Date(resultsPublishAt).toISOString() : null,
@@ -598,6 +598,44 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
     }
   };
 
+  // Тип теста задавался ровно один раз, при публикации (publish_imported_mock
+  // выводит его из роли), и поменять «платный ↔ бесплатный» после этого было
+  // нечем. Пишем прямо в mock_tests: RLS mock_tests_admin — FOR ALL, отдельный
+  // роут не нужен, тот же путь, что у toggleClose/savePublishAt.
+  //
+  // Цену при переводе в бесплатный НЕ обнуляем: с миграции 066 платность
+  // определяет только `type` (can_access_mock на price больше не смотрит), а
+  // сохранённая цена позволяет вернуть тест в платные, ничего не вводя заново.
+  const openPricingEditor = (test: TestRow) => {
+    setEditingPricing(test);
+    setPricingFreeDraft(test.type === "free");
+    setPricingPriceDraft(test.price);
+  };
+
+  const savePricing = async () => {
+    if (!editingPricing) return;
+    const test = editingPricing;
+    if (!pricingFreeDraft && pricingPriceDraft <= 0) {
+      toast.error(t("addPricePrompt"));
+      return;
+    }
+    setSavingPricing(true);
+    try {
+      const { error } = await supabase
+        .from("mock_tests")
+        .update({ type: pricingFreeDraft ? "free" : "paid", price: pricingFreeDraft ? test.price : pricingPriceDraft })
+        .eq("id", test.id);
+      if (error) throw error;
+      toast.success(pricingFreeDraft ? t("pricingNowFreeToast") : t("pricingNowPaidToast"));
+      setEditingPricing(null);
+      await loadTests({ force: true });
+    } catch (error) {
+      toast.error(t("pricingSaveFailed"), { description: error instanceof Error ? error.message : String(error) });
+    } finally {
+      setSavingPricing(false);
+    }
+  };
+
   const itemCount = draft ? countResponseItems(draft) : 0;
   const missingKeys = useMemo(() => {
     if (!draft) return 0;
@@ -623,7 +661,10 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
             <span className="rounded-full border border-border bg-muted px-3 py-1.5 font-semibold">{SUBJECT_LABELS[draft.subject]}</span>
             <span className="rounded-full border border-border bg-muted px-3 py-1.5 font-semibold">{t("answersCountLabel").replace("{count}", String(itemCount))}</span>
             {missingKeys > 0 && <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 font-semibold text-amber-800">{t("missingKeysLabel").replace("{count}", String(missingKeys))}</span>}
-            <span className={`rounded-full border px-3 py-1.5 font-semibold ${totalPoints === MOCK_TOTAL_POINTS ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+            {/* Сумма ни к чему не приводится, поэтому «правильного» значения у
+                неё нет — тревожный цвет остаётся только для нулевой суммы,
+                которую getPublicationIssues и так не пропустит. */}
+            <span className={`rounded-full border px-3 py-1.5 font-semibold ${totalPoints > 0 ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
               {t("pointsTotalLabel").replace("{total}", String(totalPoints))}
             </span>
           </div>
@@ -653,7 +694,28 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
                   {t("durationMinutesLabel")}
                   <input type="number" min={1} value={draft.durationMinutes} onChange={(event) => setDraft({ ...draft, durationMinutes: Number(event.target.value) })} className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3 text-foreground" />
                 </label>
-                {mode === "admin" && (
+                {mode === "admin" && oylikSets.length > 0 && (
+                  <label className="sm:col-span-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    {t("oylikSetLabel")}
+                    <select
+                      value={oylikSetId}
+                      onChange={(event) => setOylikSetId(event.target.value)}
+                      className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3 text-sm font-normal normal-case tracking-normal text-foreground"
+                    >
+                      <option value="">{t("oylikSetNone")}</option>
+                      {oylikSets.map((set) => (
+                        <option key={set.id} value={set.id}>{set.title}</option>
+                      ))}
+                    </select>
+                    {oylikSetId && (
+                      <span className="mt-2 block text-[11px] font-normal normal-case text-muted-foreground">{t("oylikSetHint")}</span>
+                    )}
+                  </label>
+                )}
+                {/* Тест комплекта не бывает платным: он раздаётся группам по
+                    предмету, а не покупается. Поэтому весь блок платности для
+                    него скрыт. */}
+                {mode === "admin" && !oylikSetId && (
                   <div className="sm:col-span-2">
                     <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{t("pricingModeLabel")}</span>
                     <div className="mt-2 inline-flex w-full rounded-xl border border-border bg-muted p-1 sm:w-auto">
@@ -677,7 +739,7 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
                     )}
                   </div>
                 )}
-                {mode === "admin" && !isFree && (
+                {mode === "admin" && !isFree && !oylikSetId && (
                   <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                     {t("priceUzsLabel")}
                     <input type="number" min={1} value={price || ""} onChange={(event) => setPrice(Number(event.target.value))} placeholder={t("pricePlaceholder")} className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3 text-foreground" />
@@ -975,11 +1037,13 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
               </div>
               <div className="hidden text-sm font-semibold tabular-nums lg:block">{test.question_count}</div>
               <div className="hidden text-sm font-semibold lg:block">
+                {/* По типу, а не по цене: бесплатный тест сохраняет прежнюю
+                    цену в колонке, чтобы его можно было вернуть в платные. */}
                 {mode !== "admin"
                   ? `${test.duration_minutes} ${t("minutesSuffix")}`
-                  : test.price > 0
-                    ? formatMoney(test.price, locale, t("currencySumSuffix"))
-                    : <span className="text-emerald-700 dark:text-emerald-400">{t("freeColumnValue")}</span>}
+                  : test.type === "free"
+                    ? <span className="text-emerald-700 dark:text-emerald-400">{t("freeColumnValue")}</span>
+                    : formatMoney(test.price, locale, t("currencySumSuffix"))}
               </div>
               <div className="flex flex-wrap items-center gap-2 lg:justify-end">
                 <Link href={`/mock/${test.id}?preview=1`} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border hover:bg-muted" title={t("previewTitle")}><Eye size={16} /></Link>
@@ -1001,6 +1065,21 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
                   >
                     <ListChecks size={13} /> <span className="hidden xl:inline">{t("openResultsAction")}</span>
                   </Link>
+                )}
+                {mode === "admin" && (
+                  <button
+                    onClick={() => openPricingEditor(test)}
+                    title={t("pricingAction")}
+                    aria-label={t("pricingAction")}
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-semibold transition-colors ${
+                      test.type === "free"
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-400"
+                        : "border-border hover:bg-muted"
+                    }`}
+                  >
+                    <Wallet size={13} />
+                    <span className="hidden xl:inline">{test.type === "free" ? t("pricingFreeOption") : t("pricingPaidOption")}</span>
+                  </button>
                 )}
                 {mode === "admin" && (
                   <button
@@ -1092,6 +1171,56 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
                   {t("publishAtClearAction")}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingPricing && (
+        <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm" onClick={() => setEditingPricing(null)}>
+          <div className="w-full max-w-md overflow-hidden rounded-3xl border border-border bg-background shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-start justify-between border-b border-border p-6">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-primary">{t("pricingTitle")}</p>
+                <h2 className="mt-1 text-lg font-bold">{editingPricing.title}</h2>
+              </div>
+              <button onClick={() => setEditingPricing(null)} className="rounded-xl p-2 hover:bg-muted"><X size={18} /></button>
+            </div>
+            <div className="space-y-4 p-6">
+              <div className="flex gap-2 rounded-xl bg-muted p-1">
+                <button
+                  onClick={() => setPricingFreeDraft(false)}
+                  className={`flex-1 rounded-lg px-5 py-2 text-sm font-bold transition-all ${!pricingFreeDraft ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  {t("pricingPaidOption")}
+                </button>
+                <button
+                  onClick={() => setPricingFreeDraft(true)}
+                  className={`flex-1 rounded-lg px-5 py-2 text-sm font-bold transition-all ${pricingFreeDraft ? "bg-card text-emerald-700 shadow-sm dark:text-emerald-400" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  {t("pricingFreeOption")}
+                </button>
+              </div>
+              {!pricingFreeDraft && (
+                <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  {t("priceUzsLabel")}
+                  <input
+                    type="number"
+                    min={0}
+                    value={pricingPriceDraft}
+                    onChange={(event) => setPricingPriceDraft(Number(event.target.value))}
+                    className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3 text-foreground"
+                  />
+                </label>
+              )}
+              <p className="text-[11px] leading-relaxed text-muted-foreground">{t("pricingHint")}</p>
+              <button
+                onClick={savePricing}
+                disabled={savingPricing}
+                className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground disabled:opacity-50"
+              >
+                {savingPricing ? t("publishAtSavingLabel") : t("publishAtSaveAction")}
+              </button>
             </div>
           </div>
         </div>

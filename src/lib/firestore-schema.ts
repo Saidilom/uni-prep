@@ -8,7 +8,11 @@
 // is promoting a student to teacher (see the /staff panel and
 // promote_student_to_teacher, 049_staff_role.sql). It is deliberately
 // distinct from "admin" (full power, unchanged) everywhere in RLS.
-export type UserRole = "student" | "teacher" | "admin" | "staff";
+// 'staff' — узкий админ, который только делает учеников учителями (миграция
+// 049). 'branch_admin' — администратор филиала: видит и ведёт только свой
+// филиал, работает в разделе /branch (миграция 072). 'admin' — Super Admin,
+// единственная роль с полными правами.
+export type UserRole = "student" | "teacher" | "branch_admin" | "admin" | "staff";
 
 export type RegisteredVia = "qr" | "google" | "phone" | "admin";
 
@@ -104,6 +108,12 @@ export interface Class {
   id: string;
   teacherId: string;
   name: string;
+  // Предмет, который учитель ведёт в этой группе — по нему комплект «Ойлик
+  // тест» раздаёт группе её предметный тест. У групп, созданных до появления
+  // этого поля, null.
+  subjectId: string | null;
+  // Филиал: проставляется триггером из карточки учителя, не клиентом.
+  branchId: string | null;
   createdAt: string;
 }
 

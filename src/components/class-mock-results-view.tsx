@@ -13,6 +13,8 @@ import {
     QuestionErrorStat,
 } from "@/lib/class-utils";
 import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
+import { MOCK_SCALE_MAX } from "@/lib/rasch";
+import { accuracyColor } from "@/lib/status-colors";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 // classId = null — режим «весь тест»: участники берутся из самих результатов,
@@ -148,19 +150,19 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
                 <div className="rounded-2xl border border-border bg-card p-5">
                     <div className="flex items-center gap-2 text-muted-foreground"><Trophy size={15} /><span className="text-[10px] font-bold uppercase tracking-widest">{t("averageLabel")}</span></div>
                     <p className="mt-2 text-2xl font-extrabold tabular-nums text-foreground">
-                        {summary.avgScore ?? "—"}{summary.avgScore !== null && summary.mockMaxScore !== null && `/${summary.mockMaxScore}`}
+                        {summary.avgScore ?? "—"}{summary.avgScore !== null && `/${MOCK_SCALE_MAX}`}
                     </p>
                 </div>
                 <div className="rounded-2xl border border-border bg-card p-5">
                     <div className="flex items-center gap-2 text-muted-foreground"><TrendingUp size={15} /><span className="text-[10px] font-bold uppercase tracking-widest">{t("maxLabel")}</span></div>
                     <p className="mt-2 text-2xl font-extrabold tabular-nums text-foreground">
-                        {summary.topScore ?? "—"}{summary.topScore !== null && summary.mockMaxScore !== null && `/${summary.mockMaxScore}`}
+                        {summary.topScore ?? "—"}{summary.topScore !== null && `/${MOCK_SCALE_MAX}`}
                     </p>
                 </div>
                 <div className="rounded-2xl border border-border bg-card p-5">
                     <div className="flex items-center gap-2 text-muted-foreground"><TrendingDown size={15} /><span className="text-[10px] font-bold uppercase tracking-widest">{t("minLabel")}</span></div>
                     <p className="mt-2 text-2xl font-extrabold tabular-nums text-foreground">
-                        {summary.lowScore ?? "—"}{summary.lowScore !== null && summary.mockMaxScore !== null && `/${summary.mockMaxScore}`}
+                        {summary.lowScore ?? "—"}{summary.lowScore !== null && `/${MOCK_SCALE_MAX}`}
                     </p>
                 </div>
             </section>
@@ -201,7 +203,7 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
             <section>
                 <h2 className="mb-5 text-xl font-bold tracking-tight text-foreground sm:text-2xl">{t("studentsSection")}</h2>
                 <div className="space-y-3">
-                    {summary.students.map(({ student, resultId, score, maxScore, accuracy, correctAnswers, totalQuestions, raschScore, cefrBand, cefrScore, gradeLevel, completedAt, pendingReviewCount }) => {
+                    {summary.students.map(({ student, resultId, correctAnswers, totalQuestions, raschScore, cefrBand, levelScore, gradeLevel, completedAt, pendingReviewCount }) => {
                         const isOpen = openResultId === resultId;
                         return (
                             <div key={student.id} className="overflow-hidden rounded-2xl border border-border bg-card">
@@ -230,7 +232,7 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
                                             </span>
                                         )}
                                         {cefrBand && (
-                                            <span className="rounded-xl border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-bold text-blue-700 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-300" title={t("cefrScaleTitle").replace("{score}", String(cefrScore))}>
+                                            <span className="rounded-xl border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-bold text-blue-700 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-300" title={t("cefrScaleTitle")}>
                                                 {cefrBand}
                                             </span>
                                         )}
@@ -244,13 +246,17 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
                                                 θ {raschScore >= 0 ? "+" : ""}{raschScore.toFixed(2)}
                                             </span>
                                         )}
-                                        {score !== null ? (
-                                            <div className="flex flex-col items-end gap-0.5">
-                                                <span className={`rounded-xl px-3 py-1.5 text-sm font-extrabold tabular-nums ${(accuracy ?? 0) >= 80 ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40" : (accuracy ?? 0) >= 50 ? "bg-amber-50 text-amber-700 dark:bg-amber-950/40" : "bg-red-50 text-red-700 dark:bg-red-950/40"}`}>
-                                                    {score}{maxScore !== null && `/${maxScore}`}
-                                                </span>
-                                                {accuracy !== null && <span className="text-[10px] font-semibold text-muted-foreground">{accuracy}%</span>}
-                                            </div>
+                                        {/* Балл ученика за этот мок — по модели Раша, 0-75.
+                                            Сырая сумма и процент убраны: см. «Две шкалы 75»
+                                            в design/FIX.md. */}
+                                        {levelScore !== null ? (
+                                            <span className={`rounded-xl px-3 py-1.5 text-sm font-extrabold tabular-nums ${accuracyColor(Math.round((levelScore / MOCK_SCALE_MAX) * 100))}`}>
+                                                {levelScore}/{MOCK_SCALE_MAX}
+                                            </span>
+                                        ) : resultId !== null ? (
+                                            <span className="rounded-xl border border-border bg-muted px-3 py-1.5 text-[10px] font-semibold text-muted-foreground">
+                                                {t("levelPendingShort")}
+                                            </span>
                                         ) : (
                                             <Circle size={16} className="text-muted-foreground/40" />
                                         )}

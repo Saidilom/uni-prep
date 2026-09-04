@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MOCK_TOTAL_POINTS, sumPoints } from "./mock-points";
+import { sumPoints } from "./mock-points";
 
 export const MOCK_SUBJECTS = [
   "math",
@@ -14,6 +14,37 @@ export const MOCK_SUBJECTS = [
   "it",
   "other",
 ] as const;
+
+// Семь «блоковых» предметов, по которым работает учебный центр: по ним
+// строятся вкладки в разделе результатов бесплатных моков и по ним же учитель
+// выбирает предмет группы.
+//
+// MOCK_SUBJECTS выше НЕ сокращается до этих семи: на нём висит z.enum для
+// импорта из PDF, и у уже созданных тестов встречаются subject_id 'russian',
+// 'uzbek', 'it', 'geography'. Вкладка «Родной язык» показывает и 'native', и
+// исторические 'russian'/'uzbek' — см. NATIVE_LANGUAGE_SUBJECT_IDS.
+export const CORE_SUBJECTS = [
+  "math",
+  "physics",
+  "chemistry",
+  "biology",
+  "history",
+  "english",
+  "native",
+] as const;
+
+export type CoreSubject = (typeof CORE_SUBJECTS)[number];
+
+// Русский и узбекский были заведены как отдельные предметы до того, как
+// появился общий «Родной язык», и уже проставлены у существующих тестов —
+// поэтому вкладка собирает все три значения, а не только новое.
+export const NATIVE_LANGUAGE_SUBJECT_IDS = ["native", "russian", "uzbek"] as const;
+
+export function coreSubjectMatches(subjectId: string | null, core: CoreSubject): boolean {
+  if (!subjectId) return false;
+  if (core === "native") return (NATIVE_LANGUAGE_SUBJECT_IDS as readonly string[]).includes(subjectId);
+  return subjectId === core;
+}
 
 export const MOCK_QUESTION_TYPES = [
   "single_choice",
@@ -121,14 +152,12 @@ export function getPublicationIssues(draft: ImportedMock): string[] {
   if (!draft.title.trim()) issues.push("Укажите название теста");
   if (draft.sections.length === 0) issues.push("В тесте нет разделов");
 
-  // Every mock — paid or free — scores on the same fixed 75-point scale, so
-  // the question weights must sum to exactly that before anything can go
-  // live (mock-test-studio's "Нормировать до 75" button gets a draft there
-  // in one click; this is the hard gate for whatever a human then hand-edits
-  // away from it).
+  // Сумма баллов больше ни к чему не приводится — она такая, какая стоит в
+  // самом тесте (см. шапку mock-points.ts). Проверяем только, что балл вообще
+  // есть: тест, где всё стоит 0, невозможно оценить ничем, включая Раша.
   const totalPoints = sumPoints(draft.sections.flatMap((section) => section.questions).map((question) => question.points));
-  if (totalPoints !== MOCK_TOTAL_POINTS) {
-    issues.push(`Сумма баллов должна быть равна ${MOCK_TOTAL_POINTS} (сейчас: ${totalPoints})`);
+  if (totalPoints <= 0) {
+    issues.push("Сумма баллов теста должна быть больше нуля");
   }
 
   draft.sections.forEach((section, sectionIndex) => {

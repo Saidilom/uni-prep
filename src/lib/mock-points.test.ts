@@ -1,55 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { normalizePointsTo75, sumPoints } from "./mock-points";
+import { sumPoints } from "./mock-points";
 
-describe("normalizePointsTo75", () => {
-  it("returns an empty array unchanged", () => {
-    expect(normalizePointsTo75([])).toEqual([]);
+// Тесты на normalizePointsTo75 удалены вместе с самой функцией: сумма баллов
+// теста больше ни к чему не приводится (см. шапку mock-points.ts и раздел
+// «Две шкалы 75» в design/FIX.md). Осталось единственное, что здесь считается.
+describe("sumPoints", () => {
+  it("returns 0 for an empty test", () => {
+    expect(sumPoints([])).toBe(0);
   });
 
-  it("splits evenly when every input is zero", () => {
-    const result = normalizePointsTo75([0, 0, 0]);
-    expect(sumPoints(result)).toBe(75);
-    expect(result).toEqual([25, 25, 25]);
+  it("adds whole point values", () => {
+    expect(sumPoints([1, 1, 2])).toBe(4);
   });
 
-  it("preserves relative weight while summing to exactly 75", () => {
-    const result = normalizePointsTo75([1, 1, 2]);
-    expect(sumPoints(result)).toBe(75);
-    expect(result[2]).toBeGreaterThan(result[0]);
+  it("keeps fractional weights exact instead of drifting", () => {
+    // Официальные варианты печатают дробные веса ("[2,2 ball]"), и наивное
+    // сложение даёт 6.800000000000001 — округление до сотых обязательно.
+    expect(sumPoints([2.2, 2.2, 2.4])).toBe(6.8);
   });
 
-  it("sums to exactly 75 for a question count that doesn't divide evenly", () => {
-    const points = Array(37).fill(1);
-    const result = normalizePointsTo75(points);
-    expect(sumPoints(result)).toBe(75);
-  });
-
-  it("leaves an already-normalized set unchanged", () => {
-    const result = normalizePointsTo75([25, 25, 25]);
-    expect(result).toEqual([25, 25, 25]);
-  });
-
-  it("handles fractional starting weights", () => {
-    const result = normalizePointsTo75([2.2, 1, 1]);
-    expect(sumPoints(result)).toBe(75);
-  });
-
-  it("sums to exactly 75 for a large near-uniform draft without zeroing a question", () => {
-    // Regression: dumping the whole rounding-drift correction onto a
-    // single item used to clamp it to 0 and silently discard whatever
-    // didn't fit, undershooting 75 — this needs many equal-weight items
-    // for the per-item rounding drift to add up to more than one item's
-    // own share (reproduced at n=200, drift was -1.00 vs a 0.38 share).
-    const points = Array(200).fill(1);
-    const result = normalizePointsTo75(points);
-    expect(sumPoints(result)).toBe(75);
-  });
-
-  it("never produces a negative point value while fixing the remainder", () => {
-    for (const n of [126, 150, 180, 200, 250]) {
-      const result = normalizePointsTo75(Array(n).fill(1));
-      expect(sumPoints(result)).toBe(75);
-      expect(result.every((value) => value >= 0)).toBe(true);
-    }
+  it("stays exact across many fractional items", () => {
+    expect(sumPoints(Array(50).fill(1.5))).toBe(75);
   });
 });

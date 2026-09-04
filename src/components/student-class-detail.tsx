@@ -7,6 +7,7 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { fetchClassById, fetchStudentClassMocks, fetchMySubjectRanking, StudentClassMock, SubjectRanking } from "@/lib/class-utils";
 import { Class } from "@/lib/firestore-schema";
 import { accuracyColor } from "@/lib/status-colors";
+import { MOCK_SCALE_MAX } from "@/lib/rasch";
 import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
@@ -106,12 +107,15 @@ export default function StudentClassDetail({ classId }: { classId: string }) {
                     </div>
                 ) : (
                     <div className="space-y-3">
-                        {mocks.map((m) => (
-                            <Link
-                                key={m.mockTestId}
-                                href={`/mock/${m.mockTestId}`}
-                                className="flex flex-col justify-between gap-3 rounded-2xl border border-border bg-card p-5 transition-colors hover:bg-muted/40 sm:flex-row sm:items-center"
-                            >
+                        {mocks.map((m) => {
+                            // Одна попытка на ученика: вести на сам тест можно только
+                            // того, кто его ещё не сдавал, иначе он упирается в отказ.
+                            // Сдавшего ведём к результату, а пока результат не
+                            // опубликован — никуда, смотреть ещё нечего.
+                            const href = !m.myResult ? `/mock/${m.mockTestId}` : m.myResult.revealed ? "/results" : null;
+                            const className = `flex flex-col justify-between gap-3 rounded-2xl border border-border bg-card p-5 sm:flex-row sm:items-center ${href ? "transition-colors hover:bg-muted/40" : ""}`;
+                            const body = (
+                                <>
                                 <div className="min-w-0">
                                     <p className="truncate font-semibold text-foreground">{m.title}</p>
                                     <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -120,9 +124,17 @@ export default function StudentClassDetail({ classId }: { classId: string }) {
                                 </div>
                                 {m.myResult && m.myResult.revealed ? (
                                     <div className="flex shrink-0 items-center gap-2 self-start sm:self-auto">
-                                        <span className={`rounded-xl px-3 py-1.5 text-sm font-extrabold tabular-nums ${accuracyColor(m.myResult.accuracy)}`}>
-                                            {m.myResult.score}/{m.myResult.maxScore}
-                                        </span>
+                                        {/* Балл за мок — по модели Раша, 0-75 (см.
+                                            «Две шкалы 75» в design/FIX.md). */}
+                                        {m.myResult.levelScore != null ? (
+                                            <span className={`rounded-xl px-3 py-1.5 text-sm font-extrabold tabular-nums ${accuracyColor(Math.round((m.myResult.levelScore / MOCK_SCALE_MAX) * 100))}`}>
+                                                {m.myResult.levelScore}/{MOCK_SCALE_MAX}
+                                            </span>
+                                        ) : (
+                                            <span className="rounded-xl border border-border bg-muted px-3 py-1.5 text-[10px] font-semibold text-muted-foreground">
+                                                {t("levelPendingShort")}
+                                            </span>
+                                        )}
                                         {m.myResult.gradeLevel && (
                                             <span className="rounded-xl border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-bold text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-300">
                                                 {gradeLevelDisplay(m.myResult.gradeLevel as GradeLevel, locale)}
@@ -138,8 +150,12 @@ export default function StudentClassDetail({ classId }: { classId: string }) {
                                         {t("notTakenYet")}
                                     </span>
                                 )}
-                            </Link>
-                        ))}
+                                </>
+                            );
+                            return href
+                                ? <Link key={m.mockTestId} href={href} className={className}>{body}</Link>
+                                : <div key={m.mockTestId} className={className}>{body}</div>;
+                        })}
                     </div>
                 )}
             </section>

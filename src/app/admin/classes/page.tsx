@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Users, User as UserIcon, GraduationCap, ChevronRight } from "lucide-react";
 import { fetchAdminClassesOverview, AdminClassSummary } from "@/lib/class-utils";
 import { accuracyColor } from "@/lib/status-colors";
 import { pluralizeRu } from "@/lib/pluralize-ru";
+import { CoreSubject } from "@/lib/mock-import-schema";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 export default function AdminClassesPage() {
@@ -13,6 +14,16 @@ export default function AdminClassesPage() {
     const [loading, setLoading] = useState(true);
     const { locale } = useLocale();
     const t = useTranslations("adminClasses");
+    const tSubjects = useTranslations("mockTestStudio");
+    const subjectLabels: Record<CoreSubject, string> = useMemo(() => ({
+        math: tSubjects("subjectMath"),
+        physics: tSubjects("subjectPhysics"),
+        chemistry: tSubjects("subjectChemistry"),
+        biology: tSubjects("subjectBiology"),
+        history: tSubjects("subjectHistory"),
+        english: tSubjects("subjectEnglish"),
+        native: tSubjects("subjectNative"),
+    }), [tSubjects]);
 
     useEffect(() => {
         (async () => {
@@ -60,6 +71,7 @@ export default function AdminClassesPage() {
                                         <p className="truncate font-semibold text-foreground">{c.name}</p>
                                         <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
                                             <UserIcon size={12} /> {c.teacherName}
+                                            {c.subjectId && <span className="rounded-lg bg-muted px-2 py-0.5 font-semibold">{subjectLabels[c.subjectId as CoreSubject] ?? c.subjectId}</span>}
                                         </p>
                                     </div>
                                 </div>

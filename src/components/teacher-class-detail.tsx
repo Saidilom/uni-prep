@@ -20,6 +20,7 @@ import {
     unassignMockFromClass,
     unassignMockFromStudent,
     setClassAssignmentClosed,
+    updateClassSubject,
     fetchClassStudentsOverview,
     fetchClassStudentMockScores,
     ClassStudentOverview,
@@ -33,6 +34,7 @@ import {
 } from "@/lib/class-utils";
 import { Class, User, MockTest } from "@/lib/firestore-schema";
 import { pageCache } from "@/lib/page-cache";
+import { CORE_SUBJECTS, CoreSubject } from "@/lib/mock-import-schema";
 import { accuracyColor } from "@/lib/status-colors";
 import { MOCK_SCALE_MAX } from "@/lib/rasch";
 import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
@@ -45,6 +47,7 @@ export default function TeacherClassDetail() {
     const { user } = useAuthStore();
     const { locale } = useLocale();
     const t = useTranslations("classDetail");
+    const tSubjects = useTranslations("mockTestStudio");
     const toast = useToast();
 
     const [cls, setCls] = useState<Class | null>(null);
@@ -55,6 +58,7 @@ export default function TeacherClassDetail() {
     const [mockScores, setMockScores] = useState<Map<string, StudentMockScore[]>>(new Map());
     const [expandedStudent, setExpandedStudent] = useState<string | null>(null);
     const [togglingClose, setTogglingClose] = useState<string | null>(null);
+    const [savingSubject, setSavingSubject] = useState(false);
     const [loading, setLoading] = useState(true);
 
     const [searchId, setSearchId] = useState("");
@@ -70,6 +74,34 @@ export default function TeacherClassDetail() {
     const [placementTests, setPlacementTests] = useState<AssignablePlacementTest[]>([]);
     const [activePlacementIds, setActivePlacementIds] = useState<Set<string>>(new Set());
     const [assigningPlacement, setAssigningPlacement] = useState(false);
+
+    const subjectLabels: Record<CoreSubject, string> = {
+        math: tSubjects("subjectMath"),
+        physics: tSubjects("subjectPhysics"),
+        chemistry: tSubjects("subjectChemistry"),
+        biology: tSubjects("subjectBiology"),
+        history: tSubjects("subjectHistory"),
+        english: tSubjects("subjectEnglish"),
+        native: tSubjects("subjectNative"),
+    };
+
+    // Предмет группы решает, какой тест из комплекта «Ойлик тест» ей достанется
+    // (publish_oylik_set, миграция 073). У групп, созданных до появления этого
+    // поля, он пуст — и комплект их молча пропускает, поэтому менять предмет
+    // нужно уметь и после создания.
+    const handleSubjectChange = async (subjectId: string) => {
+        if (!subjectId || subjectId === cls?.subjectId) return;
+        setSavingSubject(true);
+        try {
+            await updateClassSubject(classId, subjectId);
+            toast.success(t("subjectSavedToast"));
+            await load();
+        } catch (error) {
+            toast.error(t("subjectSaveFailed"), { description: error instanceof Error ? error.message : String(error) });
+        } finally {
+            setSavingSubject(false);
+        }
+    };
 
     // §7: учитель сам закрывает мок своей группы, когда все сдали. Закрывается
     // именно назначение, не тест целиком — у того же теста могут быть другие
@@ -279,6 +311,27 @@ export default function TeacherClassDetail() {
                     </button>
                     <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{cls.name}</h1>
                     <p className="mt-2 text-sm text-muted-foreground">{members.length} {locale === "ru" ? (members.length === 1 ? t("studentWordSingular") : t("studentWordPlural")) : t("studentWordSingular")}</p>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-semibold text-muted-foreground">{t("subjectLabel")}</span>
+                        <select
+                            value={cls.subjectId || ""}
+                            onChange={(event) => handleSubjectChange(event.target.value)}
+                            disabled={savingSubject}
+                            className={`rounded-xl border px-3 py-1.5 text-sm font-semibold transition-colors disabled:opacity-50 ${
+                                cls.subjectId
+                                    ? "border-border bg-card text-foreground"
+                                    : "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300"
+                            }`}
+                        >
+                            <option value="">{t("subjectNotSet")}</option>
+                            {CORE_SUBJECTS.map((subject) => (
+                                <option key={subject} value={subject}>{subjectLabels[subject]}</option>
+                            ))}
+                        </select>
+                        {!cls.subjectId && (
+                            <span className="text-xs text-amber-700 dark:text-amber-400">{t("subjectRequiredHint")}</span>
+                        )}
+                    </div>
                 </div>
                 <button
                     onClick={handleDeleteClass}

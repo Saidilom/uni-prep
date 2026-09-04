@@ -74,6 +74,21 @@ export const createClass = async (teacherId: string, name: string, subjectId: st
     return { id, teacherId, name, subjectId, branchId: null, createdAt: new Date().toISOString() };
 };
 
+// Предмет задавался только при создании, и у групп, созданных до его
+// появления, он пуст — а комплект «Ойлик тест» раздаётся именно по предмету и
+// такие группы просто пропускает. Без этой функции починить их было негде,
+// кроме как пересоздав группу с потерей состава учеников.
+//
+// Отдельной RLS-политики не нужно: classes_teacher_own — FOR ALL, учитель и
+// так может обновлять свою группу, а админ проходит по classes_admin.
+export const updateClassSubject = async (classId: string, subjectId: string): Promise<void> => {
+    const { error } = await supabase.from("classes").update({ subject_id: subjectId }).eq("id", classId);
+    if (error) throw error;
+    pageCache.invalidatePrefix("teacherClasses:");
+    pageCache.invalidate(`class:${classId}`);
+    pageCache.invalidate("adminClassesOverview");
+};
+
 export const deleteClass = async (classId: string): Promise<void> => {
     const { error } = await supabase.from("classes").delete().eq("id", classId);
     if (error) throw error;

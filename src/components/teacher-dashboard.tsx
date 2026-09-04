@@ -178,6 +178,16 @@ export default function TeacherDashboard() {
                                         <Users size={12} />
                                         {cls.memberCount} {locale === "ru" ? pluralizeRu(cls.memberCount, ["ученик", "ученика", "учеников"]) : t("studentWord")}
                                     </p>
+                                    {/* Без предмета группа не попадает в раздачу месячного
+                                        теста — показываем это прямо в списке, а не только
+                                        внутри группы. */}
+                                    <p className={`mt-1.5 inline-flex rounded-lg px-2 py-0.5 text-[11px] font-semibold ${
+                                        cls.subjectId
+                                            ? "bg-muted text-muted-foreground"
+                                            : "bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300"
+                                    }`}>
+                                        {cls.subjectId ? (subjectLabels[cls.subjectId as CoreSubject] ?? cls.subjectId) : t("subjectNotSetShort")}
+                                    </p>
                                 </div>
                             </Link>
                         ))}

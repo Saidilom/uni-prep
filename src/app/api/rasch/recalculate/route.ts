@@ -127,24 +127,26 @@ export async function POST(req: NextRequest) {
     // English's official CEFR scoring — Z-score against the people who took
     // THIS mock, not a fixed/absolute scale.
     //
-    // Стандартизовать не по чему, пока когорта вырождена (меньше двух
-    // различающихся оценок способности): raschThetaToT в этом случае отдаёт 50,
-    // середину шкалы, всем подряд. Пока Rasch-балл был вторым числом на экране,
-    // это читалось как «предварительно»; теперь он ГЛАВНЫЙ балл мока, и
-    // подставная середина — просто неверный результат, одинаковый у отличника и
-    // у двоечника. Пишем NULL: интерфейс умеет показать честное «балл появится
-    // позже», а пересчёт идёт после каждой сдачи, так что как только когорта
-    // дорастёт, балл проставится сам.
+    // Балл проставляется всегда, в том числе на вырожденной когорте (меньше
+    // двух различающихся оценок способности). Там стандартизовать не по чему,
+    // и raschThetaToT отсчитывает от сложности самих вопросов вместо когорты —
+    // см. комментарий у него.
+    //
+    // Раньше в этом случае писался NULL. Замысел был честный (не показывать
+    // подставную середину шкалы), но на деле балла лишались все: пересчёт
+    // запускает только новая сдача, а пересдачи запрещены (§13), поэтому мок с
+    // одним сдавшим оставался без балла навсегда. Цена нынешнего решения в том,
+    // что когда тест сдадут ещё люди, балл пересчитается уже по когорте и может
+    // сдвинуться — решение владельца, зафиксировано в design/FIX.md.
     const abilityMean = mean(personAbility);
     const abilityStdev = stdev(personAbility);
-    const cohortIsDegenerate = !Number.isFinite(abilityStdev) || abilityStdev < 1e-6;
     const levelScores = personAbility.map((theta) => raschThetaToT(theta, abilityMean, abilityStdev));
 
     const updateResults = await Promise.all(
         resultIds.map((id, n) => admin.from("mock_results").update({
             rasch_score: personAbility[n],
-            level_score: cohortIsDegenerate ? null : levelScores[n],
-            grade_level: cohortIsDegenerate ? null : gradeLevelFromScore(levelScores[n]),
+            level_score: levelScores[n],
+            grade_level: gradeLevelFromScore(levelScores[n]),
         }).eq("id", id))
     );
     const failedCount = updateResults.filter((r) => r.error).length;

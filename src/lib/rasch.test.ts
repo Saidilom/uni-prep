@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { estimateRasch, Observation } from "./rasch";
+import { estimateRasch, Observation, raschThetaToT } from "./rasch";
 
 // Deterministic PRNG so the "noisy sample" tests are reproducible.
 function mulberry32(seed: number) {
@@ -104,5 +104,43 @@ describe("estimateRasch", () => {
         const result = estimateRasch(observations, 3, 6);
         expect(result.personAbility[0]).toBeGreaterThan(result.personAbility[2]);
         expect(result.personAbility[2]).toBeGreaterThan(result.personAbility[1]);
+    });
+});
+
+// Балл за мок должен существовать всегда, в том числе когда тест сдал один
+// человек и сравнивать его не с кем. Раньше в этом случае возвращалась
+// середина шкалы, а вызывающий подменял её на NULL — и балла не было ни у
+// кого (см. миграцию 077).
+describe("raschThetaToT без когорты", () => {
+    it("отсчитывает от банка вопросов, а не от середины шкалы", () => {
+        // recenter() центрирует сложности на нуле, поэтому theta = 0 — это
+        // «вровень со средним вопросом теста», и только оно даёт ровно 50.
+        expect(raschThetaToT(0, 0, 0)).toBe(50);
+        expect(raschThetaToT(1, 0, 0)).toBe(60);
+        expect(raschThetaToT(-1, 0, 0)).toBe(40);
+    });
+
+    it("различает сильного и слабого одиночных сдавших", () => {
+        // Главное свойство, ради которого правка и делалась: раньше оба
+        // получали 50.
+        expect(raschThetaToT(1.5, 0, 0)).toBeGreaterThan(raschThetaToT(-1.5, 0, 0));
+    });
+
+    it("игнорирует переданный когортный центр, когда разброса нет", () => {
+        // cohortMean на одной строке равен самой theta — отсчитывай функция от
+        // него, любой одиночка получал бы ровно 50 снова.
+        expect(raschThetaToT(-1.0687, -1.0687, 0)).toBe(39);
+    });
+
+    it("держит клампы шкалы", () => {
+        expect(raschThetaToT(99, 0, 0)).toBe(75);
+        expect(raschThetaToT(-99, 0, 0)).toBe(0);
+        // NaN-разброс — тот же признак вырожденности, что и ноль.
+        expect(raschThetaToT(1, 0, NaN)).toBe(60);
+    });
+
+    it("не трогает когортную ветку", () => {
+        expect(raschThetaToT(0.5, 0.5, 1)).toBe(50);
+        expect(raschThetaToT(1.5, 0.5, 1)).toBe(60);
     });
 });

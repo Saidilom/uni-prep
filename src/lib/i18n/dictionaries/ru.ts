@@ -494,7 +494,6 @@ const ru = {
     notTakenYet: "Ещё не проходил(а)",
     cefrScaleTitle: "Уровень по официальной шкале CEFR",
     levelPendingShort: "Мало сдавших",
-    raschScoreTitle: "Rasch-оценка способности (θ), отдельно от процента",
     gradeLevelTitle: "Уровень по шкале A+..C, относительно всех сдававших этот мок",
     studentAnswerLabel: "Ответ ученика:",
     correctAnswerLabel: "Правильный:",

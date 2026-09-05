@@ -417,7 +417,6 @@ export type StudentMockResult = {
     accuracy: number | null;
     correctAnswers: number | null;
     totalQuestions: number | null;
-    raschScore: number | null;
     completedAt: string | null;
     // Official CEFR scoring — only populated for English mocks (see
     // src/lib/english-cefr.ts) — null for every other subject.
@@ -472,7 +471,7 @@ export const fetchClassMockResults = async (classId: string | null, mockTestId: 
     const [members, { data: test }, { data: results }] = await Promise.all([
         classId ? fetchClassMembers(classId) : fetchMockTakers(mockTestId),
         supabase.from("mock_tests").select("title").eq("id", mockTestId).single(),
-        supabase.from("mock_results").select("id, user_id, score, max_score, accuracy, correct_answers, total_questions, rasch_score, cefr_band, cefr_score, level_score, grade_level, completed_at").eq("mock_test_id", mockTestId),
+        supabase.from("mock_results").select("id, user_id, score, max_score, accuracy, correct_answers, total_questions, cefr_band, cefr_score, level_score, grade_level, completed_at").eq("mock_test_id", mockTestId),
     ]);
 
     const resultIds = (results || []).map((r) => r.id as string);
@@ -508,7 +507,6 @@ export const fetchClassMockResults = async (classId: string | null, mockTestId: 
                 accuracy: r ? (r.accuracy as number) : null,
                 correctAnswers: r ? (r.correct_answers as number) : null,
                 totalQuestions: r ? (r.total_questions as number) : null,
-                raschScore: r && r.rasch_score !== null ? (r.rasch_score as number) : null,
                 cefrBand: r ? (r.cefr_band as string | null) : null,
                 cefrScore: r && r.cefr_score !== null ? (r.cefr_score as number) : null,
                 levelScore: r && r.level_score !== null ? Number(r.level_score) : null,
@@ -518,17 +516,26 @@ export const fetchClassMockResults = async (classId: string | null, mockTestId: 
             };
         })
         // Сортируем и считаем сводку по Rasch-баллу — это то число, которое
-        // видит учитель. Пока когорта мала и он null, падаем обратно на сырой
-        // балл, иначе список схлопнется в произвольный порядок.
-        .sort((a, b) => (b.levelScore ?? b.score ?? -1) - (a.levelScore ?? a.score ?? -1));
+        // видит учитель.
+        //
+        // Подстановки `?? s.score` здесь быть не должно, хотя она и выглядит
+        // безобидной страховкой. Сырой балл живёт в другой шкале: у теста
+        // «ona tili p» это 36.5 из 100, а плитки подписаны «/75», и в них
+        // выходило «37/75». На группе, где у части учеников балл посчитан, а у
+        // части нет, среднее вообще складывало числа из двух разных шкал.
+        .sort((a, b) => (b.levelScore ?? -1) - (a.levelScore ?? -1));
 
-    const scores = students.map((s) => s.levelScore ?? s.score).filter((s): s is number => s !== null);
+    const scores = students.map((s) => s.levelScore).filter((s): s is number => s !== null);
     const mockMaxScore = students.find((s) => s.maxScore !== null)?.maxScore ?? null;
 
     return {
         mockTitle: test?.title || "—",
         students,
-        completedCount: scores.length,
+        // Именно «сдали», а не «посчитан балл». Раньше сюда шло scores.length и
+        // совпадало случайно — сырой балл был у всех, у кого есть результат.
+        // Теперь scores содержит только Rasch-баллы, и на неопубликованном моке
+        // плитка показала бы «сдали 0», пока работы лежат несданными.
+        completedCount: students.filter((s) => s.completedAt !== null).length,
         totalCount: members.length,
         mockMaxScore,
         avgScore: scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null,

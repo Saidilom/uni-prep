@@ -216,7 +216,7 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
             <section>
                 <h2 className="mb-5 text-xl font-bold tracking-tight text-foreground sm:text-2xl">{t("studentsSection")}</h2>
                 <div className="space-y-3">
-                    {summary.students.map(({ student, resultId, correctAnswers, totalQuestions, raschScore, cefrBand, levelScore, gradeLevel, completedAt, pendingReviewCount }) => {
+                    {summary.students.map(({ student, resultId, correctAnswers, totalQuestions, cefrBand, levelScore, gradeLevel, completedAt, pendingReviewCount }) => {
                         const isOpen = openResultId === resultId;
                         return (
                             <div key={student.id} className="overflow-hidden rounded-2xl border border-border bg-card">
@@ -254,14 +254,12 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
                                                 {gradeLevelDisplay(gradeLevel as GradeLevel, locale)}
                                             </span>
                                         )}
-                                        {raschScore !== null && (
-                                            <span className="rounded-xl border border-border px-2.5 py-1.5 text-xs font-semibold tabular-nums text-muted-foreground" title={t("raschScoreTitle")}>
-                                                θ {raschScore >= 0 ? "+" : ""}{raschScore.toFixed(2)}
-                                            </span>
-                                        )}
                                         {/* Балл ученика за этот мок — по модели Раша, 0-75.
                                             Сырая сумма и процент убраны: см. «Две шкалы 75»
-                                            в design/FIX.md. */}
+                                            в design/FIX.md. Логит (θ) тоже убран — он стоял
+                                            рядом с баллом вторым, непонятным числом, а на
+                                            моках без посчитанного балла оставался вообще
+                                            единственным. Ученику логит не показывался никогда. */}
                                         {levelScore !== null ? (
                                             <span className={`rounded-xl px-3 py-1.5 text-sm font-extrabold tabular-nums ${accuracyColor(Math.round((levelScore / MOCK_SCALE_MAX) * 100))}`}>
                                                 {levelScore}/{MOCK_SCALE_MAX}

@@ -496,7 +496,6 @@ const uz: typeof ru = {
     notTakenYet: "Hali topshirmagan",
     cefrScaleTitle: "Rasmiy CEFR shkalasi bo'yicha daraja",
     levelPendingShort: "Kam topshirgan",
-    raschScoreTitle: "Rasch qobiliyat bahosi (θ), foizdan alohida",
     gradeLevelTitle: "A+..C shkalasi bo'yicha daraja, ushbu mokni topshirgan barchaga nisbatan",
     studentAnswerLabel: "O'quvchi javobi:",
     correctAnswerLabel: "To'g'ri javob:",

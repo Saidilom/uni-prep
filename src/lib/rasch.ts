@@ -208,18 +208,30 @@ export function stdev(values: number[]): number {
 // что у Агентства знаний для национального сертификата.
 export const MOCK_SCALE_MAX = 75;
 
+// Разброс способностей, которым подменяется когортный, когда когорты нет.
+// Одна логита — типичная величина для реальной группы; но важнее не само
+// значение, а то, что оно фиксировано: балл одинокого сдавшего не должен
+// зависеть от разброса, которого не существует.
+export const REFERENCE_ABILITY_STDEV = 1;
+
 export function raschThetaToT(theta: number, cohortMean: number, cohortStdev: number): number {
     // With fewer than ~2 meaningfully-different ability estimates, a
-    // population stdev is not a meaningful yardstick (and would divide by
-    // ~0) — fall back to the scale's center point until there's enough data
-    // to standardize against, rather than producing NaN/Infinity.
+    // population stdev is not a meaningful yardstick (and would divide by ~0).
     //
-    // Вызывающая сторона (/api/rasch/recalculate) отдельно проверяет тот же
-    // признак и в этом случае пишет NULL вместо возвращённых отсюда 50: балл
-    // теперь главный, и подставная середина шкалы была бы просто неверным
-    // числом, одинаковым у всех.
-    if (!Number.isFinite(cohortStdev) || cohortStdev < 1e-6) return 50;
-    const z = (theta - cohortMean) / cohortStdev;
+    // Раньше в этом случае возвращалась голая середина шкалы (50), а
+    // /api/rasch/recalculate заменял её на NULL — и балл не показывался вовсе.
+    // На практике это означало «балла нет ни у кого»: пересчёт запускается
+    // только новой сдачей, а пересдачи запрещены (§13), так что вырожденный мок
+    // оставался без балла навсегда.
+    //
+    // Отсчитываем не от когорты, а от самого банка вопросов. Это законно именно
+    // здесь: estimateRasch центрирует сложности через recenter(), поэтому theta
+    // уже абсолютна — theta = 0 значит «способность вровень со средним вопросом
+    // этого теста», а не «вровень с середняком группы».
+    const degenerate = !Number.isFinite(cohortStdev) || cohortStdev < 1e-6;
+    const center = degenerate ? 0 : cohortMean;
+    const spread = degenerate ? REFERENCE_ABILITY_STDEV : cohortStdev;
+    const z = (theta - center) / spread;
     const t = z * 10 + 50;
     return Math.max(0, Math.min(MOCK_SCALE_MAX, Math.round(t)));
 }

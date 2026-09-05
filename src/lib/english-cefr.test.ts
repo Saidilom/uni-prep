@@ -2,9 +2,12 @@ import { describe, it, expect } from "vitest";
 import { raschThetaToT, writingRawToScore, writingPointsToScore, cefrBandFromScore, mean, stdev } from "./english-cefr";
 
 describe("raschThetaToT", () => {
-    it("returns 50 (scale center) when stdev is ~0 — not enough data to standardize", () => {
-        expect(raschThetaToT(1.2, 0.5, 0)).toBe(50);
-        expect(raschThetaToT(1.2, 0.5, 1e-9)).toBe(50);
+    // Раньше здесь возвращалась голая середина шкалы (50), одинаковая при любой
+    // theta. Теперь при отсутствии когорты отсчёт идёт от банка вопросов:
+    // центр 0, разброс 1 логит, поэтому theta 1.2 даёт 1.2*10 + 50 = 62.
+    it("standardizes against the item pool when stdev is ~0 — no cohort to compare with", () => {
+        expect(raschThetaToT(1.2, 0.5, 0)).toBe(62);
+        expect(raschThetaToT(1.2, 0.5, 1e-9)).toBe(62);
     });
 
     it("maps a theta at the mean to T=50", () => {

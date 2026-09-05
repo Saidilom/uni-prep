@@ -51,12 +51,27 @@ export default function ClassStudentsPanel({ students, mockScores, assignments, 
         return `${number}${title}${date ? ` · ${date}` : ""}`;
     };
 
-    // Фильтровать можно по любому моку, который группе назначен. Сортировка по
-    // номеру, а не по дате назначения: номер — это то, чем их называют вслух.
-    const filterOptions = useMemo(
-        () => [...assignments].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0)),
-        [assignments]
-    );
+    // Список для фильтра — объединение того, что группе НАЗНАЧЕНО, и того, что
+    // ученики РЕАЛЬНО сдавали. Эти множества расходятся: на проде группе
+    // назначен один мок (№4), а её ученики писали ещё №2 и №3 — они успели
+    // сдать до назначения либо получили тест индивидуально. Строй список
+    // только по назначениям, и результаты по этим двум мокам стали бы
+    // недоступны, хотя они есть.
+    const filterOptions = useMemo(() => {
+        const byId = new Map<string, { mockTestId: string; seq: number | null; title: string; createdAt: string | null }>();
+        for (const a of assignments) {
+            byId.set(a.mockTestId, { mockTestId: a.mockTestId, seq: a.seq, title: a.title, createdAt: a.createdAt });
+        }
+        for (const list of Array.from(mockScores.values())) {
+            for (const score of list) {
+                if (byId.has(score.mockTestId)) continue;
+                byId.set(score.mockTestId, { mockTestId: score.mockTestId, seq: score.seq, title: score.title, createdAt: null });
+            }
+        }
+        // Сортировка по номеру, а не по дате назначения: номер — это то, чем
+        // эти тесты называют вслух, когда они одноимённые.
+        return Array.from(byId.values()).sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+    }, [assignments, mockScores]);
 
     const scoreFor = (studentId: string) =>
         (mockScores.get(studentId) || []).find((row) => row.mockTestId === selectedMock) ?? null;

@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createRouteHandlerClient } from "@/lib/supabase/server";
-import { estimateRasch, Observation, mean, stdev, raschThetaToT } from "@/lib/rasch";
+import { estimateRasch, Observation, mean, stdev, raschThetaToT, MOCK_SCALE_MAX } from "@/lib/rasch";
+import { essayPointsToScore75, combineSectionScores, isNativeCertSubject } from "@/lib/native-cert";
+import { writingPointsToScore } from "@/lib/english-cefr";
 import { gradeLevelFromScore } from "@/lib/mock-grade-level";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { isInternalCall } from "@/lib/internal-auth";
@@ -45,17 +47,40 @@ export async function POST(req: NextRequest) {
 
     const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
 
+    const { data: test } = await admin.from("mock_tests").select("subject_id").eq("id", mockTestId).single();
+    const subjectId = (test?.subject_id as string | null) ?? null;
+
     const { data: sections } = await admin.from("mock_sections").select("id").eq("mock_test_id", mockTestId);
     const sectionIds = (sections || []).map((s) => s.id as string);
     if (sectionIds.length === 0) {
         return NextResponse.json({ ok: true, itemCount: 0, personCount: 0 });
     }
 
-    const { data: questions } = await admin.from("mock_questions").select("id").in("section_id", sectionIds);
-    const questionIds = (questions || []).map((q) => q.id as string);
-    if (questionIds.length === 0) {
+    const { data: questions } = await admin
+        .from("mock_questions")
+        .select("id, question_type, points")
+        .in("section_id", sectionIds);
+    const allQuestions = (questions || []) as Array<{ id: string; question_type: string | null; points: number | null }>;
+    if (allQuestions.length === 0) {
         return NextResponse.json({ ok: true, itemCount: 0, personCount: 0 });
     }
+
+    // Сочинение — не дихотомическое задание, и в пул Раша ему нельзя.
+    //
+    // Модель Раша оперирует «верно / неверно», а у эссе есть только частичный
+    // балл, и is_correct у него всегда false. На проде это видно буквально:
+    // работа на 20 баллов из 24 лежит с is_correct = false и уходила в
+    // калибровку как проваленное задание. Ученик, написавший сочинение почти
+    // идеально, получал за него ту же единицу информации, что и не писавший.
+    //
+    // Официальная методика (Baholash_mezoni.pdf, стр. 3-4) того же мнения:
+    // «test topshiriqlari birinchi, yozma ish ikkinchi bo'lim sifatida
+    // olinadi» — это два РАЗДЕЛА, считаются порознь и потом усредняются.
+    const essayQuestions = allQuestions.filter((q) => q.question_type === "essay");
+    const objectiveQuestions = allQuestions.filter((q) => q.question_type !== "essay");
+    const questionIds = objectiveQuestions.map((q) => q.id);
+    const essayQuestionIds = new Set(essayQuestions.map((q) => q.id));
+    const essayMaxPoints = essayQuestions.reduce((sum, q) => sum + Number(q.points || 0), 0);
 
     const { data: results } = await admin.from("mock_results").select("id").eq("mock_test_id", mockTestId);
     const resultIds = (results || []).map((r) => r.id as string);
@@ -68,10 +93,10 @@ export async function POST(req: NextRequest) {
     // ниже строится по ПОЛНОМУ набору результатов, поэтому ученики без
     // дошедших наблюдений всё равно получали записанную оценку и уровень —
     // вырожденный, но показанный им на экране. См. lib/supabase/fetch-all.ts.
-    const { data: answers, error: answersError } = await fetchAllRows<{ result_id: string; question_id: string; is_correct: boolean }>(
+    const { data: answers, error: answersError } = await fetchAllRows<{ result_id: string; question_id: string; is_correct: boolean; points_earned: number | null }>(
         (from, to) => admin
             .from("mock_answer_details")
-            .select("result_id, question_id, is_correct")
+            .select("result_id, question_id, is_correct, points_earned")
             .in("result_id", resultIds)
             .order("id")
             .range(from, to)
@@ -88,39 +113,57 @@ export async function POST(req: NextRequest) {
     const itemIndex = new Map<string, number>();
     questionIds.forEach((id) => itemIndex.set(id, itemIndex.size));
 
+    // Раздел «сочинение»: сумма набранного за эссе по каждой работе.
+    const essayEarnedByPerson = new Array(resultIds.length).fill(0);
     const observations: Observation[] = [];
     for (const a of answers) {
         const person = personIndex.get(a.result_id as string);
+        if (person === undefined) continue;
+        if (essayQuestionIds.has(a.question_id as string)) {
+            essayEarnedByPerson[person] += Number(a.points_earned || 0);
+            continue;
+        }
         const item = itemIndex.get(a.question_id as string);
-        if (person === undefined || item === undefined) continue;
+        if (item === undefined) continue;
         observations.push({ person, item, correct: a.is_correct ? 1 : 0 });
     }
-    if (observations.length === 0) {
+
+    // Тест, состоящий из одного сочинения (такой на проде есть — English
+    // Paper 3 Writing), даёт ноль наблюдений для Раша. Это не ошибка: у него
+    // просто нет первого раздела, и балл считается по одному второму.
+    const hasObjectiveSection = observations.length > 0;
+    const hasEssaySection = essayQuestions.length > 0 && essayMaxPoints > 0;
+    if (!hasObjectiveSection && !hasEssaySection) {
         return NextResponse.json({ ok: true, itemCount: 0, personCount: 0 });
     }
 
-    const { itemDifficulty, personAbility, converged, iterations } = estimateRasch(
-        observations,
-        resultIds.length,
-        questionIds.length
-    );
+    let personAbility: number[] = new Array(resultIds.length).fill(0);
+    let converged = true;
+    let iterations = 0;
 
-    const sampleSizeByItem = new Array(questionIds.length).fill(0);
-    for (const obs of observations) sampleSizeByItem[obs.item]++;
+    if (hasObjectiveSection) {
+        const estimated = estimateRasch(observations, resultIds.length, questionIds.length);
+        personAbility = estimated.personAbility;
+        converged = estimated.converged;
+        iterations = estimated.iterations;
 
-    const calibrationRows = questionIds.map((id, i) => ({
-        mock_test_id: mockTestId,
-        question_id: id,
-        difficulty: itemDifficulty[i],
-        sample_size: sampleSizeByItem[i],
-        calibrated_at: new Date().toISOString(),
-    }));
+        const sampleSizeByItem = new Array(questionIds.length).fill(0);
+        for (const obs of observations) sampleSizeByItem[obs.item]++;
 
-    const { error: calibrationError } = await admin
-        .from("mock_item_calibration")
-        .upsert(calibrationRows, { onConflict: "mock_test_id,question_id" });
-    if (calibrationError) {
-        return NextResponse.json({ error: calibrationError.message }, { status: 500 });
+        const calibrationRows = questionIds.map((id, i) => ({
+            mock_test_id: mockTestId,
+            question_id: id,
+            difficulty: estimated.itemDifficulty[i],
+            sample_size: sampleSizeByItem[i],
+            calibrated_at: new Date().toISOString(),
+        }));
+
+        const { error: calibrationError } = await admin
+            .from("mock_item_calibration")
+            .upsert(calibrationRows, { onConflict: "mock_test_id,question_id" });
+        if (calibrationError) {
+            return NextResponse.json({ error: calibrationError.message }, { status: 500 });
+        }
     }
 
     // Standardize this cohort's abilities onto the same 0-75 scale used for
@@ -140,13 +183,41 @@ export async function POST(req: NextRequest) {
     // сдвинуться — решение владельца, зафиксировано в design/FIX.md.
     const abilityMean = mean(personAbility);
     const abilityStdev = stdev(personAbility);
-    const levelScores = personAbility.map((theta) => raschThetaToT(theta, abilityMean, abilityStdev));
+
+    // Итоговый балл — среднее арифметическое разделов, как в методике:
+    // «birinchi va ikkinchi bo'limlarning o'rtacha arifmetik qiymati umumiy
+    // ball sifatida qabul qilinadi» (Baholash_mezoni.pdf, стр. 4).
+    //
+    // У теста без сочинения раздел один, и среднее равно самому Rasch-баллу —
+    // математика и физика ничего не заметят.
+    // Таблица перевода сочинения зависит от предмета — своего документа у
+    // каждого свой, и подставить чужой значит выставить неверный балл:
+    //   родной язык — 24-балльный критерий, Baholash_mezoni.pdf стр. 3-4;
+    //   английский — свой 0-36 и своя таблица, Multilevel-bm.pdf;
+    //   остальные — официальной таблицы нет, поэтому просто доля от 75.
+    // Последняя ветка пока умозрительная: эссе есть только у английского и
+    // узбекского, но молча отдать им узбекскую таблицу было бы хуже.
+    const essayToScore75 = isNativeCertSubject(subjectId)
+        ? essayPointsToScore75
+        : subjectId === "english"
+            ? (earned: number, max: number) => (max > 0 ? writingPointsToScore(Math.max(0, Math.min(max, earned))) : 0)
+            : (earned: number, max: number) => (max > 0 ? Math.round(Math.max(0, Math.min(max, earned)) / max * MOCK_SCALE_MAX) : 0);
+
+    const levelScores = resultIds.map((_, n) => {
+        const sections: number[] = [];
+        if (hasObjectiveSection) sections.push(raschThetaToT(personAbility[n], abilityMean, abilityStdev));
+        if (hasEssaySection) sections.push(essayToScore75(essayEarnedByPerson[n], essayMaxPoints));
+        return combineSectionScores(sections);
+    });
 
     const updateResults = await Promise.all(
         resultIds.map((id, n) => admin.from("mock_results").update({
-            rasch_score: personAbility[n],
+            // rasch_score пишется только когда его есть из чего считать:
+            // у теста из одного сочинения способности по Рашу не существует,
+            // и ноль здесь читался бы как «средняя способность».
+            rasch_score: hasObjectiveSection ? personAbility[n] : null,
             level_score: levelScores[n],
-            grade_level: gradeLevelFromScore(levelScores[n]),
+            grade_level: levelScores[n] === null ? null : gradeLevelFromScore(levelScores[n]),
         }).eq("id", id))
     );
     const failedCount = updateResults.filter((r) => r.error).length;

@@ -107,6 +107,121 @@ export const setUserRole = async (userId: string, role: string): Promise<void> =
     }
 };
 
+// ═══ Проверяющий письменных работ (миграция 080) ═══
+//
+// Назначается на КОНКРЕТНЫЙ мок, а не отдельной ролью: так семь предметов
+// естественно расходятся по разным людям, и новая роль в проекте не заводится.
+// Публиковать результаты назначенный не может — finalize_mock_group_results
+// требует автора теста или админа.
+
+export type ReviewerCandidate = { id: string; name: string; role: string };
+
+// Кого вообще можно назначить. Учеников намеренно нет: проверять работы
+// одноклассников им нельзя, а «сначала сделай учителем» — осознанный шаг.
+export const fetchReviewerCandidates = async (): Promise<ReviewerCandidate[]> => {
+    const { data, error } = await supabase
+        .from("users")
+        .select("id, name, surname, role")
+        .in("role", ["teacher", "staff", "branch_admin", "admin"])
+        .order("name");
+    if (error) throw error;
+    return ((data || []) as Array<Record<string, unknown>>).map((row) => ({
+        id: row.id as string,
+        name: `${row.name ?? ""} ${row.surname ?? ""}`.trim() || (row.id as string),
+        role: row.role as string,
+    }));
+};
+
+export const fetchMockReviewerId = async (mockTestId: string): Promise<string | null> => {
+    const { data, error } = await supabase
+        .from("mock_reviewers")
+        .select("reviewer_id")
+        .eq("mock_test_id", mockTestId)
+        .limit(1);
+    if (error) throw error;
+    const rows = (data || []) as Array<Record<string, unknown>>;
+    return rows.length > 0 ? (rows[0].reviewer_id as string) : null;
+};
+
+// reviewerId = null снимает назначение. Вставка через upsert по UNIQUE
+// (mock_test_id, reviewer_id): повторное назначение того же человека должно
+// быть безобидным, а не падать на полпути.
+export const setMockReviewer = async (mockTestId: string, reviewerId: string | null, assignedBy: string): Promise<void> => {
+    const { error: clearError } = await supabase.from("mock_reviewers").delete().eq("mock_test_id", mockTestId);
+    if (clearError) throw clearError;
+    if (!reviewerId) return;
+    const { error } = await supabase
+        .from("mock_reviewers")
+        .upsert({ mock_test_id: mockTestId, reviewer_id: reviewerId, assigned_by: assignedBy }, { onConflict: "mock_test_id,reviewer_id" });
+    if (error) throw error;
+};
+
+export type ReviewMock = {
+    mockTestId: string;
+    title: string;
+    subjectId: string | null;
+    takerCount: number;
+    pendingCount: number;
+};
+
+// Мои тесты на проверку. Фильтр по проверяющему делает не запрос, а политики
+// из 080: чужие моки просто не приходят.
+export const fetchMyReviewMocks = async (): Promise<ReviewMock[]> => {
+    const { data: assignments, error } = await supabase.from("mock_reviewers").select("mock_test_id");
+    if (error) throw error;
+    const mockTestIds = Array.from(new Set(((assignments || []) as Array<Record<string, unknown>>).map((a) => a.mock_test_id as string)));
+    if (mockTestIds.length === 0) return [];
+
+    const [{ data: tests }, { data: results }] = await Promise.all([
+        supabase.from("mock_tests").select("id, title, subject_id").in("id", mockTestIds),
+        // Постранично: на моке со ста участниками плоский select молча
+        // обрезался бы по max_rows PostgREST, и «осталось проверить» показало
+        // бы меньше, чем есть. Занижение тут особенно скверное — проверяющий
+        // решит, что закончил.
+        fetchAllRows<{ id: string; mock_test_id: string }>((from, to) =>
+            supabase.from("mock_results").select("id, mock_test_id").in("mock_test_id", mockTestIds).order("id").range(from, to)),
+    ]);
+
+    const resultIds = ((results || []) as Array<Record<string, unknown>>).map((r) => r.id as string);
+    const mockByResult = new Map(((results || []) as Array<Record<string, unknown>>).map((r) => [r.id as string, r.mock_test_id as string]));
+
+    const { data: pendingRows } = resultIds.length > 0
+        ? await fetchAllRows<{ result_id: string }>((from, to) =>
+            supabase.from("mock_answer_details").select("result_id")
+                .in("result_id", resultIds).in("review_status", ["pending", "ai_graded"])
+                .order("id").range(from, to))
+        : { data: [] as Array<{ result_id: string }> };
+
+    const pendingByMock = new Map<string, number>();
+    (pendingRows || []).forEach((row) => {
+        const mockId = mockByResult.get(row.result_id as string);
+        if (!mockId) return;
+        pendingByMock.set(mockId, (pendingByMock.get(mockId) || 0) + 1);
+    });
+    const takersByMock = new Map<string, number>();
+    ((results || []) as Array<Record<string, unknown>>).forEach((r) => {
+        const mockId = r.mock_test_id as string;
+        takersByMock.set(mockId, (takersByMock.get(mockId) || 0) + 1);
+    });
+
+    return ((tests || []) as Array<Record<string, unknown>>).map((test) => ({
+        mockTestId: test.id as string,
+        title: test.title as string,
+        subjectId: (test.subject_id as string | null) ?? null,
+        takerCount: takersByMock.get(test.id as string) || 0,
+        pendingCount: pendingByMock.get(test.id as string) || 0,
+    }));
+};
+
+// Есть ли у меня вообще назначения — от этого зависит пункт меню. Кэшируем:
+// сайдбар рисуется на каждой навигации, а ответ меняется редко.
+export const fetchHasReviewAssignments = async (userId: string): Promise<boolean> => {
+    return pageCache.fetch(`hasReviewAssignments:${userId}`, async () => {
+        const { data } = await supabase.from("mock_reviewers").select("id").limit(1);
+        return (data || []).length > 0;
+    }, TEACHER_CACHE_TTL);
+};
+
 export const deleteClass = async (classId: string): Promise<void> => {
     const { error } = await supabase.from("classes").delete().eq("id", classId);
     if (error) throw error;

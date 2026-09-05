@@ -37,6 +37,9 @@ export default function Topbar() {
     ];
     const TEACHER_PAGES: SearchablePage[] = [
         { name: t("myTests"), href: "/teacher/mock-tests" },
+        // Раздел доступен по назначению, а не по роли (миграция 080), поэтому
+        // в поиске он у всех учителей: пустой список объяснит себя сам.
+        { name: t("reviewWork"), href: "/review" },
     ];
     const ADMIN_PAGES: SearchablePage[] = [{ name: t("adminPanel"), href: "/admin" }];
 

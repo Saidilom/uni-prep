@@ -1,11 +1,12 @@
 "use client";
 
-import { memo, useEffect } from "react";
+import { memo, useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useSidebarStore } from "@/store/useSidebarStore";
+import { fetchHasReviewAssignments } from "@/lib/class-utils";
 import { APP_NAME } from "@/lib/app-config";
 import { useTranslations } from "@/lib/i18n/locale-provider";
 import LocaleSwitcher from "@/components/locale-switcher";
@@ -16,6 +17,7 @@ import {
     Trophy,
     FileText,
     BarChart3,
+    ClipboardCheck,
     Shield,
     X,
     PanelLeftClose,
@@ -27,8 +29,17 @@ function Sidebar() {
     const { isOpen, isCollapsed, close, toggleCollapsed } = useSidebarStore();
     const pathname = usePathname();
     const t = useTranslations("nav");
+    // Пункт «Проверка работ» появляется, только если этому аккаунту назначили
+    // хоть один мок (миграция 080). Показывать его всем учителям незачем — у
+    // большинства он всегда пустой.
+    const [hasReviewWork, setHasReviewWork] = useState(false);
 
     useEffect(() => { close(); }, [pathname, close]);
+
+    useEffect(() => {
+        if (!user || user.role === "student") return;
+        fetchHasReviewAssignments(user.id).then(setHasReviewWork).catch(() => setHasReviewWork(false));
+    }, [user]);
 
     if (!user) return null;
 
@@ -39,6 +50,7 @@ function Sidebar() {
         { name: t("home"), href: "/", icon: LayoutDashboard },
         ...(isTeacher || isStudent ? [{ name: t("myClasses"), href: "/classes", icon: GraduationCap }] : []),
         ...(isTeacher ? [{ name: t("myTests"), href: "/teacher/mock-tests", icon: FileText }] : []),
+        ...(hasReviewWork ? [{ name: t("reviewWork"), href: "/review", icon: ClipboardCheck }] : []),
         { name: t("mockTests"), href: "/mock", icon: FileText },
         { name: t("results"), href: "/results", icon: BarChart3 },
         ...(isStudent ? [{ name: t("rating"), href: "/rating", icon: Trophy }] : []),

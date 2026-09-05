@@ -10,6 +10,7 @@ import {
   CalendarClock,
   Eye,
   FileText,
+  ClipboardCheck,
   ListChecks,
   Lock,
   LockOpen,
@@ -36,7 +37,7 @@ import {
   MockImportResponse,
 } from "@/lib/mock-import-schema";
 import { sumPoints } from "@/lib/mock-points";
-import { fetchOylikSets, OylikSet } from "@/lib/class-utils";
+import { fetchOylikSets, fetchReviewerCandidates, fetchMockReviewerId, setMockReviewer, OylikSet, ReviewerCandidate } from "@/lib/class-utils";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 type StudioMode = "admin" | "teacher";
@@ -172,6 +173,12 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
   const [pricingFreeDraft, setPricingFreeDraft] = useState(false);
   const [pricingPriceDraft, setPricingPriceDraft] = useState(0);
   const [savingPricing, setSavingPricing] = useState(false);
+  // Назначение проверяющего письменных работ (миграция 080).
+  const [editingReviewer, setEditingReviewer] = useState<TestRow | null>(null);
+  const [reviewerCandidates, setReviewerCandidates] = useState<ReviewerCandidate[]>([]);
+  const [reviewerDraft, setReviewerDraft] = useState("");
+  const [reviewerLoading, setReviewerLoading] = useState(false);
+  const [savingReviewer, setSavingReviewer] = useState(false);
 
   // The reviewed-but-unpublished draft must survive an accidental page reload
   // (dev-server hot reload, browser refresh, tab restore) — losing a fully
@@ -664,6 +671,45 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
     }
   };
 
+  // ═══ Проверяющий письменных работ (миграция 080) ═══
+  //
+  // Назначается на конкретный тест, а не отдельной ролью: так семь предметов
+  // расходятся по разным людям — узбекский проверяет один, английский другой.
+  // Назначенный только ставит баллы; «Готово» по-прежнему за супер-админом,
+  // и это гарантирует сама база, а не интерфейс.
+  const openReviewerEditor = async (test: TestRow) => {
+    setEditingReviewer(test);
+    setReviewerDraft("");
+    setReviewerLoading(true);
+    try {
+      const [candidates, current] = await Promise.all([
+        fetchReviewerCandidates(),
+        fetchMockReviewerId(test.id),
+      ]);
+      setReviewerCandidates(candidates);
+      setReviewerDraft(current ?? "");
+    } catch (error) {
+      toast.error(t("reviewerLoadFailed"), { description: error instanceof Error ? error.message : String(error) });
+      setEditingReviewer(null);
+    } finally {
+      setReviewerLoading(false);
+    }
+  };
+
+  const saveReviewer = async () => {
+    if (!editingReviewer || !user) return;
+    setSavingReviewer(true);
+    try {
+      await setMockReviewer(editingReviewer.id, reviewerDraft || null, user.id);
+      toast.success(reviewerDraft ? t("reviewerSavedToast") : t("reviewerClearedToast"));
+      setEditingReviewer(null);
+    } catch (error) {
+      toast.error(t("reviewerSaveFailed"), { description: error instanceof Error ? error.message : String(error) });
+    } finally {
+      setSavingReviewer(false);
+    }
+  };
+
   const itemCount = draft ? countResponseItems(draft) : 0;
   const missingKeys = useMemo(() => {
     if (!draft) return 0;
@@ -1112,6 +1158,20 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
                     <ListChecks size={13} /> <span className="hidden xl:inline">{t("openResultsAction")}</span>
                   </Link>
                 )}
+                {/* Кто проверяет письменные работы этого теста. Супер-админ
+                    этим заниматься не должен, а у бесплатного мока нет ни
+                    класса, ни назначений, за которые мог бы зацепиться
+                    учитель — отсюда явное назначение (миграция 080). */}
+                {mode === "admin" && (
+                  <button
+                    onClick={() => openReviewerEditor(test)}
+                    title={t("reviewerAction")}
+                    aria-label={t("reviewerAction")}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-2 text-xs font-semibold hover:bg-muted"
+                  >
+                    <ClipboardCheck size={13} /> <span className="hidden xl:inline">{t("reviewerAction")}</span>
+                  </button>
+                )}
                 {mode === "admin" && (
                   <button
                     onClick={() => openPricingEditor(test)}
@@ -1266,6 +1326,44 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
                 className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground disabled:opacity-50"
               >
                 {savingPricing ? t("publishAtSavingLabel") : t("publishAtSaveAction")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingReviewer && (
+        <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm" onClick={() => setEditingReviewer(null)}>
+          <div className="w-full max-w-md overflow-hidden rounded-3xl border border-border bg-background shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-start justify-between border-b border-border p-6">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-primary">{t("reviewerTitle")}</p>
+                <h2 className="mt-1 text-lg font-bold">{editingReviewer.title}</h2>
+              </div>
+              <button onClick={() => setEditingReviewer(null)} className="rounded-xl p-2 hover:bg-muted"><X size={18} /></button>
+            </div>
+            <div className="space-y-4 p-6">
+              {reviewerLoading ? (
+                <div className="h-12 animate-pulse rounded-xl bg-muted" />
+              ) : (
+                <select
+                  value={reviewerDraft}
+                  onChange={(event) => setReviewerDraft(event.target.value)}
+                  className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm font-semibold text-foreground"
+                >
+                  <option value="">{t("reviewerNone")}</option>
+                  {reviewerCandidates.map((candidate) => (
+                    <option key={candidate.id} value={candidate.id}>{candidate.name}</option>
+                  ))}
+                </select>
+              )}
+              <p className="text-[11px] leading-relaxed text-muted-foreground">{t("reviewerHint")}</p>
+              <button
+                onClick={saveReviewer}
+                disabled={savingReviewer || reviewerLoading}
+                className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground disabled:opacity-50"
+              >
+                {savingReviewer ? t("publishAtSavingLabel") : t("publishAtSaveAction")}
               </button>
             </div>
           </div>

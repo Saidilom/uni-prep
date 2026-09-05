@@ -21,7 +21,6 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { invalidateStudentMockCaches } from "@/lib/registan-utils";
 import { getMockEntryState } from "@/lib/mock-schedule";
 import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
-import { MOCK_SCALE_MAX } from "@/lib/rasch";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 type AnswerValue = string | string[] | Record<string, string>;
@@ -402,15 +401,15 @@ export default function MockTestPage() {
           </p>
         ) : (
           <>
-            {/* Главный балл — по модели Раша, шкала 0-75: логиты, приведённые
-                к когорте сдававших этот тест, как у Агентства знаний. Сырая
-                сумма баллов за вопросы (result.score) больше не показывается —
-                это была вторая, самодельная шкала «из 75», и рядом с настоящей
-                она читалась как второй, противоречащий балл.
-                См. design/FIX.md, раздел «Две шкалы 75». */}
+            {/* Главный балл — балл сертификата. Считается по модели Раша
+                (логиты → T-шкала → шкала предмета: 100 у общеобразовательных,
+                75 у иностранных языков). Максимум не показывается: на экране
+                только сам балл — решение владельца, оно же избавляет от второго
+                числа рядом. Сырая сумма (result.score) убрана давно —
+                см. design/FIX.md, раздел «Две шкалы 75». */}
             {result.levelScore != null ? (
               <>
-                <p className="mt-8 text-6xl font-black tabular-nums">{result.levelScore} <span className="text-3xl text-muted-foreground">/ {MOCK_SCALE_MAX}</span></p>
+                <p className="mt-8 text-6xl font-black tabular-nums">{result.levelScore}</p>
                 <p className="mt-1 text-xs font-bold uppercase tracking-widest text-muted-foreground">{t("pointsLabel")}</p>
                 {result.gradeLevel && (
                   <div className="mx-auto mt-4 inline-flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 dark:border-emerald-900 dark:bg-emerald-950/30">

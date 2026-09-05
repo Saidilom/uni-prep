@@ -13,7 +13,7 @@ import {
     QuestionErrorStat,
 } from "@/lib/class-utils";
 import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
-import { MOCK_SCALE_MAX } from "@/lib/rasch";
+import { certificatePercent } from "@/lib/certificate-scale";
 import { accuracyColor } from "@/lib/status-colors";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
@@ -163,19 +163,19 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
                 <div className="rounded-2xl border border-border bg-card p-5">
                     <div className="flex items-center gap-2 text-muted-foreground"><Trophy size={15} /><span className="text-[10px] font-bold uppercase tracking-widest">{t("averageLabel")}</span></div>
                     <p className="mt-2 text-2xl font-extrabold tabular-nums text-foreground">
-                        {summary.avgScore ?? "—"}{summary.avgScore !== null && `/${MOCK_SCALE_MAX}`}
+                        {summary.avgScore ?? "—"}
                     </p>
                 </div>
                 <div className="rounded-2xl border border-border bg-card p-5">
                     <div className="flex items-center gap-2 text-muted-foreground"><TrendingUp size={15} /><span className="text-[10px] font-bold uppercase tracking-widest">{t("maxLabel")}</span></div>
                     <p className="mt-2 text-2xl font-extrabold tabular-nums text-foreground">
-                        {summary.topScore ?? "—"}{summary.topScore !== null && `/${MOCK_SCALE_MAX}`}
+                        {summary.topScore ?? "—"}
                     </p>
                 </div>
                 <div className="rounded-2xl border border-border bg-card p-5">
                     <div className="flex items-center gap-2 text-muted-foreground"><TrendingDown size={15} /><span className="text-[10px] font-bold uppercase tracking-widest">{t("minLabel")}</span></div>
                     <p className="mt-2 text-2xl font-extrabold tabular-nums text-foreground">
-                        {summary.lowScore ?? "—"}{summary.lowScore !== null && `/${MOCK_SCALE_MAX}`}
+                        {summary.lowScore ?? "—"}
                     </p>
                 </div>
             </section>
@@ -216,7 +216,7 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
             <section>
                 <h2 className="mb-5 text-xl font-bold tracking-tight text-foreground sm:text-2xl">{t("studentsSection")}</h2>
                 <div className="space-y-3">
-                    {summary.students.map(({ student, resultId, correctAnswers, totalQuestions, cefrBand, levelScore, gradeLevel, completedAt, pendingReviewCount }) => {
+                    {summary.students.map(({ student, resultId, correctAnswers, totalQuestions, cefrBand, levelScore, levelScoreMax, gradeLevel, completedAt, pendingReviewCount }) => {
                         const isOpen = openResultId === resultId;
                         return (
                             <div key={student.id} className="overflow-hidden rounded-2xl border border-border bg-card">
@@ -261,8 +261,8 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
                                             моках без посчитанного балла оставался вообще
                                             единственным. Ученику логит не показывался никогда. */}
                                         {levelScore !== null ? (
-                                            <span className={`rounded-xl px-3 py-1.5 text-sm font-extrabold tabular-nums ${accuracyColor(Math.round((levelScore / MOCK_SCALE_MAX) * 100))}`}>
-                                                {levelScore}/{MOCK_SCALE_MAX}
+                                            <span className={`rounded-xl px-3 py-1.5 text-sm font-extrabold tabular-nums ${accuracyColor(certificatePercent(levelScore, levelScoreMax))}`}>
+                                                {levelScore}
                                             </span>
                                         ) : resultId !== null ? (
                                             <span className="rounded-xl border border-border bg-muted px-3 py-1.5 text-[10px] font-semibold text-muted-foreground">

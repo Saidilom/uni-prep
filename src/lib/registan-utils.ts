@@ -96,10 +96,13 @@ export type MockResultRow = {
   total_questions: number;
   correct_answers: number;
   accuracy: number;
-  // Балл по модели Раша, шкала 0-75 — то единственное число, которое ученик
-  // видит за мок (см. «Две шкалы 75» в design/FIX.md). null, пока сдавших
-  // слишком мало, чтобы было с чем стандартизовать.
+  // Балл сертификата — то единственное число, которое ученик видит за мок
+  // (см. «Две шкалы 75» в design/FIX.md). Шкала зависит от предмета, поэтому
+  // максимум лежит рядом: 100 у общеобразовательных, 75 у иностранных языков
+  // (src/lib/certificate-scale.ts). На экране максимум не показывается —
+  // только сам балл, — но раскраска считает долю от него.
   level_score: number | null;
+  level_score_max: number | null;
   grade_level: string | null;
   completed_at: string;
   revealed_at: string | null;
@@ -109,7 +112,7 @@ export async function fetchUserMockResults(userId: string): Promise<MockResultRo
   return pageCache.fetch(`mockResults:${userId}`, async () => {
     const { data } = await supabase
       .from("mock_results")
-      .select("id, mock_test_id, mock_test_title, score, max_score, total_questions, correct_answers, accuracy, level_score, grade_level, completed_at, revealed_at")
+      .select("id, mock_test_id, mock_test_title, score, max_score, total_questions, correct_answers, accuracy, level_score, level_score_max, grade_level, completed_at, revealed_at")
       .eq("user_id", userId)
       .order("completed_at", { ascending: false });
     return (data || []) as MockResultRow[];

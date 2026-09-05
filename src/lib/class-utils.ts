@@ -426,6 +426,9 @@ export type StudentMockResult = {
     // в design/FIX.md). null, пока когорта слишком мала, чтобы было с чем
     // стандартизовать; тогда показываем не подставную середину, а заглушку.
     levelScore: number | null;
+    // Максимум шкалы, в которой записан levelScore: 100 у общеобразовательных,
+    // 75 у иностранных языков. На экране не показывается — нужен для раскраски.
+    levelScoreMax: number | null;
     // Generic A+..C level (src/lib/mock-grade-level.ts) — populated for
     // every subject once a real cohort exists to standardize against.
     gradeLevel: string | null;
@@ -471,7 +474,7 @@ export const fetchClassMockResults = async (classId: string | null, mockTestId: 
     const [members, { data: test }, { data: results }] = await Promise.all([
         classId ? fetchClassMembers(classId) : fetchMockTakers(mockTestId),
         supabase.from("mock_tests").select("title").eq("id", mockTestId).single(),
-        supabase.from("mock_results").select("id, user_id, score, max_score, accuracy, correct_answers, total_questions, cefr_band, cefr_score, level_score, grade_level, completed_at").eq("mock_test_id", mockTestId),
+        supabase.from("mock_results").select("id, user_id, score, max_score, accuracy, correct_answers, total_questions, cefr_band, cefr_score, level_score, level_score_max, grade_level, completed_at").eq("mock_test_id", mockTestId),
     ]);
 
     const resultIds = (results || []).map((r) => r.id as string);
@@ -510,6 +513,7 @@ export const fetchClassMockResults = async (classId: string | null, mockTestId: 
                 cefrBand: r ? (r.cefr_band as string | null) : null,
                 cefrScore: r && r.cefr_score !== null ? (r.cefr_score as number) : null,
                 levelScore: r && r.level_score !== null ? Number(r.level_score) : null,
+                levelScoreMax: r && r.level_score_max !== null && r.level_score_max !== undefined ? Number(r.level_score_max) : null,
                 gradeLevel: r ? (r.grade_level as string | null) : null,
                 completedAt: r ? (r.completed_at as string) : null,
                 pendingReviewCount: r ? (pendingCountByResult.get(r.id as string) || 0) : 0,
@@ -583,7 +587,7 @@ export type StudentClassMock = {
     title: string;
     durationMinutes: number;
     price: number;
-    myResult: { score: number; maxScore: number; accuracy: number; levelScore: number | null; gradeLevel: string | null; revealed: boolean } | null;
+    myResult: { score: number; maxScore: number; accuracy: number; levelScore: number | null; levelScoreMax: number | null; gradeLevel: string | null; revealed: boolean } | null;
 };
 
 // Every mock assigned to this class (whole-class or individually to this
@@ -604,7 +608,7 @@ export const fetchStudentClassMocks = async (classId: string, studentId: string)
 
     const [{ data: tests }, { data: results }] = await Promise.all([
         supabase.from("mock_tests").select("id, title, duration_minutes, price").in("id", mockTestIds),
-        supabase.from("mock_results").select("mock_test_id, score, max_score, accuracy, level_score, grade_level, revealed_at").eq("user_id", studentId).in("mock_test_id", mockTestIds),
+        supabase.from("mock_results").select("mock_test_id, score, max_score, accuracy, level_score, level_score_max, grade_level, revealed_at").eq("user_id", studentId).in("mock_test_id", mockTestIds),
     ]);
     const resultMap = new Map((results || []).map((r) => [r.mock_test_id as string, r]));
 
@@ -624,6 +628,7 @@ export const fetchStudentClassMocks = async (classId: string, studentId: string)
                 maxScore: r.max_score as number,
                 accuracy: r.accuracy as number,
                 levelScore: r.level_score !== null && r.level_score !== undefined ? Number(r.level_score) : null,
+                levelScoreMax: r.level_score_max !== null && r.level_score_max !== undefined ? Number(r.level_score_max) : null,
                 gradeLevel: (r.grade_level as string | null) ?? null,
                 revealed: Boolean(r.revealed_at),
             } : null,
@@ -797,6 +802,7 @@ export type StudentMockScore = {
     // Балл по модели Раша, 0-75 — то же число, что видит сам ученик. null,
     // пока сдавших слишком мало для стандартизации.
     levelScore: number | null;
+    levelScoreMax: number | null;
     gradeLevel: string | null;
     completedAt: string;
     revealed: boolean;
@@ -816,11 +822,11 @@ export const fetchClassStudentMockScores = async (classId: string): Promise<Map<
 
         const { data: results } = await fetchAllRows<{
             user_id: string; mock_test_id: string; mock_test_title: string;
-            level_score: number | null; grade_level: string | null;
+            level_score: number | null; level_score_max: number | null; grade_level: string | null;
             completed_at: string; revealed_at: string | null;
         }>((from, to) =>
             supabase.from("mock_results")
-                .select("user_id, mock_test_id, mock_test_title, level_score, grade_level, completed_at, revealed_at")
+                .select("user_id, mock_test_id, mock_test_title, level_score, level_score_max, grade_level, completed_at, revealed_at")
                 .in("user_id", studentIds).order("id").range(from, to));
 
         const numbers = await fetchMockNumbers(
@@ -835,6 +841,7 @@ export const fetchClassStudentMockScores = async (classId: string): Promise<Map<
                 title: r.mock_test_title,
                 seq: numbers.get(r.mock_test_id) ?? null,
                 levelScore: r.level_score !== null ? Number(r.level_score) : null,
+                levelScoreMax: r.level_score_max !== null && r.level_score_max !== undefined ? Number(r.level_score_max) : null,
                 gradeLevel: r.grade_level,
                 completedAt: r.completed_at,
                 revealed: Boolean(r.revealed_at),

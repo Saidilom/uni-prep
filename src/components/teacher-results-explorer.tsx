@@ -12,7 +12,7 @@ import {
 } from "@/lib/class-utils";
 import { fetchUserMockResults, MockResultRow } from "@/lib/registan-utils";
 import { accuracyColor } from "@/lib/status-colors";
-import { MOCK_SCALE_MAX } from "@/lib/rasch";
+import { certificatePercent } from "@/lib/certificate-scale";
 import { pluralizeRu } from "@/lib/pluralize-ru";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
@@ -238,8 +238,8 @@ export default function TeacherResultsExplorer() {
                                         доля от максимума между ними сопоставима. */}
                                     <div className="flex shrink-0 flex-col items-end gap-0.5 self-start sm:self-auto">
                                         {a.level_score != null ? (
-                                            <span className={`rounded-xl px-4 py-2 text-sm font-extrabold tabular-nums ${accuracyColor(Math.round((a.level_score / MOCK_SCALE_MAX) * 100))}`}>
-                                                {a.level_score}/{MOCK_SCALE_MAX}
+                                            <span className={`rounded-xl px-4 py-2 text-sm font-extrabold tabular-nums ${accuracyColor(certificatePercent(a.level_score, a.level_score_max))}`}>
+                                                {a.level_score}
                                             </span>
                                         ) : (
                                             <span className="rounded-xl border border-border bg-muted px-4 py-2 text-[10px] font-semibold text-muted-foreground">

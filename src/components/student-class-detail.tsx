@@ -7,7 +7,7 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { fetchClassById, fetchStudentClassMocks, fetchMySubjectRanking, StudentClassMock, SubjectRanking } from "@/lib/class-utils";
 import { Class } from "@/lib/firestore-schema";
 import { accuracyColor } from "@/lib/status-colors";
-import { MOCK_SCALE_MAX } from "@/lib/rasch";
+import { certificatePercent } from "@/lib/certificate-scale";
 import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
@@ -127,8 +127,8 @@ export default function StudentClassDetail({ classId }: { classId: string }) {
                                         {/* Балл за мок — по модели Раша, 0-75 (см.
                                             «Две шкалы 75» в design/FIX.md). */}
                                         {m.myResult.levelScore != null ? (
-                                            <span className={`rounded-xl px-3 py-1.5 text-sm font-extrabold tabular-nums ${accuracyColor(Math.round((m.myResult.levelScore / MOCK_SCALE_MAX) * 100))}`}>
-                                                {m.myResult.levelScore}/{MOCK_SCALE_MAX}
+                                            <span className={`rounded-xl px-3 py-1.5 text-sm font-extrabold tabular-nums ${accuracyColor(certificatePercent(m.myResult.levelScore, m.myResult.levelScoreMax))}`}>
+                                                {m.myResult.levelScore}
                                             </span>
                                         ) : (
                                             <span className="rounded-xl border border-border bg-muted px-3 py-1.5 text-[10px] font-semibold text-muted-foreground">

@@ -4,6 +4,7 @@ import { createRouteHandlerClient } from "@/lib/supabase/server";
 import { estimateRasch, Observation, mean, stdev, raschThetaToT, MOCK_SCALE_MAX } from "@/lib/rasch";
 import { essayPointsToScore75, combineSectionScores, isNativeCertSubject } from "@/lib/native-cert";
 import { writingPointsToScore } from "@/lib/english-cefr";
+import { certificateMaxForSubject, tScoreToCertificate } from "@/lib/certificate-scale";
 import { gradeLevelFromScore } from "@/lib/mock-grade-level";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { isInternalCall } from "@/lib/internal-auth";
@@ -203,12 +204,18 @@ export async function POST(req: NextRequest) {
             ? (earned: number, max: number) => (max > 0 ? writingPointsToScore(Math.max(0, Math.min(max, earned))) : 0)
             : (earned: number, max: number) => (max > 0 ? Math.round(Math.max(0, Math.min(max, earned)) / max * MOCK_SCALE_MAX) : 0);
 
-    const levelScores = resultIds.map((_, n) => {
+    // T-балл (0-75) — промежуточная величина модели Раша. От НЕЁ считается
+    // буква A+..C: пороги 70/65/60/55/50/46 в документе заданы на T-шкале.
+    const tScores = resultIds.map((_, n) => {
         const sections: number[] = [];
         if (hasObjectiveSection) sections.push(raschThetaToT(personAbility[n], abilityMean, abilityStdev));
         if (hasEssaySection) sections.push(essayToScore75(essayEarnedByPerson[n], essayMaxPoints));
         return combineSectionScores(sections);
     });
+
+    // А ученику показывается балл сертификата — 100 у общеобразовательных,
+    // 75 у иностранных языков. См. src/lib/certificate-scale.ts.
+    const certificateMax = certificateMaxForSubject(subjectId);
 
     const updateResults = await Promise.all(
         resultIds.map((id, n) => admin.from("mock_results").update({
@@ -216,8 +223,9 @@ export async function POST(req: NextRequest) {
             // у теста из одного сочинения способности по Рашу не существует,
             // и ноль здесь читался бы как «средняя способность».
             rasch_score: hasObjectiveSection ? personAbility[n] : null,
-            level_score: levelScores[n],
-            grade_level: levelScores[n] === null ? null : gradeLevelFromScore(levelScores[n]),
+            level_score: tScores[n] === null ? null : tScoreToCertificate(tScores[n], subjectId),
+            level_score_max: certificateMax,
+            grade_level: tScores[n] === null ? null : gradeLevelFromScore(tScores[n]),
         }).eq("id", id))
     );
     const failedCount = updateResults.filter((r) => r.error).length;

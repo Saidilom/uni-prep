@@ -2,6 +2,7 @@ import supabase from "./supabase/client";
 import { User, Class, MockTest } from "./firestore-schema";
 import { pageCache } from "./page-cache";
 import { fetchAllRows } from "./supabase/fetch-all";
+import { formatCorrectAnswer, formatStudentAnswer } from "./answer-display";
 
 // Same reasoning as registan-utils.ts's STUDENT_CACHE_TTL — short enough
 // that a just-created class/assignment shows up on its own, long enough that
@@ -879,8 +880,11 @@ export const fetchMockAnswerDetails = async (resultId: string): Promise<MockAnsw
     return rows.map((d) => ({
         id: d.id as string,
         questionText: d.question_text as string,
-        selectedAnswer: d.selected_answer as string,
-        correctAnswer: d.correct_answer as string,
+        // В базе оба поля лежат в служебном виде: правильный ответ — JSON
+        // ключа проверки ({"values": ["a"], "accepted": []}), а неотвеченный
+        // вопрос — строка "null". Учитель видел это дословно.
+        selectedAnswer: formatStudentAnswer(d.selected_answer as string | null),
+        correctAnswer: formatCorrectAnswer(d.correct_answer as string | null),
         isCorrect: d.is_correct as boolean,
         pointsEarned: d.points_earned as number,
         maxPoints: (d.max_points as number) ?? 1,

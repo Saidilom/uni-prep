@@ -292,7 +292,10 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
                                                             <span className={d.isCorrect ? "text-emerald-600" : "text-red-600"}>
                                                                 {t("studentAnswerLabel")} <strong>{d.selectedAnswer || "—"}</strong>
                                                             </span>
-                                                            {!d.isCorrect && (
+                                                            {/* У эссе правильного ответа не существует — его оценивают
+                                                                по критерию, и correctAnswer приходит пустым. Без этой
+                                                                проверки подпись «Правильный:» висела бы ни над чем. */}
+                                                            {!d.isCorrect && d.correctAnswer !== "" && (
                                                                 <span className="text-muted-foreground">
                                                                     {t("correctAnswerLabel")} <strong className="text-foreground">{d.correctAnswer}</strong>
                                                                 </span>

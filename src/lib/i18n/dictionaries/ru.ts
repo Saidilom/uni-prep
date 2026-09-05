@@ -501,6 +501,7 @@ const ru = {
     manualReviewNeeded: "Требуется ручная проверка",
     ofPointsSuffix: "из {max} баллов",
     commentPlaceholder: "Комментарий ученику",
+    pointsOutOfRange: "Максимум {max} баллов за это задание",
     saving: "Сохранение…",
     save: "Сохранить",
     aiGradedLabel: "Оценено ИИ: {earned}/{max}",

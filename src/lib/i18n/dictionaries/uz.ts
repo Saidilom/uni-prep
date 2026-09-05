@@ -503,6 +503,7 @@ const uz: typeof ru = {
     manualReviewNeeded: "Qo'lda tekshirish talab qilinadi",
     ofPointsSuffix: "{max} balldan",
     commentPlaceholder: "O'quvchiga izoh",
+    pointsOutOfRange: "Bu topshiriq uchun ko'pi bilan {max} ball",
     saving: "Saqlanmoqda…",
     save: "Saqlash",
     aiGradedLabel: "AI baholadi: {earned}/{max}",

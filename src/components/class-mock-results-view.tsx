@@ -84,6 +84,14 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
     };
 
     const reviewResponse = async (resultId: string, detail: MockAnswerDetail) => {
+        // База откажет сама (review_mock_response, «Points out of range»), но
+        // это английская строка из Postgres, и по ней не понять, какой балл
+        // вообще допустим. Проверяем здесь, чтобы сразу назвать максимум.
+        const points = reviewPoints[detail.id] ?? detail.pointsEarned;
+        if (points < 0 || points > detail.maxPoints) {
+            toast.error(t("pointsOutOfRange").replace("{max}", String(detail.maxPoints)));
+            return;
+        }
         setReviewingId(detail.id);
         try {
             const response = await fetch(`/api/mock-responses/${detail.id}/review`, {
@@ -96,10 +104,15 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
                 // the two fields (e.g. agreed with the score, just added a
                 // comment) and left the other input showing its existing
                 // value without ever firing its own onChange.
-                body: JSON.stringify({ points: reviewPoints[detail.id] ?? detail.pointsEarned, feedback: reviewFeedback[detail.id] ?? detail.reviewFeedback ?? "" }),
+                body: JSON.stringify({ points, feedback: reviewFeedback[detail.id] ?? detail.reviewFeedback ?? "" }),
             });
             const body = await response.json();
-            if (!response.ok) throw new Error(body.error || t("reviewError"));
+            if (!response.ok) {
+                const message = /out of range/i.test(String(body.error))
+                    ? t("pointsOutOfRange").replace("{max}", String(detail.maxPoints))
+                    : body.error || t("reviewError");
+                throw new Error(message);
+            }
             const refreshed = await fetchMockAnswerDetails(resultId);
             setDetails((current) => ({ ...current, [resultId]: refreshed }));
             setSummary(await fetchClassMockResults(classId ?? null, mockTestId));
@@ -289,10 +302,11 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
                                                         </div>
                                                         {d.reviewStatus === "pending" && (
                                                             <div className="mt-3 rounded-xl border border-violet-200 bg-violet-50 p-3 dark:bg-violet-950/25">
+                                                                {/* Текст рубрики убран намеренно: он занимал полэкрана и
+                                                                    мешал быстро проставлять баллы. Из промпта ИИ
+                                                                    (buildBatchEssayGradingPrompt) он НЕ убран — без критериев
+                                                                    автопроверка эссе оценивает наугад. */}
                                                                 <p className="text-xs font-bold text-violet-800">{t("manualReviewNeeded")}</p>
-                                                                {d.rubricNote && (
-                                                                    <p className="mt-1.5 text-xs leading-relaxed text-violet-900/80 dark:text-violet-200/80">{d.rubricNote}</p>
-                                                                )}
                                                                 <div className="mt-2 flex flex-wrap items-center gap-2">
                                                                     <input type="number" min={0} max={d.maxPoints} step={0.1} value={reviewPoints[d.id] ?? 0} onChange={(event) => setReviewPoints((current) => ({ ...current, [d.id]: Number(event.target.value) }))} className="w-20 rounded-lg border border-violet-200 bg-background px-3 py-2 text-sm" />
                                                                     <span className="text-xs text-muted-foreground">{t("ofPointsSuffix").replace("{max}", String(d.maxPoints))}</span>

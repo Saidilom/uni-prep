@@ -717,10 +717,6 @@ export type MockAnswerDetail = {
     maxPoints: number;
     reviewStatus: "auto_graded" | "pending" | "reviewed" | "ai_graded";
     reviewFeedback?: string | null;
-    // Official grading-rubric summary for essay/writing questions (English/
-    // Russian/Uzbek) — set at import time (see mock-import-prompt.ts), shown
-    // next to the manual-scoring input so the teacher isn't grading blind.
-    rubricNote?: string | null;
 };
 
 export const fetchMockAnswerDetails = async (resultId: string): Promise<MockAnswerDetail[]> => {
@@ -730,16 +726,11 @@ export const fetchMockAnswerDetails = async (resultId: string): Promise<MockAnsw
         .eq("result_id", resultId);
     const rows = data || [];
 
-    const questionIds = Array.from(new Set(rows.map((d) => d.question_id as string).filter(Boolean)));
-    const rubricByQuestion = new Map<string, string | null>();
-    if (questionIds.length > 0) {
-        const { data: questions } = await supabase.from("mock_questions").select("id, content").in("id", questionIds);
-        (questions || []).forEach((q) => {
-            const content = q.content as { rubricNote?: string | null } | null;
-            rubricByQuestion.set(q.id as string, content?.rubricNote ?? null);
-        });
-    }
-
+    // Текст рубрики здесь больше не грузится: он занимал полэкрана над полем
+    // балла и мешал проставлять оценки быстро, поэтому убран с экрана. Это
+    // экономит ещё и запрос к mock_questions на каждое раскрытие ученика.
+    // Автопроверке эссе рубрика по-прежнему нужна — она берёт её сама, своим
+    // запросом в /api/mock-tests/[id]/grade-essays.
     return rows.map((d) => ({
         id: d.id as string,
         questionText: d.question_text as string,
@@ -750,7 +741,6 @@ export const fetchMockAnswerDetails = async (resultId: string): Promise<MockAnsw
         maxPoints: (d.max_points as number) ?? 1,
         reviewStatus: d.review_status as MockAnswerDetail["reviewStatus"],
         reviewFeedback: d.review_feedback as string | null,
-        rubricNote: rubricByQuestion.get(d.question_id as string) ?? null,
     }));
 };
 

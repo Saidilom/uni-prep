@@ -181,6 +181,10 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
   // be serialized, so a reload before "Распознать тест" still needs re-attaching.
   const draftStorageKey = `mock-import-draft:${mode}`;
   const skipNextPersist = useRef(true);
+  // Распознавание PDF занимает минуты, и до этого «Отмена» была заблокирована
+  // на всё это время — выбрав не тот файл, оставалось только досидеть до конца.
+  // Контроллер обрывает и подготовку загрузки, и сам вызов распознавания.
+  const importAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     try {
@@ -281,11 +285,12 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
     setPendingAnswers(file);
   };
 
-  const uploadStoredFile = async (file: File, importId: string | undefined, kind: "test" | "answers") => {
+  const uploadStoredFile = async (file: File, importId: string | undefined, kind: "test" | "answers", signal?: AbortSignal) => {
     const uploadInit = await fetch("/api/mock-tests/import/upload-url", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ filename: file.name, size: file.size, importId, kind }),
+      signal,
     });
     const uploadData = await uploadInit.json();
     if (!uploadInit.ok) throw new Error(uploadData.error || t("prepareUploadFailed"));
@@ -293,6 +298,11 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
       .from("test-imports")
       .uploadToSignedUrl(uploadData.path, uploadData.token, file, { contentType: "application/pdf" });
     if (directUploadError) throw directUploadError;
+    // uploadToSignedUrl в supabase-js не принимает AbortSignal, поэтому саму
+    // заливку не прервать — но дальше по цепочке идти уже незачем. Проверяем
+    // руками, а не через signal.throwIfAborted(): его нет в браузерах старше
+    // 2022 года, а тихо упасть здесь хуже, чем лишняя строка.
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
     return { importId: uploadData.importId as string, path: uploadData.path as string, filename: file.name, size: file.size };
   };
 
@@ -300,17 +310,21 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
     if (pendingTests.length === 0) return;
     setImporting(true);
     setPublishIssues([]);
+    const controller = new AbortController();
+    importAbortRef.current = controller;
+    const { signal } = controller;
     try {
-      const firstTestFile = await uploadStoredFile(pendingTests[0], undefined, "test");
+      const firstTestFile = await uploadStoredFile(pendingTests[0], undefined, "test", signal);
       const restTestFiles = await Promise.all(
-        pendingTests.slice(1).map((file) => uploadStoredFile(file, firstTestFile.importId, "test")),
+        pendingTests.slice(1).map((file) => uploadStoredFile(file, firstTestFile.importId, "test", signal)),
       );
       const testFiles = [firstTestFile, ...restTestFiles];
-      const answersFile = pendingAnswers ? await uploadStoredFile(pendingAnswers, firstTestFile.importId, "answers") : undefined;
+      const answersFile = pendingAnswers ? await uploadStoredFile(pendingAnswers, firstTestFile.importId, "answers", signal) : undefined;
       const response = await fetch("/api/mock-tests/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ importId: firstTestFile.importId, testFiles, answersFile }),
+        signal,
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || t("importErrorGeneric"));
@@ -320,12 +334,26 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
       setPendingAnswers(null);
       toast.success(t("pdfRecognizedToast"), { description: t("reviewBeforePublishToast") });
     } catch (error) {
+      // Отмена — не сбой: сообщение о ней уже показала cancelImport, и второй
+      // тост с красной ошибкой только сбивал бы с толку.
+      if (signal.aborted || (error instanceof DOMException && error.name === "AbortError")) return;
       toast.error(t("geminiFailedToast"), { description: error instanceof Error ? error.message : String(error) });
     } finally {
+      if (importAbortRef.current === controller) importAbortRef.current = null;
       setImporting(false);
       if (inputRef.current) inputRef.current.value = "";
       if (answersInputRef.current) answersInputRef.current.value = "";
     }
+  };
+
+  // Файлы после отмены НЕ сбрасываются: отменяют обычно потому, что заметили
+  // не тот файл, и заставлять выбирать оба заново — ровно та работа, которую
+  // человек и пытался прервать. Достаточно удалить лишний и запустить снова.
+  const cancelImport = () => {
+    importAbortRef.current?.abort();
+    importAbortRef.current = null;
+    setImporting(false);
+    toast.info(t("importCancelledToast"));
   };
 
   const cancelPending = () => {
@@ -982,9 +1010,27 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
               {importing ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
               {importing ? t("geminiRecognizing") : t("recognizeTest")}
             </button>
-            <button onClick={cancelPending} disabled={importing} className="rounded-xl px-4 py-3 text-sm font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50">{t("cancel")}</button>
+            {/* Во время распознавания кнопка не просто активна, но и выглядит
+                активной: раньше она была disabled и читалась как замороженная,
+                хотя прервать бесполезное ожидание — самое нужное действие
+                именно в этот момент. */}
+            <button
+              onClick={importing ? cancelImport : cancelPending}
+              className={`rounded-xl px-4 py-3 text-sm font-semibold transition-colors ${
+                importing
+                  ? "border border-red-200 text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:hover:bg-red-950/30"
+                  : "text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              {importing ? t("cancelImport") : t("cancel")}
+            </button>
           </div>
-          {importing && <p className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-primary"><Loader2 size={16} className="animate-spin" /> {t("analyzingPagesNotice")}</p>}
+          {importing && (
+            <p className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-primary">
+              <Loader2 size={16} className="animate-spin" /> {t("analyzingPagesNotice")}
+              <span className="font-normal text-muted-foreground">{t("canCancelAnytime")}</span>
+            </p>
+          )}
         </div>
       )}
 

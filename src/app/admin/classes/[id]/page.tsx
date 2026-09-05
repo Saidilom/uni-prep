@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Users, ClipboardList, ChevronDown } from "lucide-react";
+import { ArrowLeft, ClipboardList } from "lucide-react";
 import {
     fetchClassById,
     fetchClassMembers,
@@ -18,8 +18,7 @@ import {
 } from "@/lib/class-utils";
 import { Class, User } from "@/lib/firestore-schema";
 import { accuracyColor } from "@/lib/status-colors";
-import { MOCK_SCALE_MAX } from "@/lib/rasch";
-import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
+import ClassStudentsPanel from "@/components/class-students-panel";
 import { pluralizeRu } from "@/lib/pluralize-ru";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
@@ -36,7 +35,6 @@ export default function AdminClassDetailPage() {
     const [assignments, setAssignments] = useState<ClassMockAssignment[]>([]);
     const [studentAssignments, setStudentAssignments] = useState<ClassStudentMockAssignment[]>([]);
     const [mockScores, setMockScores] = useState<Map<string, StudentMockScore[]>>(new Map());
-    const [expandedStudent, setExpandedStudent] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -103,86 +101,22 @@ export default function AdminClassDetailPage() {
 
             <section>
                 <h2 className="mb-5 text-xl font-bold tracking-tight text-foreground sm:text-2xl">{t("studentsSection")}</h2>
-                {students.length === 0 ? (
-                    <div className="rounded-2xl border border-border bg-muted/50 py-10 text-center dark:bg-muted/30">
-                        <Users size={24} className="mx-auto mb-2 text-muted-foreground/50" />
-                        <p className="font-medium text-muted-foreground">{t("noStudentsInGroup")}</p>
-                    </div>
-                ) : (
-                    <div className="space-y-3">
-                        {students.map((s) => {
-                            const scores = mockScores.get(s.student.id) || [];
-                            const isOpen = expandedStudent === s.student.id;
-                            return (
-                            <div key={s.student.id} className="rounded-2xl border border-border bg-card">
-                                <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-                                    <div className="flex min-w-0 items-center gap-3">
-                                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border bg-muted font-bold text-foreground">
-                                            {s.student.name[0]?.toUpperCase() || "?"}
-                                        </span>
-                                        <div className="min-w-0">
-                                            <p className="truncate text-sm font-semibold text-foreground">{s.student.name} {s.student.surname || ""}</p>
-                                            <p className="font-mono text-xs text-muted-foreground">{s.student.shortId}</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex shrink-0 items-center gap-3">
-                                        <span className="text-xs text-muted-foreground">
-                                            {s.attemptCount > 0 ? `${s.attemptCount} ${locale === "ru" ? pluralizeRu(s.attemptCount, ["попытка", "попытки", "попыток"]) : t("attemptWord")}` : t("neverTakenTests")}
-                                        </span>
-                                        {/* Средний по ученику — в процентах; балл за отдельный
-                                            мок в раскрытии ниже — по шкале Раша (design/FIX.md). */}
-                                        <span className={`rounded-xl px-3 py-1.5 text-sm font-extrabold tabular-nums ${accuracyColor(s.avgAccuracy)}`}>
-                                            {s.avgAccuracy !== null ? `${s.avgAccuracy}%` : "—"}
-                                        </span>
-                                        <button
-                                            onClick={() => setExpandedStudent(isOpen ? null : s.student.id)}
-                                            disabled={scores.length === 0}
-                                            className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted disabled:opacity-40"
-                                        >
-                                            {t("mockScoresAction").replace("{count}", String(scores.length))}
-                                            <ChevronDown size={13} className={`transition-transform ${isOpen ? "rotate-180" : ""}`} />
-                                        </button>
-                                    </div>
-                                </div>
-                                {isOpen && scores.length > 0 && (
-                                    <div className="space-y-2 border-t border-border p-4">
-                                        {scores.map((score) => (
-                                            <div key={score.mockTestId} className="flex items-center justify-between gap-3 rounded-xl bg-muted/50 px-3 py-2">
-                                                <div className="min-w-0">
-                                                    <p className="truncate text-sm font-medium text-foreground">{score.title}</p>
-                                                    <p className="text-[11px] text-muted-foreground">
-                                                        {new Date(score.completedAt).toLocaleDateString(locale === "ru" ? "ru-RU" : "uz-UZ", { day: "numeric", month: "long", year: "numeric" })}
-                                                    </p>
-                                                </div>
-                                                <div className="flex shrink-0 items-center gap-2">
-                                                    {score.gradeLevel && (
-                                                        <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-300">
-                                                            {gradeLevelDisplay(score.gradeLevel as GradeLevel, locale)}
-                                                        </span>
-                                                    )}
-                                                    {!score.revealed ? (
-                                                        <span className="rounded-lg border border-border bg-background px-2 py-1 text-[10px] font-semibold text-muted-foreground">
-                                                            {t("resultsPendingLabel")}
-                                                        </span>
-                                                    ) : score.levelScore != null ? (
-                                                        <span className={`rounded-lg px-2.5 py-1 text-xs font-extrabold tabular-nums ${accuracyColor(Math.round((score.levelScore / MOCK_SCALE_MAX) * 100))}`}>
-                                                            {score.levelScore}/{MOCK_SCALE_MAX}
-                                                        </span>
-                                                    ) : (
-                                                        <span className="rounded-lg border border-border bg-background px-2 py-1 text-[10px] font-semibold text-muted-foreground">
-                                                            {t("levelPendingShort")}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                            );
-                        })}
-                    </div>
-                )}
+                <ClassStudentsPanel
+                    students={students}
+                    mockScores={mockScores}
+                    assignments={assignments}
+                    labels={{
+                        attemptWord: t("attemptWord"),
+                        neverTakenTests: t("neverTakenTests"),
+                        mockScoresAction: t("mockScoresAction"),
+                        resultsPendingLabel: t("resultsPendingLabel"),
+                        levelPendingShort: t("levelPendingShort"),
+                        filterAllMocks: t("filterAllMocks"),
+                        filterLabel: t("filterLabel"),
+                        notTakenThisMock: t("notTakenThisMock"),
+                        mockNumberPrefix: t("mockNumberPrefix"),
+                    }}
+                />
             </section>
 
             <section>

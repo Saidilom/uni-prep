@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Search, UserPlus, UserMinus, Trash2, Plus, ClipboardList, ClipboardCheck, X, ChevronDown, Lock, LockOpen } from "lucide-react";
+import { ArrowLeft, Search, UserPlus, UserMinus, Trash2, Plus, ClipboardList, ClipboardCheck, X, Lock, LockOpen } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useToast } from "@/hooks/useToast";
 import {
@@ -34,10 +34,8 @@ import {
 } from "@/lib/class-utils";
 import { Class, User, MockTest } from "@/lib/firestore-schema";
 import { pageCache } from "@/lib/page-cache";
+import ClassStudentsPanel from "@/components/class-students-panel";
 import { CORE_SUBJECTS, CoreSubject } from "@/lib/mock-import-schema";
-import { accuracyColor } from "@/lib/status-colors";
-import { MOCK_SCALE_MAX } from "@/lib/rasch";
-import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 export default function TeacherClassDetail() {
@@ -56,7 +54,6 @@ export default function TeacherClassDetail() {
     const [studentAssignments, setStudentAssignments] = useState<ClassStudentMockAssignment[]>([]);
     const [overview, setOverview] = useState<Map<string, ClassStudentOverview>>(new Map());
     const [mockScores, setMockScores] = useState<Map<string, StudentMockScore[]>>(new Map());
-    const [expandedStudent, setExpandedStudent] = useState<string | null>(null);
     const [togglingClose, setTogglingClose] = useState<string | null>(null);
     const [savingSubject, setSavingSubject] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -385,99 +382,42 @@ export default function TeacherClassDetail() {
                         )}
                     </div>
                 ) : null}
-
-                {members.length === 0 ? (
-                    <div className="rounded-2xl border border-border bg-muted/50 py-10 text-center dark:bg-muted/30">
-                        <p className="font-medium text-muted-foreground">{t("noStudentsInGroup")}</p>
-                    </div>
-                ) : (
-                    <div className="space-y-3">
-                        {members.map((m) => {
-                            const stats = overview.get(m.id);
-                            const scores = mockScores.get(m.id) || [];
-                            const isOpen = expandedStudent === m.id;
-                            return (
-                            <div key={m.id} className="rounded-2xl border border-border bg-card">
-                                <div className="flex items-center justify-between gap-3 p-4">
-                                    <div className="flex items-center gap-3 min-w-0">
-                                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border bg-muted font-bold text-foreground">
-                                            {m.name[0]?.toUpperCase() || "?"}
-                                        </div>
-                                        <div className="min-w-0">
-                                            <p className="truncate text-sm font-semibold text-foreground">{m.name} {m.surname || ""}</p>
-                                            <p className="font-mono text-xs text-muted-foreground">{m.shortId}</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex shrink-0 items-center gap-2">
-                                        {/* Средний по всем мокам ученика — в процентах: разные
-                                            тесты, разный максимум. Балл за отдельный мок ниже —
-                                            уже по шкале Раша (design/FIX.md). */}
-                                        {stats?.avgAccuracy != null && (
-                                            <span className={`hidden rounded-xl px-3 py-1.5 text-xs font-extrabold tabular-nums sm:inline-flex ${accuracyColor(stats.avgAccuracy)}`}>
-                                                {stats.avgAccuracy}%
-                                            </span>
-                                        )}
-                                        <button
-                                            onClick={() => setExpandedStudent(isOpen ? null : m.id)}
-                                            disabled={scores.length === 0}
-                                            className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted disabled:opacity-40"
-                                        >
-                                            {t("mockScoresAction").replace("{count}", String(scores.length))}
-                                            <ChevronDown size={13} className={`transition-transform ${isOpen ? "rotate-180" : ""}`} />
-                                        </button>
-                                        <button
-                                            onClick={() => openPlacementPicker(m)}
-                                            className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted"
-                                        >
-                                            <ClipboardCheck size={13} /> {t("schoolLabel")}
-                                        </button>
-                                        <button
-                                            onClick={() => handleRemove(m)}
-                                            className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
-                                        >
-                                            <UserMinus size={13} /> {t("remove")}
-                                        </button>
-                                    </div>
-                                </div>
-                                {isOpen && scores.length > 0 && (
-                                    <div className="space-y-2 border-t border-border p-4">
-                                        {scores.map((score) => (
-                                            <div key={score.mockTestId} className="flex items-center justify-between gap-3 rounded-xl bg-muted/50 px-3 py-2">
-                                                <div className="min-w-0">
-                                                    <p className="truncate text-sm font-medium text-foreground">{score.title}</p>
-                                                    <p className="text-[11px] text-muted-foreground">
-                                                        {new Date(score.completedAt).toLocaleDateString(locale === "ru" ? "ru-RU" : "uz-UZ", { day: "numeric", month: "long", year: "numeric" })}
-                                                    </p>
-                                                </div>
-                                                <div className="flex shrink-0 items-center gap-2">
-                                                    {score.gradeLevel && (
-                                                        <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-300">
-                                                            {gradeLevelDisplay(score.gradeLevel as GradeLevel, locale)}
-                                                        </span>
-                                                    )}
-                                                    {!score.revealed ? (
-                                                        <span className="rounded-lg border border-border bg-background px-2 py-1 text-[10px] font-semibold text-muted-foreground">
-                                                            {t("resultsPendingLabel")}
-                                                        </span>
-                                                    ) : score.levelScore != null ? (
-                                                        <span className={`rounded-lg px-2.5 py-1 text-xs font-extrabold tabular-nums ${accuracyColor(Math.round((score.levelScore / MOCK_SCALE_MAX) * 100))}`}>
-                                                            {score.levelScore}/{MOCK_SCALE_MAX}
-                                                        </span>
-                                                    ) : (
-                                                        <span className="rounded-lg border border-border bg-background px-2 py-1 text-[10px] font-semibold text-muted-foreground">
-                                                            {t("levelPendingShort")}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                            );
-                        })}
-                    </div>
-                )}
+                <ClassStudentsPanel
+                    students={members.map((m) => overview.get(m.id) ?? { student: m, attemptCount: 0, avgAccuracy: null, bestAccuracy: null })}
+                    mockScores={mockScores}
+                    assignments={assignments}
+                    labels={{
+                        attemptWord: t("attemptWord"),
+                        neverTakenTests: t("neverTakenTests"),
+                        mockScoresAction: t("mockScoresAction"),
+                        resultsPendingLabel: t("resultsPendingLabel"),
+                        levelPendingShort: t("levelPendingShort"),
+                        filterAllMocks: t("filterAllMocks"),
+                        filterLabel: t("filterLabel"),
+                        notTakenThisMock: t("notTakenThisMock"),
+                        mockNumberPrefix: t("mockNumberPrefix"),
+                    }}
+                    renderActions={(studentId) => {
+                        const member = members.find((m) => m.id === studentId);
+                        if (!member) return null;
+                        return (
+                            <>
+                                <button
+                                    onClick={() => openPlacementPicker(member)}
+                                    className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted"
+                                >
+                                    <ClipboardCheck size={13} /> {t("schoolLabel")}
+                                </button>
+                                <button
+                                    onClick={() => handleRemove(member)}
+                                    className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
+                                >
+                                    <UserMinus size={13} /> {t("remove")}
+                                </button>
+                            </>
+                        );
+                    }}
+                />
             </section>
 
             {/* Assigned mocks */}

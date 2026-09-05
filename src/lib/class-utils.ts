@@ -146,6 +146,10 @@ export type ClassMockAssignment = {
     // оставаться открытым для остальных групп — учитель закрывает свою, когда
     // все его ученики сдали.
     closedAt: string | null;
+    // Порядковый номер теста внутри его предмета (миграция 076). Нужен потому,
+    // что одноимённых тестов бывает несколько — по названию их не различить.
+    seq: number | null;
+    createdAt: string | null;
 };
 
 export const fetchAssignableMockTests = async (teacherId: string): Promise<MockTest[]> => {
@@ -161,6 +165,16 @@ export const fetchAssignableMockTests = async (teacherId: string): Promise<MockT
     }, TEACHER_CACHE_TTL);
 };
 
+// Номера считает база (get_mock_numbers, миграция 076), а не клиент: у учителя
+// RLS показывает не все тесты предмета, и посчитанный на клиенте номер отличался
+// бы от админского для одного и того же теста.
+export const fetchMockNumbers = async (mockTestIds: string[]): Promise<Map<string, number>> => {
+    if (mockTestIds.length === 0) return new Map();
+    const { data, error } = await supabase.rpc("get_mock_numbers", { p_ids: mockTestIds });
+    if (error) return new Map();
+    return new Map(((data || []) as Array<Record<string, unknown>>).map((row) => [row.mock_test_id as string, Number(row.seq)]));
+};
+
 export const fetchClassMockAssignments = async (classId: string): Promise<ClassMockAssignment[]> => {
     return pageCache.fetch(`classMockAssignments:${classId}`, async () => {
         const { data: assignments } = await supabase
@@ -170,9 +184,10 @@ export const fetchClassMockAssignments = async (classId: string): Promise<ClassM
         if (!assignments || assignments.length === 0) return [];
 
         const mockTestIds = assignments.map((a) => a.mock_test_id as string);
-        const [{ data: tests }, { data: members }] = await Promise.all([
-            supabase.from("mock_tests").select("id, title, duration_minutes").in("id", mockTestIds),
+        const [{ data: tests }, { data: members }, numbers] = await Promise.all([
+            supabase.from("mock_tests").select("id, title, duration_minutes, created_at").in("id", mockTestIds),
             supabase.from("class_members").select("student_id").eq("class_id", classId),
+            fetchMockNumbers(mockTestIds),
         ]);
         const studentIds = (members || []).map((m) => m.student_id as string);
         const testMap = new Map((tests || []).map((t) => [t.id, t]));
@@ -196,6 +211,8 @@ export const fetchClassMockAssignments = async (classId: string): Promise<ClassM
                 durationMinutes: (test?.duration_minutes as number) || 0,
                 completedCount,
                 closedAt: (a.closed_at as string | null) ?? null,
+                seq: numbers.get(a.mock_test_id as string) ?? null,
+                createdAt: (test?.created_at as string | null) ?? null,
             });
         }
         return results;
@@ -777,6 +794,9 @@ export const fetchClassStudentsOverview = async (classId: string): Promise<Class
 export type StudentMockScore = {
     mockTestId: string;
     title: string;
+    // Тот же номер, что в списке назначений — чтобы «Тарих №2» у ученика и в
+    // фильтре группы означали один и тот же тест.
+    seq: number | null;
     // Балл по модели Раша, 0-75 — то же число, что видит сам ученик. null,
     // пока сдавших слишком мало для стандартизации.
     levelScore: number | null;
@@ -806,12 +826,17 @@ export const fetchClassStudentMockScores = async (classId: string): Promise<Map<
                 .select("user_id, mock_test_id, mock_test_title, level_score, grade_level, completed_at, revealed_at")
                 .in("user_id", studentIds).order("id").range(from, to));
 
+        const numbers = await fetchMockNumbers(
+            Array.from(new Set((results || []).map((r) => r.mock_test_id)))
+        );
+
         const byStudent = new Map<string, StudentMockScore[]>();
         (results || []).forEach((r) => {
             const list = byStudent.get(r.user_id) || [];
             list.push({
                 mockTestId: r.mock_test_id,
                 title: r.mock_test_title,
+                seq: numbers.get(r.mock_test_id) ?? null,
                 levelScore: r.level_score !== null ? Number(r.level_score) : null,
                 gradeLevel: r.grade_level,
                 completedAt: r.completed_at,

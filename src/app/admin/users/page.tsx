@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { Phone, Mail, Calendar, UserCheck, IdCard } from "lucide-react";
 import { User as UserType } from "@/lib/firestore-schema";
 import supabase from "@/lib/supabase/client";
-import { fetchBranches, Branch } from "@/lib/class-utils";
+import { fetchBranches, setUserRole, Branch } from "@/lib/class-utils";
+import { useToast } from "@/hooks/useToast";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 type AdminUser = UserType & { registeredVia?: string; shortid?: string; branch_id?: string | null };
@@ -35,6 +36,7 @@ export default function AdminUsersPage() {
     const [loading, setLoading] = useState(true);
     const { locale } = useLocale();
     const t = useTranslations("adminUsers");
+    const toast = useToast();
 
     const load = async () => {
         setLoading(true);
@@ -49,23 +51,42 @@ export default function AdminUsersPage() {
 
     useEffect(() => { load(); }, []);
 
+    // Все три действия ниже раньше выбрасывали error молча: список
+    // перерисовывался старым значением, и отличить отказ от успеха было
+    // невозможно — ни пользователю, ни при разборе жалобы.
     const toggleRegistan = async (u: AdminUser) => {
-        await supabase.from("users").update({ isRegistanStudent: !u.isRegistanStudent }).eq("id", u.id);
+        const { error } = await supabase.from("users").update({ isRegistanStudent: !u.isRegistanStudent }).eq("id", u.id);
+        if (error) {
+            toast.error(t("registanSaveFailed"), { description: error.message });
+            return;
+        }
         load();
     };
 
     const setRole = async (u: AdminUser, role: AssignableRole) => {
         if (role === u.role) return;
-        if (role === "admin" && !confirm(t("confirmMakeAdmin").replace("{name}", `${u.name} ${u.surname || ""}`.trim()))) return;
-        if (role === "staff" && !confirm(t("confirmMakeStaff").replace("{name}", `${u.name} ${u.surname || ""}`.trim()))) return;
-        await supabase.from("users").update({ role }).eq("id", u.id);
-        load();
+        const fullName = `${u.name} ${u.surname || ""}`.trim();
+        if (role === "admin" && !confirm(t("confirmMakeAdmin").replace("{name}", fullName))) return;
+        if (role === "staff" && !confirm(t("confirmMakeStaff").replace("{name}", fullName))) return;
+        try {
+            // Через RPC, а не прямым UPDATE: у последнего отказ выглядел как
+            // успех (см. setUserRole и миграцию 079).
+            await setUserRole(u.id, role);
+            toast.success(t("roleSavedToast").replace("{name}", fullName));
+            load();
+        } catch (error) {
+            toast.error(t("roleSaveFailed"), { description: error instanceof Error ? error.message : String(error) });
+        }
     };
 
     // Филиал живёт отдельно от роли: он нужен и админу филиала (что он видит),
     // и учителю (какой филиал унаследуют его группы).
     const setBranch = async (u: AdminUser, branchId: string) => {
-        await supabase.from("users").update({ branch_id: branchId || null }).eq("id", u.id);
+        const { error } = await supabase.from("users").update({ branch_id: branchId || null }).eq("id", u.id);
+        if (error) {
+            toast.error(t("branchSaveFailed"), { description: error.message });
+            return;
+        }
         load();
     };
 

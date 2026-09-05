@@ -89,6 +89,24 @@ export const updateClassSubject = async (classId: string, subjectId: string): Pr
     pageCache.invalidate("adminClassesOverview");
 };
 
+// Смена роли идёт через RPC, а не прямым UPDATE по таблице (миграция 079).
+//
+// У прямого UPDATE через PostgREST отказ неотличим от успеха: не пропустит
+// RLS — затронуто ноль строк и придёт 204 без ошибки; вернёт триггер
+// protect_user_privileged_fields роль обратно — тоже тишина. Именно так это и
+// выглядело у владельца: роль «не меняется», причины нет.
+//
+// RPC либо делает работу, либо бросает исключение. Сверка возвращённой роли —
+// вторая линия: если её всё-таки подменят, мы скажем об этом вслух, а не
+// отрисуем мнимый успех.
+export const setUserRole = async (userId: string, role: string): Promise<void> => {
+    const { data, error } = await supabase.rpc("set_user_role", { p_user_id: userId, p_role: role });
+    if (error) throw error;
+    if (data !== role) {
+        throw new Error(`Роль осталась «${data}» вместо «${role}»`);
+    }
+};
+
 export const deleteClass = async (classId: string): Promise<void> => {
     const { error } = await supabase.from("classes").delete().eq("id", classId);
     if (error) throw error;

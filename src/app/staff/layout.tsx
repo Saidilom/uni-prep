@@ -13,7 +13,6 @@ import LocaleSwitcher from "@/components/locale-switcher";
 import { logOut } from "@/lib/auth-utils";
 import {
     LogOut,
-    UserPlus,
     GraduationCap,
     ClipboardCheck,
     PanelLeftClose,
@@ -50,7 +49,6 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
     }
 
     const menuItems = [
-        { name: t("navAssign"), href: "/staff", icon: UserPlus },
         { name: t("navTeachers"), href: "/staff/teachers", icon: GraduationCap },
         { name: t("navPlacementResults"), href: "/staff/placement-results", icon: ClipboardCheck },
     ];

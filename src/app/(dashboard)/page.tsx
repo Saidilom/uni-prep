@@ -8,7 +8,7 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { fetchAvailableMockTests, fetchUserMockAccess, fetchUserClassMockAccess, fetchUserMockResults, fetchHasPlacementResult, userHasMockAccess, MockTest, MockAccess, MockResultRow } from "@/lib/registan-utils";
 import { pageCache } from "@/lib/page-cache";
 import { accuracyColor } from "@/lib/status-colors";
-import { certificatePercent } from "@/lib/certificate-scale";
+import { averageCertificateScore, certificatePercent } from "@/lib/certificate-scale";
 import PaymentModal from "@/components/payment-modal";
 import TeacherHome from "@/components/teacher-home";
 import LandingView from "@/components/landing";
@@ -95,18 +95,13 @@ export default function HomePage() {
         .filter((t) => t.type === "class_only" && classAccessIds.has(t.id) && !completedIds.has(t.id))
         .slice(0, 4);
     const recentResults = results.filter((r) => r.revealed_at).slice(0, 3);
-    // Средний по всем мокам — в процентах (`accuracy`), а не в баллах: разные
-    // тесты имеют разный максимум, и сложить их сырые баллы значит выдать
-    // бессмысленное число. Балл за один конкретный мок при этом показывается по
-    // шкале Раша — см. «Правило отображения баллов» в design/FIX.md.
-    //
     // Считаем только по опубликованным результатам: без этого фильтра главная
     // подмешивала в среднее ещё не раскрытые попытки и расходилась с /results,
     // где фильтр был с самого начала.
     const revealedResults = results.filter((r) => r.revealed_at);
-    const avgScore = revealedResults.length > 0
-        ? Math.round(revealedResults.reduce((sum, r) => sum + r.accuracy, 0) / revealedResults.length)
-        : null;
+    // Средний — по баллу сертификата, приведённому к сотне (§8), а не по
+    // проценту правильных.
+    const avgScore = averageCertificateScore(revealedResults.map((r) => ({ score: r.level_score, max: r.level_score_max })));
 
     if (!user) return <LandingView />;
     if (user.role === "teacher") return <TeacherHome />;
@@ -153,7 +148,7 @@ export default function HomePage() {
                             <Trophy size={20} strokeWidth={1.75} />
                         </div>
                         <p className="text-xs text-white/70">{t("avgScoreLabel")}</p>
-                        <p className="mt-1 text-2xl font-semibold tabular-nums text-white">{avgScore !== null ? `${avgScore}%` : "—"}</p>
+                        <p className="mt-1 text-2xl font-semibold tabular-nums text-white">{avgScore ?? "—"}</p>
                     </div>
                     <div className="p-6">
                         <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-[hsl(var(--brand-blue-ink))]/10 text-[hsl(var(--brand-blue-ink))]">

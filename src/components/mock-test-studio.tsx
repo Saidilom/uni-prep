@@ -34,6 +34,7 @@ import {
   ImportedQuestion,
   ImportedSection,
   MOCK_QUESTION_TYPES,
+  MOCK_SUBJECTS,
   MockImportResponse,
 } from "@/lib/mock-import-schema";
 import { sumPoints } from "@/lib/mock-points";
@@ -151,6 +152,10 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
   // раздаётся группам по предмету (миграция 073), а платность и цена к нему
   // не применяются.
   const [oylikSetId, setOylikSetId] = useState("");
+  // §13: предмет выбирает человек, а не распознавание. От предмета зависит
+  // потолок балла (английский 75, остальные 100), и ошибиться тут дороже,
+  // чем в названии: пересчитать балл задним числом уже нельзя.
+  const [subjectChoice, setSubjectChoice] = useState<string>("");
   const [oylikSets, setOylikSets] = useState<OylikSet[]>([]);
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
@@ -315,6 +320,10 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
 
   const runImport = async () => {
     if (pendingTests.length === 0) return;
+    if (!subjectChoice) {
+      toast.error(t("subjectRequiredPrompt"));
+      return;
+    }
     setImporting(true);
     setPublishIssues([]);
     const controller = new AbortController();
@@ -336,7 +345,9 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || t("importErrorGeneric"));
       setImportResult(body as MockImportResponse);
-      setDraft((body as MockImportResponse).draft);
+      // Выбор человека перекрывает распознанное: Gemini предмет угадывает, а
+      // от него зависит потолок балла.
+      setDraft({ ...(body as MockImportResponse).draft, subject: subjectChoice as ImportedMock["subject"] });
       setPendingTests([]);
       setPendingAnswers(null);
       toast.success(t("pdfRecognizedToast"), { description: t("reviewBeforePublishToast") });
@@ -461,7 +472,8 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
           draft,
           importId: importResult.importId,
           sourcePdfPaths: importResult.sourcePdfPaths,
-          isFree: mode === "admin" ? isFree : false,
+          // Тест комплекта бесплатен всегда (§14) — сервер это перепроверяет.
+          isFree: mode === "admin" ? (isFree || Boolean(oylikSetId)) : false,
           price: mode === "admin" && !isFree && !oylikSetId ? price : 0,
           oylikSetId: mode === "admin" && oylikSetId ? oylikSetId : null,
           startsAt: mode === "admin" && startsAt ? new Date(startsAt).toISOString() : null,
@@ -732,7 +744,17 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
             <p className="mt-2 text-sm text-muted-foreground">{t("reviewSubtitle")}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="rounded-full border border-border bg-muted px-3 py-1.5 font-semibold">{SUBJECT_LABELS[draft.subject]}</span>
+            {/* Селект, а не бейдж: предмет задаёт потолок балла, и молча
+                ошибиться в нём не должно быть возможности. */}
+            <select
+              value={draft.subject}
+              onChange={(event) => setDraft({ ...draft, subject: event.target.value as ImportedMock["subject"] })}
+              className="rounded-full border border-border bg-muted px-3 py-1.5 font-semibold text-foreground"
+            >
+              {MOCK_SUBJECTS.map((subject) => (
+                <option key={subject} value={subject}>{SUBJECT_LABELS[subject] || subject}</option>
+              ))}
+            </select>
             <span className="rounded-full border border-border bg-muted px-3 py-1.5 font-semibold">{t("answersCountLabel").replace("{count}", String(itemCount))}</span>
             {missingKeys > 0 && <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 font-semibold text-amber-800">{t("missingKeysLabel").replace("{count}", String(missingKeys))}</span>}
             {/* Сумма ни к чему не приводится, поэтому «правильного» значения у
@@ -1050,6 +1072,22 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
               {t("addAnswersFile")}
             </button>
           )}
+
+          <label className="mt-4 block text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            {t("subjectLabel")}
+            <select
+              value={subjectChoice}
+              onChange={(event) => setSubjectChoice(event.target.value)}
+              disabled={importing}
+              className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3 text-sm font-normal normal-case tracking-normal text-foreground disabled:opacity-50"
+            >
+              <option value="">{t("subjectNotChosen")}</option>
+              {MOCK_SUBJECTS.map((subject) => (
+                <option key={subject} value={subject}>{SUBJECT_LABELS[subject] || subject}</option>
+              ))}
+            </select>
+            <span className="mt-2 block text-[11px] font-normal normal-case text-muted-foreground">{t("subjectCeilingHint")}</span>
+          </label>
 
           <div className="mt-5 flex flex-wrap items-center gap-3">
             <button onClick={runImport} disabled={importing} className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-bold text-primary-foreground transition hover:opacity-90 disabled:opacity-60">

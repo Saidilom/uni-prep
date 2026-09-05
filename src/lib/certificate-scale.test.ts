@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+    averageCertificateScore,
     certificateMaxForSubject,
     tScoreToCertificate,
     certificatePercent,
@@ -73,5 +74,38 @@ describe("certificatePercent", () => {
         expect(certificatePercent(null, 100)).toBeNull();
         expect(certificatePercent(50, null)).toBeNull();
         expect(certificatePercent(50, 0)).toBeNull();
+    });
+});
+
+describe("averageCertificateScore", () => {
+    it("приводит к сотне до усреднения, а не после", () => {
+        // Английский 60/75 — это 80, а не 60. Складывай баллы как есть, и
+        // среднее вышло бы 65: английская группа выглядела бы слабее только
+        // из-за более низкой шкалы.
+        expect(averageCertificateScore([
+            { score: 60, max: 75 },
+            { score: 70, max: 100 },
+        ])).toBe(75);
+    });
+
+    it("на одних общеобразовательных ничего не меняет", () => {
+        expect(averageCertificateScore([
+            { score: 80, max: 100 },
+            { score: 60, max: 100 },
+        ])).toBe(70);
+    });
+
+    it("работы без балла не занижают среднее", () => {
+        // Ноль вместо непосчитанной работы уронил бы группу вдвое.
+        expect(averageCertificateScore([
+            { score: 80, max: 100 },
+            { score: null, max: 100 },
+        ])).toBe(80);
+    });
+
+    it("отличает «нечего считать» от нуля баллов", () => {
+        expect(averageCertificateScore([])).toBeNull();
+        expect(averageCertificateScore([{ score: null, max: null }])).toBeNull();
+        expect(averageCertificateScore([{ score: 0, max: 100 }])).toBe(0);
     });
 });

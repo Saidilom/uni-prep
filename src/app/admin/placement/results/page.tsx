@@ -53,6 +53,7 @@ export default function AdminPlacementResultsPage() {
         ? results.filter((r) => `${r.user_name} ${r.user_surname || ""} ${r.user_phone || ""}`.toLowerCase().includes(q))
         : results;
 
+    // Вступительные тесты остаются в процентах — решение владельца (§8).
     const avgAccuracy = results.length > 0 ? Math.round(results.reduce((sum, r) => sum + r.accuracy, 0) / results.length) : null;
 
     return (

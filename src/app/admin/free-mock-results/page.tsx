@@ -15,7 +15,7 @@ type FreeMockRow = {
     subjectId: string | null;
     createdAt: string;
     completedCount: number;
-    avgAccuracy: number | null;
+    avgScore: number | null;
 };
 
 // §2 и §14: отдельный раздел под результаты бесплатных моков, с вкладками по
@@ -88,7 +88,7 @@ export default function AdminFreeMockResultsPage() {
                     // Средний по тесту — в процентах: это агрегат, а балл за
                     // отдельную работу открывается на странице результатов теста
                     // (design/FIX.md, «Правило отображения баллов»).
-                    avgAccuracy: scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null,
+                    avgScore: scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null,
                 };
             }));
             setLoading(false);
@@ -166,9 +166,9 @@ export default function AdminFreeMockResultsPage() {
                                     </div>
                                 </div>
                                 <div className="flex shrink-0 items-center gap-3 self-start sm:self-auto">
-                                    {row.avgAccuracy !== null ? (
-                                        <span className={`rounded-xl px-3 py-1.5 text-sm font-extrabold tabular-nums ${accuracyColor(row.avgAccuracy)}`}>
-                                            {row.avgAccuracy}%
+                                    {row.avgScore !== null ? (
+                                        <span className={`rounded-xl px-3 py-1.5 text-sm font-extrabold tabular-nums ${accuracyColor(row.avgScore)}`}>
+                                            {row.avgScore}
                                         </span>
                                     ) : (
                                         <span className="rounded-xl border border-border bg-muted px-3 py-1.5 text-xs font-semibold text-muted-foreground">

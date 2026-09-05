@@ -5,7 +5,7 @@ import { Trophy, Calendar, Clock } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { fetchUserMockResults, MockResultRow } from "@/lib/registan-utils";
 import { accuracyColor } from "@/lib/status-colors";
-import { certificatePercent } from "@/lib/certificate-scale";
+import { averageCertificateScore, certificatePercent } from "@/lib/certificate-scale";
 import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
 import TeacherResultsExplorer from "@/components/teacher-results-explorer";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
@@ -34,7 +34,9 @@ export default function ResultsPage() {
     // paid mock, or a free mock taken via a class) is excluded here too, not
     // just from the per-row display below.
     const scoredResults = useMemo(() => results.filter((r) => r.revealed_at), [results]);
-    const avgScore = scoredResults.length > 0 ? Math.round(scoredResults.reduce((sum, r) => sum + r.accuracy, 0) / scoredResults.length) : null;
+    // Средний — по баллу сертификата, приведённому к сотне (§8), а не по
+    // проценту правильных. Работы без посчитанного балла не занижают среднее.
+    const avgScore = averageCertificateScore(scoredResults.map((r) => ({ score: r.level_score, max: r.level_score_max })));
 
     if (user?.role === "teacher") return <TeacherResultsExplorer />;
 
@@ -52,7 +54,7 @@ export default function ResultsPage() {
                         <Trophy size={18} className="text-primary" />
                         <div>
                             <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{t("averageScore")}</p>
-                            <p className="text-xl font-extrabold tabular-nums text-foreground">{avgScore}%</p>
+                            <p className="text-xl font-extrabold tabular-nums text-foreground">{avgScore}</p>
                         </div>
                     </div>
                 ) : null}

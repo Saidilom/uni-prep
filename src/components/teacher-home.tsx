@@ -18,7 +18,7 @@ export default function TeacherHome() {
     const [classCount, setClassCount] = useState(0);
     const [studentCount, setStudentCount] = useState(0);
     const [mockCount, setMockCount] = useState(0);
-    const [avgAccuracy, setAvgAccuracy] = useState<number | null>(null);
+    const [avgScore, setAvgAccuracy] = useState<number | null>(null);
 
     useEffect(() => {
         if (!user) return;
@@ -32,7 +32,7 @@ export default function TeacherHome() {
             setClassCount(classes.length);
             setStudentCount(classes.reduce((sum, c) => sum + c.memberCount, 0));
             setMockCount(mocksRes.count ?? 0);
-            setAvgAccuracy(overview.overallAvgAccuracy);
+            setAvgAccuracy(overview.overallAvgScore);
             setLoading(false);
         })();
     }, [user]);
@@ -44,7 +44,7 @@ export default function TeacherHome() {
         // Средний по всем мокам всех учеников — в процентах: складываются
         // разные тесты с разным максимумом (design/FIX.md, «Правило
         // отображения баллов»).
-        { label: t("avgStudentScoreLabel"), value: avgAccuracy !== null ? `${avgAccuracy}%` : "—", icon: Trophy },
+        { label: t("avgStudentScoreLabel"), value: avgScore !== null ? String(avgScore) : "—", icon: Trophy },
     ];
 
     if (!user) return null;

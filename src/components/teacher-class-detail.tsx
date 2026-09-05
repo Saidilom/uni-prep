@@ -383,7 +383,7 @@ export default function TeacherClassDetail() {
                     </div>
                 ) : null}
                 <ClassStudentsPanel
-                    students={members.map((m) => overview.get(m.id) ?? { student: m, attemptCount: 0, avgAccuracy: null, bestAccuracy: null })}
+                    students={members.map((m) => overview.get(m.id) ?? { student: m, attemptCount: 0, avgScore: null, bestScore: null })}
                     mockScores={mockScores}
                     assignments={assignments}
                     labels={{

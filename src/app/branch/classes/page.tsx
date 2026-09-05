@@ -56,8 +56,8 @@ export default function BranchClassesPage() {
                                         </p>
                                     </div>
                                 </div>
-                                <span className={`shrink-0 self-start rounded-xl px-3 py-1.5 text-sm font-extrabold tabular-nums sm:self-auto ${accuracyColor(c.avgAccuracy)}`}>
-                                    {c.avgAccuracy !== null ? `${c.avgAccuracy}%` : "—"}
+                                <span className={`shrink-0 self-start rounded-xl px-3 py-1.5 text-sm font-extrabold tabular-nums sm:self-auto ${accuracyColor(c.avgScore)}`}>
+                                    {c.avgScore ?? "—"}
                                 </span>
                             </div>
                         ))}

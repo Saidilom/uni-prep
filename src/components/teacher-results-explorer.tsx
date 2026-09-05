@@ -104,7 +104,7 @@ export default function TeacherResultsExplorer() {
                                 {overview?.topClass ? (
                                     <>
                                         <p className="truncate font-bold text-foreground">{overview.topClass.name}</p>
-                                        <p className="text-sm text-muted-foreground">{t("avgResultSuffix").replace("{score}", String(overview.topClass.avgAccuracy))}</p>
+                                        <p className="text-sm text-muted-foreground">{t("avgResultSuffix").replace("{score}", String(overview.topClass.avgScore))}</p>
                                     </>
                                 ) : (
                                     <p className="text-sm text-muted-foreground">{t("noCompletedTestsYet")}</p>
@@ -118,7 +118,7 @@ export default function TeacherResultsExplorer() {
                                 {overview?.topStudent ? (
                                     <>
                                         <p className="truncate font-bold text-foreground">{overview.topStudent.student.name} {overview.topStudent.student.surname || ""}</p>
-                                        <p className="text-sm text-muted-foreground">{overview.topStudent.avgAccuracy}% • {overview.topStudent.className}</p>
+                                        <p className="text-sm text-muted-foreground">{overview.topStudent.avgScore} • {overview.topStudent.className}</p>
                                     </>
                                 ) : (
                                     <p className="text-sm text-muted-foreground">{t("noCompletedTestsYet")}</p>
@@ -149,8 +149,8 @@ export default function TeacherResultsExplorer() {
                                         <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                                             <Users size={12} /> {cls.memberCount} {locale === "ru" ? pluralizeRu(cls.memberCount, ["ученик", "ученика", "учеников"]) : t("studentWord")}
                                         </p>
-                                        <span className={`inline-flex w-fit items-center rounded-lg px-2.5 py-1 text-xs font-extrabold tabular-nums ${accuracyColor(cls.avgAccuracy)}`}>
-                                            {cls.avgAccuracy !== null ? t("avgResultSuffix").replace("{score}", String(cls.avgAccuracy)) : t("noAttemptsLabel")}
+                                        <span className={`inline-flex w-fit items-center rounded-lg px-2.5 py-1 text-xs font-extrabold tabular-nums ${accuracyColor(cls.avgScore)}`}>
+                                            {cls.avgScore !== null ? t("avgResultSuffix").replace("{score}", String(cls.avgScore)) : t("noAttemptsLabel")}
                                         </span>
                                     </button>
                                 ))}
@@ -189,8 +189,8 @@ export default function TeacherResultsExplorer() {
                                         </div>
                                     </div>
                                     <div className="flex shrink-0 items-center gap-3">
-                                        <span className={`rounded-xl px-3 py-1.5 text-sm font-extrabold tabular-nums ${accuracyColor(s.avgAccuracy)}`}>
-                                            {s.avgAccuracy !== null ? `${s.avgAccuracy}%` : "—"}
+                                        <span className={`rounded-xl px-3 py-1.5 text-sm font-extrabold tabular-nums ${accuracyColor(s.avgScore)}`}>
+                                            {s.avgScore ?? "—"}
                                         </span>
                                         <ChevronRight size={16} className="text-muted-foreground" />
                                     </div>

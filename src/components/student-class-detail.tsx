@@ -90,7 +90,7 @@ export default function StudentClassDetail({ classId }: { classId: string }) {
                                 <div className="min-w-0">
                                     <p className="truncate text-sm font-semibold text-foreground">{subjectLabels[r.subjectId] || r.subjectId}</p>
                                     <p className="mt-0.5 text-xs text-muted-foreground">{t("rankTemplate").replace("{rank}", String(r.myRank)).replace("{total}", String(r.totalStudents))}</p>
-                                    <p className={`mt-1 inline-flex rounded-lg px-2 py-0.5 text-xs font-extrabold tabular-nums ${accuracyColor(r.myAvgAccuracy)}`}>{r.myAvgAccuracy}%</p>
+                                    <p className={`mt-1 inline-flex rounded-lg px-2 py-0.5 text-xs font-extrabold tabular-nums ${accuracyColor(r.myAvgScore)}`}>{r.myAvgScore}%</p>
                                 </div>
                             </div>
                         ))}

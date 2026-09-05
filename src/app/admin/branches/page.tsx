@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Building2, Plus, Users, GraduationCap, Pencil, Check, X } from "lucide-react";
-import { fetchBranchOverview, createBranch, renameBranch, BranchOverview } from "@/lib/class-utils";
+import { fetchBranchOverview, createBranch, renameBranch, fetchReviewerCandidates, BranchOverview, ReviewerCandidate } from "@/lib/class-utils";
 import { accuracyColor } from "@/lib/status-colors";
 import { useToast } from "@/hooks/useToast";
 import { useTranslations } from "@/lib/i18n/locale-provider";
@@ -24,11 +24,20 @@ export default function AdminBranchesPage() {
     const [saving, setSaving] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editName, setEditName] = useState("");
+    // §10: филиал создаётся сразу с админом. Раньше это были два разных шага, и
+    // про второй забывали — на проде уже есть админ филиала без филиала.
+    const [candidates, setCandidates] = useState<ReviewerCandidate[]>([]);
+    const [newAdminId, setNewAdminId] = useState("");
 
     const load = async () => {
         setLoading(true);
         try {
-            setBranches(await fetchBranchOverview());
+            const [overview, people] = await Promise.all([
+                fetchBranchOverview(),
+                fetchReviewerCandidates().catch(() => [] as ReviewerCandidate[]),
+            ]);
+            setBranches(overview);
+            setCandidates(people);
         } catch (error) {
             toast.error(t("loadFailed"), { description: error instanceof Error ? error.message : String(error) });
         } finally {
@@ -45,8 +54,9 @@ export default function AdminBranchesPage() {
         if (newName.trim().length < 1) return;
         setSaving(true);
         try {
-            await createBranch(newName.trim());
+            await createBranch(newName.trim(), newAdminId || null);
             setNewName("");
+            setNewAdminId("");
             setCreating(false);
             toast.success(t("branchCreatedToast"));
             await load();
@@ -90,7 +100,7 @@ export default function AdminBranchesPage() {
             </section>
 
             {creating && (
-                <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-4">
+                <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 sm:flex-row sm:items-center">
                     <input
                         autoFocus
                         value={newName}
@@ -99,6 +109,18 @@ export default function AdminBranchesPage() {
                         placeholder={t("branchNamePlaceholder")}
                         className="flex-1 rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15"
                     />
+                    {/* Админ выбирается здесь же: филиал без админа никто не
+                        ведёт, и учителей в него назначить некому. */}
+                    <select
+                        value={newAdminId}
+                        onChange={(e) => setNewAdminId(e.target.value)}
+                        className="rounded-xl border border-border bg-background px-4 py-2.5 text-sm font-semibold text-foreground sm:min-w-[220px]"
+                    >
+                        <option value="">{t("branchAdminNone")}</option>
+                        {candidates.map((c) => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                    </select>
                     <button
                         onClick={handleCreate}
                         disabled={saving || newName.trim().length < 1}
@@ -167,17 +189,33 @@ export default function AdminBranchesPage() {
                                         </div>
                                     </div>
                                 </div>
-                                <div className="flex shrink-0 flex-col items-end gap-1 self-start sm:self-auto">
-                                    <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{t("avgScoreLabel")}</span>
-                                    {branch.avgAccuracy !== null ? (
-                                        <span className={`rounded-xl px-4 py-2 text-sm font-extrabold tabular-nums ${accuracyColor(branch.avgAccuracy)}`}>
-                                            {branch.avgAccuracy}%
-                                        </span>
-                                    ) : (
-                                        <span className="rounded-xl border border-border bg-muted px-4 py-2 text-xs font-semibold text-muted-foreground">
-                                            {t("noResultsYet")}
-                                        </span>
-                                    )}
+                                {/* §12: рядом со средним баллом — балл по месячному
+                                    тесту, по последнему опубликованному комплекту. */}
+                                <div className="flex shrink-0 items-start gap-4 self-start sm:self-auto">
+                                    <div className="flex flex-col items-end gap-1">
+                                        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{t("avgScoreLabel")}</span>
+                                        {branch.avgScore !== null ? (
+                                            <span className={`rounded-xl px-4 py-2 text-sm font-extrabold tabular-nums ${accuracyColor(branch.avgScore)}`}>
+                                                {branch.avgScore}
+                                            </span>
+                                        ) : (
+                                            <span className="rounded-xl border border-border bg-muted px-4 py-2 text-xs font-semibold text-muted-foreground">
+                                                {t("noResultsYet")}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="flex flex-col items-end gap-1">
+                                        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{t("avgOylikLabel")}</span>
+                                        {branch.avgOylik !== null ? (
+                                            <span className={`rounded-xl px-4 py-2 text-sm font-extrabold tabular-nums ${accuracyColor(branch.avgOylik)}`}>
+                                                {branch.avgOylik}
+                                            </span>
+                                        ) : (
+                                            <span className="rounded-xl border border-border bg-muted px-4 py-2 text-xs font-semibold text-muted-foreground">
+                                                {t("noOylikYet")}
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         ))}

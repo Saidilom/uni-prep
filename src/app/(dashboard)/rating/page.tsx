@@ -86,8 +86,8 @@ export default function RatingPage() {
                                         </span>
                                     </p>
                                     <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                                        <span className={`rounded-lg px-2 py-1 font-extrabold tabular-nums ${accuracyColor(rating.myAvgAccuracy)}`}>
-                                            {rating.myAvgAccuracy}%
+                                        <span className={`rounded-lg px-2 py-1 font-extrabold tabular-nums ${accuracyColor(rating.myAvgScore)}`}>
+                                            {rating.myAvgScore}%
                                         </span>
                                         <span>{t("attemptsCount").replace("{count}", String(rating.myAttempts))}</span>
                                     </div>

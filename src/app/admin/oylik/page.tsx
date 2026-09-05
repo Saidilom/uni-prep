@@ -88,6 +88,14 @@ export default function AdminOylikPage() {
         try {
             const result = await publishOylikSet(set.id);
             toast.success(t("publishedToast").replace("{count}", String(result.assignedCount)));
+            // Пропущенные группы — отдельным предупреждением, а не молча:
+            // «опубликовано» само по себе читается как «дошло до всех».
+            if (result.skippedNoSubject > 0) {
+                toast.error(t("skippedNoSubjectToast").replace("{count}", String(result.skippedNoSubject)));
+            }
+            if (result.skippedNoMatch > 0) {
+                toast.info(t("skippedNoMatchToast").replace("{count}", String(result.skippedNoMatch)));
+            }
             await load();
         } catch (error) {
             toast.error(t("publishFailed"), { description: error instanceof Error ? error.message : String(error) });

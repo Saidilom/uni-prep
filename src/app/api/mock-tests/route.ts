@@ -72,6 +72,11 @@ const PublishSchema = z.object({
   sourcePdfPaths: z.array(z.string().min(1)).min(1),
   price: z.number().int().min(0),
   isFree: z.boolean().optional(),
+  // Без этого поля zod молча отбрасывал его из тела запроса, и тест никогда не
+  // попадал в комплект: publish_imported_mock читает payload->>'oylikSetId',
+  // а до неё доходил payload уже без него. Комплект оставался пустым, и
+  // раздача по предметам просто не срабатывала.
+  oylikSetId: z.string().uuid().nullable().optional(),
   startsAt: z.string().datetime().nullable().optional(),
   endsAt: z.string().datetime().nullable().optional(),
   resultsPublishAt: z.string().datetime().nullable().optional(),
@@ -86,7 +91,11 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Некорректный черновик", details: parsed.error.flatten() }, { status: 400 });
   }
-  const isFree = role === "admin" ? Boolean(parsed.data.isFree) : false;
+  // §14: тест из комплекта «Ойлик тест» бесплатен всегда — цену за него не
+  // спрашиваем. Проверка именно здесь, а не только в интерфейсе: цену в это
+  // тело запроса можно прислать и мимо студии.
+  const oylikSetId = role === "admin" ? parsed.data.oylikSetId ?? null : null;
+  const isFree = role === "admin" ? (Boolean(parsed.data.isFree) || oylikSetId !== null) : false;
   if (role === "admin" && !isFree && parsed.data.price <= 0) {
     return NextResponse.json({ error: "Для платного Mock укажите цену" }, { status: 400 });
   }
@@ -101,6 +110,7 @@ export async function POST(req: NextRequest) {
     importId: parsed.data.importId,
     sourcePdfPaths: parsed.data.sourcePdfPaths,
     isFree,
+    oylikSetId,
     price: role === "admin" && !isFree ? parsed.data.price : 0,
     startsAt: role === "admin" ? parsed.data.startsAt ?? null : null,
     endsAt: role === "admin" ? parsed.data.endsAt ?? null : null,

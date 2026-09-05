@@ -75,10 +75,10 @@ export default function AdminClassDetailPage() {
         );
     }
 
-    const avgAccuracy = (() => {
-        const scored = students.filter((s): s is ClassStudentOverview & { avgAccuracy: number } => s.avgAccuracy !== null);
+    const avgScore = (() => {
+        const scored = students.filter((s): s is ClassStudentOverview & { avgScore: number } => s.avgScore !== null);
         if (scored.length === 0) return null;
-        return Math.round(scored.reduce((sum, s) => sum + s.avgAccuracy, 0) / scored.length);
+        return Math.round(scored.reduce((sum, s) => sum + s.avgScore, 0) / scored.length);
     })();
 
     return (
@@ -90,10 +90,10 @@ export default function AdminClassDetailPage() {
                 <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{cls.name}</h1>
                 <p className="mt-2 text-sm text-muted-foreground">
                     {members.length} {locale === "ru" ? pluralizeRu(members.length, ["ученик", "ученика", "учеников"]) : t("studentWord")}
-                    {avgAccuracy !== null && (
+                    {avgScore !== null && (
                         <>
                             {" · "}
-                            <span className={`inline-flex items-center rounded-lg px-2 py-0.5 font-extrabold tabular-nums ${accuracyColor(avgAccuracy)}`}>{t("avgResultSuffix").replace("{score}", String(avgAccuracy))}</span>
+                            <span className={`inline-flex items-center rounded-lg px-2 py-0.5 font-extrabold tabular-nums ${accuracyColor(avgScore)}`}>{t("avgResultSuffix").replace("{score}", String(avgScore))}</span>
                         </>
                     )}
                 </p>

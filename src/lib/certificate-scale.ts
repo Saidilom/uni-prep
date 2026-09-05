@@ -48,3 +48,22 @@ export function certificatePercent(score: number | null, max: number | null): nu
   if (score === null || max === null || !Number.isFinite(score) || !Number.isFinite(max) || max <= 0) return null;
   return Math.round((score / max) * 100);
 }
+
+// Средний балл по нескольким работам — группы, учителя, филиала.
+//
+// Складывать баллы как есть нельзя: у английского потолок 75, у остальных
+// предметов 100, и английская группа выглядела бы слабее любой другой просто
+// из-за более низкой шкалы. Поэтому каждую работу сначала приводим к сотне
+// (у общеобразовательных это ничего не меняет), и только потом усредняем.
+//
+// Работы без посчитанного балла в среднее не входят: их не с чем сравнивать,
+// а ноль вместо них занизил бы результат группы.
+export function averageCertificateScore(
+  results: Array<{ score: number | null; max: number | null }>,
+): number | null {
+  const normalized = results
+    .map((r) => certificatePercent(r.score, r.max))
+    .filter((v): v is number => v !== null);
+  if (normalized.length === 0) return null;
+  return Math.round(normalized.reduce((a, b) => a + b, 0) / normalized.length);
+}

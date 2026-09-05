@@ -10,7 +10,7 @@ import { fetchAdminTeachersOverview } from "@/lib/class-utils";
 import { accuracyColor } from "@/lib/status-colors";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
-type TeacherRow = UserType & { shortid?: string; classCount: number; avgAccuracy: number | null; attemptCount: number };
+type TeacherRow = UserType & { shortid?: string; classCount: number; avgScore: number | null; attemptCount: number };
 
 export default function AdminTeachersPage() {
     const [teachers, setTeachers] = useState<TeacherRow[]>([]);
@@ -30,7 +30,7 @@ export default function AdminTeachersPage() {
             teacherRows.forEach((row) => {
                 const stats = overview.get(row.id);
                 row.classCount = stats?.classCount ?? 0;
-                row.avgAccuracy = stats?.avgAccuracy ?? null;
+                row.avgScore = stats?.avgScore ?? null;
                 row.attemptCount = stats?.attemptCount ?? 0;
             });
         }
@@ -105,9 +105,9 @@ export default function AdminTeachersPage() {
                                         максимумом (design/FIX.md, «Правило отображения баллов»). */}
                                     <span className="inline-flex flex-col items-center rounded-xl border border-border px-3 py-1.5">
                                         <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">{t("avgScoreLabel")}</span>
-                                        {teacher.avgAccuracy !== null ? (
-                                            <span className={`mt-0.5 rounded-lg px-2 py-0.5 text-xs font-extrabold tabular-nums ${accuracyColor(teacher.avgAccuracy)}`}>
-                                                {teacher.avgAccuracy}%
+                                        {teacher.avgScore !== null ? (
+                                            <span className={`mt-0.5 rounded-lg px-2 py-0.5 text-xs font-extrabold tabular-nums ${accuracyColor(teacher.avgScore)}`}>
+                                                {teacher.avgScore}
                                             </span>
                                         ) : (
                                             <span className="mt-0.5 flex items-center gap-1 text-xs font-semibold text-muted-foreground">

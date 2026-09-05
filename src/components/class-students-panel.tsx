@@ -144,8 +144,8 @@ export default function ClassStudentsPanel({ students, mockScores, assignments, 
                                             </span>
                                             {/* Средний по всем мокам — в процентах: разные тесты,
                                                 разный максимум (design/FIX.md). */}
-                                            <span className={`rounded-xl px-3 py-1.5 text-sm font-extrabold tabular-nums ${accuracyColor(s.avgAccuracy)}`}>
-                                                {s.avgAccuracy !== null ? `${s.avgAccuracy}%` : "—"}
+                                            <span className={`rounded-xl px-3 py-1.5 text-sm font-extrabold tabular-nums ${accuracyColor(s.avgScore)}`}>
+                                                {s.avgScore ?? "—"}
                                             </span>
                                             <button
                                                 onClick={() => setExpandedStudent(isOpen ? null : s.student.id)}

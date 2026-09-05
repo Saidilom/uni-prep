@@ -79,8 +79,8 @@ export default function AdminClassesPage() {
                                     <span className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-muted px-3 py-2 text-xs font-semibold text-muted-foreground">
                                         <Users size={13} /> {c.memberCount} {locale === "ru" ? pluralizeRu(c.memberCount, ["ученик", "ученика", "учеников"]) : t("studentWord")}
                                     </span>
-                                    <span className={`rounded-xl px-3 py-2 text-xs font-extrabold tabular-nums ${accuracyColor(c.avgAccuracy)}`}>
-                                        {c.avgAccuracy !== null ? `${c.avgAccuracy}%` : "—"}
+                                    <span className={`rounded-xl px-3 py-2 text-xs font-extrabold tabular-nums ${accuracyColor(c.avgScore)}`}>
+                                        {c.avgScore ?? "—"}
                                     </span>
                                     <ChevronRight size={16} className="text-muted-foreground" />
                                 </div>

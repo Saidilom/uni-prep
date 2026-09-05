@@ -71,9 +71,9 @@ export default function BranchOverviewPage() {
                         <Trophy size={18} />
                     </div>
                     <p className="text-xs text-muted-foreground">{t("avgScoreLabel")}</p>
-                    {branch.avgAccuracy !== null ? (
-                        <p className={`mt-1 inline-flex rounded-lg px-2 py-0.5 text-2xl font-semibold tabular-nums ${accuracyColor(branch.avgAccuracy)}`}>
-                            {branch.avgAccuracy}%
+                    {branch.avgScore !== null ? (
+                        <p className={`mt-1 inline-flex rounded-lg px-2 py-0.5 text-2xl font-semibold tabular-nums ${accuracyColor(branch.avgScore)}`}>
+                            {branch.avgScore}
                         </p>
                     ) : (
                         <p className="mt-1 text-sm font-medium text-muted-foreground">{t("noResultsYet")}</p>

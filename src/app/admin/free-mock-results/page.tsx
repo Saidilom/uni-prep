@@ -2,11 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Gift, Users, Calendar, ChevronRight } from "lucide-react";
+import { Gift, Users, Calendar, ChevronRight, Download, Loader2 } from "lucide-react";
 import supabase from "@/lib/supabase/client";
 import { CORE_SUBJECTS, CoreSubject, coreSubjectMatches } from "@/lib/mock-import-schema";
 import { accuracyColor } from "@/lib/status-colors";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
+import { fetchClassMockResults } from "@/lib/class-utils";
+import { buildResultsCsv, exportFileName } from "@/lib/results-export";
+import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
+import { useToast } from "@/hooks/useToast";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 type FreeMockRow = {
@@ -31,6 +35,58 @@ export default function AdminFreeMockResultsPage() {
     const [rows, setRows] = useState<FreeMockRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeSubject, setActiveSubject] = useState<CoreSubject | "all">("all");
+    const [exporting, setExporting] = useState<string | null>(null);
+    const toast = useToast();
+
+    // Выгрузка по одному тесту. Данные по ученикам страница не грузит — они
+    // нужны только здесь, и тянуть их для всех тестов сразу значило бы делать
+    // десятки лишних запросов при каждом открытии раздела.
+    const exportResults = async (row: FreeMockRow) => {
+        setExporting(row.id);
+        try {
+            const summary = await fetchClassMockResults(null, row.id);
+            if (summary.students.length === 0) {
+                toast.info(t("exportEmpty"));
+                return;
+            }
+            const csv = buildResultsCsv(
+                summary.students.map((s) => ({
+                    name: `${s.student.name} ${s.student.surname || ""}`.trim(),
+                    shortId: s.student.shortId || "",
+                    correctAnswers: s.correctAnswers,
+                    totalQuestions: s.totalQuestions,
+                    accuracy: s.accuracy,
+                    levelScore: s.levelScore,
+                    levelScoreMax: s.levelScoreMax,
+                    // В базе уровень лежит как «below_c» — в файл должно
+                    // попасть то же, что видно на экране.
+                    gradeLevel: s.gradeLevel ? gradeLevelDisplay(s.gradeLevel as GradeLevel, locale) : null,
+                    completedAt: s.completedAt,
+                    pendingReviewCount: s.pendingReviewCount,
+                })),
+                {
+                    number: t("colNumber"), student: t("colStudent"), studentId: t("colStudentId"),
+                    correct: t("colCorrect"), ofQuestions: t("colTotalQuestions"), accuracy: t("colAccuracy"),
+                    score: t("colScore"), scoreMax: t("colScoreMax"), level: t("colLevel"),
+                    completedAt: t("colCompletedAt"), status: t("colStatus"),
+                    statusDone: t("statusDone"), statusPending: t("statusPending"), statusNotTaken: t("statusNotTaken"),
+                },
+            );
+            const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = exportFileName(row.title, row.createdAt.slice(0, 10));
+            link.click();
+            // Иначе blob висит в памяти вкладки до перезагрузки страницы.
+            URL.revokeObjectURL(url);
+            toast.success(t("exportDone").replace("{count}", String(summary.students.length)));
+        } catch (error) {
+            toast.error(t("exportFailed"), { description: error instanceof Error ? error.message : String(error) });
+        } finally {
+            setExporting(null);
+        }
+    };
 
     const subjectLabels: Record<CoreSubject, string> = useMemo(() => ({
         math: tSubjects("subjectMath"),
@@ -175,6 +231,19 @@ export default function AdminFreeMockResultsPage() {
                                             {t("notPublishedYet")}
                                         </span>
                                     )}
+                                    {/* Кнопка внутри ссылки: без гашения события
+                                        клик увёл бы на страницу теста вместо
+                                        выгрузки файла. */}
+                                    <button
+                                        onClick={(event) => { event.preventDefault(); event.stopPropagation(); exportResults(row); }}
+                                        disabled={exporting === row.id}
+                                        title={t("exportAction")}
+                                        aria-label={t("exportAction")}
+                                        className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2 text-xs font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+                                    >
+                                        {exporting === row.id ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                                        <span className="hidden sm:inline">{t("exportAction")}</span>
+                                    </button>
                                     <ChevronRight size={16} className="text-muted-foreground" />
                                 </div>
                             </Link>

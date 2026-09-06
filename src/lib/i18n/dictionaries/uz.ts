@@ -1043,6 +1043,11 @@ const uz: typeof ru = {
     noScoresYet: "yo'q",
   },
   adminUsers: {
+    deleteUserAction: "Foydalanuvchini o'chirish",
+    confirmDeleteUser: "{name} o'chirilsinmi? Akkaunt bilan birga uning barcha test natijalari va guruh a'zoligi o'chadi. U xuddi shu pochta bilan qayta ro'yxatdan o'tib, testlarni yangidan topshira oladi. Amalni ortga qaytarib bo'lmaydi.",
+    confirmDeleteTeacher: "{name} degan o'qituvchi o'chirilsinmi? U bilan birga UNING GURUHLARI butun tarkibi bilan va barcha natijalari o'chadi. Amalni ortga qaytarib bo'lmaydi.",
+    userDeletedToast: "{name} o'chirildi — pochta yangi ro'yxatdan o'tish uchun bo'sh",
+    deleteUserFailed: "Foydalanuvchini o'chirib bo'lmadi",
     title: "Foydalanuvchilar",
     subtitle: "Barcha ro'yxatdan o'tgan foydalanuvchilar. Ism, email, telefon yoki Student ID bo'yicha qidiring.",
     searchPlaceholder: "F.I.Sh., email, telefon, Student ID bo'yicha qidirish…",

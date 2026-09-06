@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Phone, Mail, Calendar, UserCheck, IdCard } from "lucide-react";
+import { Phone, Mail, Calendar, UserCheck, IdCard, Trash2, Loader2 } from "lucide-react";
 import { User as UserType } from "@/lib/firestore-schema";
 import supabase from "@/lib/supabase/client";
 import { fetchBranches, setUserRole, Branch } from "@/lib/class-utils";
@@ -37,6 +37,7 @@ export default function AdminUsersPage() {
     const { locale } = useLocale();
     const t = useTranslations("adminUsers");
     const toast = useToast();
+    const [deletingId, setDeletingId] = useState<string | null>(null);
 
     const load = async () => {
         setLoading(true);
@@ -61,6 +62,30 @@ export default function AdminUsersPage() {
             return;
         }
         load();
+    };
+
+    // Удаляем и профиль, и запись входа — иначе почта останется занятой и
+    // человек не сможет зарегистрироваться заново. Вместе с пользователем
+    // каскадом уходят его работы и членство в группах, а у учителя — сами
+    // группы, поэтому предупреждаем об этом прямо в подтверждении.
+    const removeUser = async (u: AdminUser) => {
+        const fullName = `${u.name} ${u.surname || ""}`.trim() || u.email || u.id;
+        const warning = u.role === "teacher"
+            ? t("confirmDeleteTeacher").replace("{name}", fullName)
+            : t("confirmDeleteUser").replace("{name}", fullName);
+        if (!confirm(warning)) return;
+        setDeletingId(u.id);
+        try {
+            const response = await fetch(`/api/admin/users/${u.id}`, { method: "DELETE" });
+            const body = await response.json();
+            if (!response.ok) throw new Error(body.error || t("deleteUserFailed"));
+            toast.success(t("userDeletedToast").replace("{name}", fullName));
+            await load();
+        } catch (error) {
+            toast.error(t("deleteUserFailed"), { description: error instanceof Error ? error.message : String(error) });
+        } finally {
+            setDeletingId(null);
+        }
     };
 
     const setRole = async (u: AdminUser, role: AssignableRole) => {
@@ -207,6 +232,21 @@ export default function AdminUsersPage() {
                                             <option value="branch_admin">{t("roleBranchAdmin")}</option>
                                             <option value="admin">{t("roleAdmin")}</option>
                                         </select>
+                                    )}
+                                    {/* Удаление — только чужих аккаунтов и не главного
+                                        супер-админа: у себя нельзя, иначе админ
+                                        вышибет сам себя посреди работы. Роут
+                                        проверяет то же самое ещё раз. */}
+                                    {u.id !== PERMANENT_SUPER_ADMIN_ID && (
+                                        <button
+                                            onClick={() => removeUser(u)}
+                                            disabled={deletingId === u.id}
+                                            title={t("deleteUserAction")}
+                                            aria-label={t("deleteUserAction")}
+                                            className="inline-flex items-center justify-center rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-red-700 transition-colors hover:bg-red-100 disabled:opacity-50 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400"
+                                        >
+                                            {deletingId === u.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                                        </button>
                                     )}
                                     {/* Филиал показываем только тем, кому он что-то
                                         значит: администратору филиала — что он видит,

@@ -478,6 +478,9 @@ const ru = {
     noPlacementTestsAvailable: "Нет доступных «Вступительных тестов» для назначения — либо их ещё не создали в админ-панели, либо у ученика уже есть активные назначения на все.",
   },
   classMockResults: {
+    onlyPendingStudents: "Только непроверенные",
+    onlyPendingAnswers: "Только требующие проверки ({count})",
+    showAllAnswers: "Показать все ответы ({count})",
     reviewError: "Ошибка проверки",
     gradeSavedToast: "Оценка сохранена",
     gradeSaveFailed: "Не удалось сохранить оценку",

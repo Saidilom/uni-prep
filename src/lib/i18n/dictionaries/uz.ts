@@ -480,6 +480,9 @@ const uz: typeof ru = {
     noPlacementTestsAvailable: "Tayinlash uchun mavjud «Kirish testlari» yo'q — ular hali admin panelda yaratilmagan yoki o'quvchida ularning barchasiga faol tayinlashlar mavjud.",
   },
   classMockResults: {
+    onlyPendingStudents: "Faqat tekshirilmaganlar",
+    onlyPendingAnswers: "Faqat tekshirish kerak bo'lganlar ({count})",
+    showAllAnswers: "Barcha javoblarni ko'rsatish ({count})",
     reviewError: "Tekshirishda xatolik",
     gradeSavedToast: "Baho saqlandi",
     gradeSaveFailed: "Bahoni saqlab bo'lmadi",

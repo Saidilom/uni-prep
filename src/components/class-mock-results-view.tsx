@@ -36,6 +36,17 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
     const [reviewingId, setReviewingId] = useState<string | null>(null);
     const [questionStats, setQuestionStats] = useState<QuestionErrorStat[]>([]);
     const [statsLoading, setStatsLoading] = useState(true);
+    // Экран служит двум разным задачам: проверить работы и посмотреть аналитику.
+    // Эти три состояния разводят их, чтобы проверяющему не приходилось
+    // пролистывать полсотни строк рейтинга до первого ученика, а внутри
+    // ученика — искать одно эссе среди полусотни решённых задач.
+    //
+    // null означает «владелец ещё не трогал переключатель» — тогда состояние
+    // выбирается само, по наличию непроверенных работ. Как только тронул,
+    // хранится его выбор.
+    const [rankingOpen, setRankingOpen] = useState<boolean | null>(null);
+    const [onlyPendingStudents, setOnlyPendingStudents] = useState(false);
+    const [onlyPendingAnswers, setOnlyPendingAnswers] = useState(true);
 
     // Guards against a slower response for a previous classId/mockTestId
     // pair overwriting a faster one's already-rendered state (this effect
@@ -135,6 +146,15 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
 
     const completionRate = summary.totalCount > 0 ? Math.round((summary.completedCount / summary.totalCount) * 100) : 0;
 
+    // Есть непроверенные работы — значит пришли проверять: рейтинг вопросов
+    // сворачиваем, чтобы список учеников был виден сразу. Всё проверено —
+    // экран читают как аналитику, и рейтинг раскрыт.
+    const hasPendingWork = summary.pendingReviewCount > 0;
+    const showRanking = rankingOpen ?? !hasPendingWork;
+    const visibleStudents = onlyPendingStudents
+        ? summary.students.filter((s) => s.pendingReviewCount > 0)
+        : summary.students;
+
     return (
         <div className="flex flex-col gap-10 py-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
             <section>
@@ -181,10 +201,26 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
             </section>
 
             <section>
-                <h2 className="mb-5 flex items-center gap-2 text-xl font-bold tracking-tight text-foreground sm:text-2xl">
-                    <ListOrdered size={19} className="text-muted-foreground" /> {t("questionRankingTitle")}
-                </h2>
-                <p className="-mt-3 mb-5 text-sm text-muted-foreground">{t("questionRankingSubtitle")}</p>
+                {/* Раздел аналитический: для проверки работ он не нужен, а перед
+                    списком учеников лежат все 50 строк теста. Поэтому заголовок —
+                    кнопка, тем же жестом, что раскрывает карточку ученика. */}
+                <button
+                    onClick={() => setRankingOpen(!showRanking)}
+                    className="flex w-full items-center justify-between gap-3 rounded-2xl text-left"
+                >
+                    <span className="flex items-center gap-2 text-xl font-bold tracking-tight text-foreground sm:text-2xl">
+                        <ListOrdered size={19} className="text-muted-foreground" /> {t("questionRankingTitle")}
+                        {questionStats.length > 0 && (
+                            <span className="rounded-lg border border-border bg-muted px-2 py-0.5 text-xs font-bold text-muted-foreground">
+                                {questionStats.length}
+                            </span>
+                        )}
+                    </span>
+                    <ChevronDown size={18} className={`shrink-0 text-muted-foreground transition-transform ${showRanking ? "rotate-180" : ""}`} />
+                </button>
+                {!showRanking ? null : (
+                <>
+                <p className="mb-5 mt-3 text-sm text-muted-foreground">{t("questionRankingSubtitle")}</p>
                 {statsLoading ? (
                     <div className="space-y-2">
                         {[1, 2, 3].map((n) => <div key={n} className="h-14 animate-pulse rounded-2xl border border-border bg-muted" />)}
@@ -211,12 +247,31 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
                         ))}
                     </div>
                 )}
+                </>
+                )}
             </section>
 
             <section>
-                <h2 className="mb-5 text-xl font-bold tracking-tight text-foreground sm:text-2xl">{t("studentsSection")}</h2>
+                <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+                    <h2 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">{t("studentsSection")}</h2>
+                    {/* Чип нужен, только пока есть что проверять: по мере работы
+                        список тает, и не приходится вспоминать, на ком
+                        остановился. На готовом моке он лишний. */}
+                    {hasPendingWork && (
+                        <button
+                            onClick={() => setOnlyPendingStudents(!onlyPendingStudents)}
+                            className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
+                                onlyPendingStudents
+                                    ? "border-transparent bg-violet-600 text-white"
+                                    : "border-border bg-card text-muted-foreground hover:text-foreground"
+                            }`}
+                        >
+                            <Clock size={13} /> {t("onlyPendingStudents")}
+                        </button>
+                    )}
+                </div>
                 <div className="space-y-3">
-                    {summary.students.map(({ student, resultId, correctAnswers, totalQuestions, cefrBand, levelScore, levelScoreMax, gradeLevel, completedAt, pendingReviewCount }) => {
+                    {visibleStudents.map(({ student, resultId, correctAnswers, totalQuestions, cefrBand, levelScore, levelScoreMax, gradeLevel, completedAt, pendingReviewCount }) => {
                         const isOpen = openResultId === resultId;
                         return (
                             <div key={student.id} className="overflow-hidden rounded-2xl border border-border bg-card">
@@ -285,9 +340,33 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
                                             </div>
                                         ) : (
                                             <div className="space-y-2">
-                                                {(details[resultId] || []).map((d, i) => (
+                                                {(() => {
+                                                    // Нумерация берётся из ИСХОДНОГО порядка и едет вместе с
+                                                    // ответом: иначе «задание 7» на экране перестало бы быть
+                                                    // седьмым в тесте, и сверить с бумагой стало бы нечем.
+                                                    const all = (details[resultId] || []).map((d, i) => ({ d, number: i + 1 }));
+                                                    const needsReview = (st: string) => st === "pending" || st === "ai_graded";
+                                                    const pendingHere = all.filter((x) => needsReview(x.d.reviewStatus));
+                                                    // Непроверенное — наверх. Проверяющий раскрыл ученика ради
+                                                    // одного эссе среди полусотни решённых задач; искать его
+                                                    // прокруткой пятьдесят раз подряд — то, на что и жаловались.
+                                                    const ordered = onlyPendingAnswers && pendingHere.length > 0
+                                                        ? pendingHere
+                                                        : [...pendingHere, ...all.filter((x) => !needsReview(x.d.reviewStatus))];
+                                                    return (<>
+                                                    {pendingHere.length > 0 && (
+                                                        <button
+                                                            onClick={() => setOnlyPendingAnswers(!onlyPendingAnswers)}
+                                                            className="mb-1 inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
+                                                        >
+                                                            {onlyPendingAnswers
+                                                                ? t("showAllAnswers").replace("{count}", String(all.length))
+                                                                : t("onlyPendingAnswers").replace("{count}", String(pendingHere.length))}
+                                                        </button>
+                                                    )}
+                                                    {ordered.map(({ d, number }) => (
                                                     <div key={d.id} className="rounded-xl border border-border bg-card p-3">
-                                                        <p className="text-sm font-medium text-foreground">{i + 1}. {d.questionText}</p>
+                                                        <p className="text-sm font-medium text-foreground">{number}. {d.questionText}</p>
                                                         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
                                                             <span className={d.isCorrect ? "text-emerald-600" : "text-red-600"}>
                                                                 {t("studentAnswerLabel")} <strong>{d.selectedAnswer || "—"}</strong>
@@ -332,7 +411,9 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
                                                         )}
                                                         {d.reviewStatus === "reviewed" && <p className="mt-2 text-xs font-semibold text-violet-700">{t("manuallyReviewedLabel").replace("{earned}", String(d.pointsEarned)).replace("{max}", String(d.maxPoints))}{d.reviewFeedback ? ` · ${d.reviewFeedback}` : ""}</p>}
                                                     </div>
-                                                ))}
+                                                    ))}
+                                                    </>);
+                                                })()}
                                             </div>
                                         )}
                                     </div>

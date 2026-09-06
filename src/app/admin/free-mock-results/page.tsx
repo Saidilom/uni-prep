@@ -52,24 +52,16 @@ export default function AdminFreeMockResultsPage() {
             const csv = buildResultsCsv(
                 summary.students.map((s) => ({
                     name: `${s.student.name} ${s.student.surname || ""}`.trim(),
-                    shortId: s.student.shortId || "",
-                    correctAnswers: s.correctAnswers,
-                    totalQuestions: s.totalQuestions,
-                    accuracy: s.accuracy,
                     levelScore: s.levelScore,
-                    levelScoreMax: s.levelScoreMax,
                     // В базе уровень лежит как «below_c» — в файл должно
                     // попасть то же, что видно на экране.
                     gradeLevel: s.gradeLevel ? gradeLevelDisplay(s.gradeLevel as GradeLevel, locale) : null,
-                    completedAt: s.completedAt,
-                    pendingReviewCount: s.pendingReviewCount,
                 })),
                 {
-                    number: t("colNumber"), student: t("colStudent"), studentId: t("colStudentId"),
-                    correct: t("colCorrect"), ofQuestions: t("colTotalQuestions"), accuracy: t("colAccuracy"),
-                    score: t("colScore"), scoreMax: t("colScoreMax"), level: t("colLevel"),
-                    completedAt: t("colCompletedAt"), status: t("colStatus"),
-                    statusDone: t("statusDone"), statusPending: t("statusPending"), statusNotTaken: t("statusNotTaken"),
+                    number: t("colNumber"),
+                    student: t("colStudent"),
+                    score: t("colScore"),
+                    level: t("colLevel"),
                 },
             );
             const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });

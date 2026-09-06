@@ -12,42 +12,29 @@
 //   2. Строка `sep=;` первой — Excel берёт разделитель из неё. Без этого файл
 //      разбирается по разделителю из настроек Windows, и на части машин все
 //      данные слипаются в одну колонку.
+//
+// Колонок намеренно четыре. Сначала выгружались ещё ID ученика, число верных,
+// процент, дата и статус — владелец попросил оставить только то, ради чего
+// таблицу открывают: кто, сколько баллов, какой уровень.
 
 export type ExportRow = {
     name: string;
-    shortId: string;
-    correctAnswers: number | null;
-    totalQuestions: number | null;
-    accuracy: number | null;
     levelScore: number | null;
-    levelScoreMax: number | null;
     gradeLevel: string | null;
-    completedAt: string | null;
-    pendingReviewCount: number;
 };
 
 export type ExportLabels = {
     number: string;
     student: string;
-    studentId: string;
-    correct: string;
-    ofQuestions: string;
-    accuracy: string;
     score: string;
-    scoreMax: string;
     level: string;
-    completedAt: string;
-    status: string;
-    statusDone: string;
-    statusPending: string;
-    statusNotTaken: string;
 };
 
 const DELIMITER = ";";
 
 // Экранирование по RFC 4180: кавычка удваивается, а поле берётся в кавычки,
-// если внутри есть разделитель, кавычка или перевод строки. Имена учеников
-// приходят из профиля, и запятая в фамилии не должна ломать таблицу.
+// если внутри есть разделитель, кавычка или перевод строки. Имена приходят из
+// профиля, и точка с запятой в фамилии не должна ломать таблицу.
 function escapeCell(value: string | number | null | undefined): string {
     if (value === null || value === undefined) return "";
     const text = String(value);
@@ -59,43 +46,13 @@ function escapeCell(value: string | number | null | undefined): string {
 }
 
 export function buildResultsCsv(rows: ExportRow[], labels: ExportLabels): string {
-    const header = [
-        labels.number,
-        labels.student,
-        labels.studentId,
-        labels.correct,
-        labels.ofQuestions,
-        labels.accuracy,
-        labels.score,
-        labels.scoreMax,
-        labels.level,
-        labels.completedAt,
-        labels.status,
-    ];
-
-    const body = rows.map((row, index) => {
-        const status = row.completedAt === null
-            ? labels.statusNotTaken
-            : row.pendingReviewCount > 0
-                ? labels.statusPending
-                : labels.statusDone;
-        return [
-            index + 1,
-            row.name,
-            row.shortId,
-            row.correctAnswers,
-            row.totalQuestions,
-            row.accuracy,
-            row.levelScore,
-            row.levelScoreMax,
-            row.gradeLevel ?? "",
-            // Дата в ISO-виде «ГГГГ-ММ-ДД ЧЧ:ММ»: Excel распознаёт её как дату
-            // при любой локали, в отличие от «06.09.2026», которое на
-            // американской раскладке читается как 9 июня.
-            row.completedAt ? row.completedAt.replace("T", " ").slice(0, 16) : "",
-            status,
-        ];
-    });
+    const header = [labels.number, labels.student, labels.score, labels.level];
+    const body = rows.map((row, index) => [
+        index + 1,
+        row.name,
+        row.levelScore,
+        row.gradeLevel ?? "",
+    ]);
 
     const lines = [header, ...body].map((cells) => cells.map(escapeCell).join(DELIMITER));
     // \r\n, а не \n: Excel на Windows иначе показывает файл одной строкой.

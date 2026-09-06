@@ -2,23 +2,16 @@ import { describe, it, expect } from "vitest";
 import { buildResultsCsv, exportFileName, ExportRow, ExportLabels } from "./results-export";
 
 const labels: ExportLabels = {
-    number: "№", student: "Ученик", studentId: "ID", correct: "Верных",
-    ofQuestions: "Всего вопросов", accuracy: "Процент", score: "Балл",
-    scoreMax: "Максимум", level: "Уровень", completedAt: "Сдал", status: "Статус",
-    statusDone: "Проверено", statusPending: "Ждёт проверки", statusNotTaken: "Не сдавал",
+    number: "№", student: "Ученик", score: "Балл", level: "Уровень",
 };
 
 const row = (over: Partial<ExportRow> = {}): ExportRow => ({
-    name: "Muslima Orifiddinova", shortId: "STU-A1B2C3",
-    correctAnswers: 14, totalQuestions: 50, accuracy: 28,
-    levelScore: 52, levelScoreMax: 100, gradeLevel: "C+",
-    completedAt: "2026-09-06T07:41:03.512+00:00", pendingReviewCount: 0,
-    ...over,
+    name: "Lola Xurramova", levelScore: 100, gradeLevel: "A+", ...over,
 });
 
 describe("buildResultsCsv", () => {
     it("начинается с BOM — иначе Excel покажет кракозябры", () => {
-        // Без BOM Excel читает файл как ANSI, и «Орифиддинова» превращается в
+        // Без BOM Excel читает файл как ANSI, и «Набихўжаева» превращается в
         // мусор. Это первое, на что жалуются при выгрузке.
         expect(buildResultsCsv([row()], labels).charCodeAt(0)).toBe(0xfeff);
     });
@@ -34,27 +27,25 @@ describe("buildResultsCsv", () => {
         expect(csv.split("\r\n").filter(Boolean)).toHaveLength(3); // sep + шапка + строка
     });
 
-    it("выводит все нужные колонки в шапке", () => {
+    it("ровно четыре колонки: номер, ФИО, балл, уровень", () => {
         const header = buildResultsCsv([], labels).split("\r\n")[1];
-        for (const l of ["№", "Ученик", "ID", "Верных", "Процент", "Балл", "Уровень", "Статус"]) {
-            expect(header).toContain(l);
-        }
+        expect(header).toBe("№;Ученик;Балл;Уровень");
     });
 
-    it("данные ученика попадают целиком", () => {
-        const line = buildResultsCsv([row()], labels).split("\r\n")[2];
-        expect(line).toBe("1;Muslima Orifiddinova;STU-A1B2C3;14;50;28;52;100;C+;2026-09-06 07:41;Проверено");
+    it("не выгружает ID ученика и прочее лишнее", () => {
+        // Владелец попросил убрать ID и оставить только суть — если колонки
+        // вернутся, тест это поймает.
+        const csv = buildResultsCsv([row()], labels);
+        expect(csv).not.toContain("STU-");
+        expect(csv.split("\r\n")[1].split(";")).toHaveLength(4);
     });
 
-    it("дата пишется так, чтобы Excel не перепутал день с месяцем", () => {
-        // «06.09.2026» на американской раскладке читается как 9 июня.
-        const line = buildResultsCsv([row()], labels).split("\r\n")[2];
-        expect(line).toContain("2026-09-06 07:41");
+    it("строка ученика выглядит ровно так", () => {
+        expect(buildResultsCsv([row()], labels).split("\r\n")[2]).toBe("1;Lola Xurramova;100;A+");
     });
 
     it("нумерует строки подряд", () => {
-        const csv = buildResultsCsv([row(), row(), row()], labels);
-        const lines = csv.split("\r\n");
+        const lines = buildResultsCsv([row(), row(), row()], labels).split("\r\n");
         expect(lines[2].startsWith("1;")).toBe(true);
         expect(lines[3].startsWith("2;")).toBe(true);
         expect(lines[4].startsWith("3;")).toBe(true);
@@ -62,23 +53,13 @@ describe("buildResultsCsv", () => {
 
     it("точка с запятой в фамилии не ломает таблицу", () => {
         const line = buildResultsCsv([row({ name: 'Иванов; "Ваня"' })], labels).split("\r\n")[2];
-        expect(line).toContain('"Иванов; ""Ваня"""');
-        // Колонок должно остаться столько же, сколько в шапке.
-        const header = buildResultsCsv([], labels).split("\r\n")[1];
-        expect(line.split(";").length).toBeGreaterThanOrEqual(header.split(";").length);
-    });
-
-    it("различает три состояния работы", () => {
-        const get = (r: ExportRow) => buildResultsCsv([r], labels).split("\r\n")[2].split(";").pop();
-        expect(get(row())).toBe("Проверено");
-        expect(get(row({ pendingReviewCount: 1 }))).toBe("Ждёт проверки");
-        expect(get(row({ completedAt: null }))).toBe("Не сдавал");
+        expect(line).toBe('1;"Иванов; ""Ваня""";100;A+');
     });
 
     it("непосчитанный балл остаётся пустым, а не нулём", () => {
         // Ноль читался бы как настоящий результат ученика.
-        const line = buildResultsCsv([row({ levelScore: null, gradeLevel: null })], labels).split("\r\n")[2];
-        expect(line).toBe("1;Muslima Orifiddinova;STU-A1B2C3;14;50;28;;100;;2026-09-06 07:41;Проверено");
+        expect(buildResultsCsv([row({ levelScore: null, gradeLevel: null })], labels).split("\r\n")[2])
+            .toBe("1;Lola Xurramova;;");
     });
 
     it("пустой список даёт файл с одной шапкой", () => {

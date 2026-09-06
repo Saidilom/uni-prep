@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "GEMINI_API_KEY не настроен" }, { status: 503 });
   }
 
-  const { data: mockTest } = await supabaseServer.from("mock_tests").select("language").eq("id", result.mock_test_id).single();
+  const { data: mockTest } = await supabaseServer.from("mock_tests").select("language, subject_id").eq("id", result.mock_test_id).single();
   const questionIds = pending.map((p) => p.question_id as string);
   const { data: questions } = await supabaseServer.from("mock_questions").select("id, content").in("id", questionIds);
   const contentMap = new Map(
@@ -85,6 +85,9 @@ export async function POST(req: NextRequest) {
       const content = contentMap.get(detail.question_id as string);
       const prompt = buildEssayGradingPrompt({
         language: mockTest?.language ?? null,
+        // Предмет надёжнее языка: его выбирает человек, а language угадывает
+        // распознавание — см. pickRubric.
+        subjectId: mockTest?.subject_id ?? null,
         maxPoints,
         taskPrompt: (detail.question_text as string) || "",
         sharedStimulus: content?.sharedStimulus ?? null,

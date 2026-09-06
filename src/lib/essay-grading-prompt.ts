@@ -63,6 +63,10 @@ const GENERIC_RUBRIC = `No official numeric conversion table is available for th
 
 export type EssayGradingContext = {
   language: string | null;
+  // Предмет теста. Надёжнее языка: предмет выбирает человек при создании мока,
+  // а language проставляет распознавание — и его ошибка молча подменила бы
+  // узбекскую рубрику русской.
+  subjectId?: string | null;
   maxPoints: number;
   taskPrompt: string;
   sharedStimulus?: string | null;
@@ -73,8 +77,15 @@ export type EssayGradingContext = {
 function pickRubric(ctx: EssayGradingContext): string {
   if (ctx.maxPoints === 10) return ENGLISH_TASK1_RUBRIC;
   if (ctx.maxPoints === 20) return ENGLISH_TASK2_RUBRIC;
-  if (ctx.maxPoints === 24 && ctx.language === "uz") return UZBEK_ESSAY_RUBRIC;
-  if (ctx.maxPoints === 24) return RUSSIAN_ESSAY_RUBRIC;
+  if (ctx.maxPoints === 24) {
+    // Сначала предмет, потом язык. Предмет задаёт человек при создании мока
+    // (§13), а language угадывает распознавание: ошибись оно один раз с 'uz'
+    // на 'mixed' — и полсотни узбекских сочинений были бы проверены по русской
+    // рубрике, без единого признака на экране.
+    if (ctx.subjectId === "uzbek") return UZBEK_ESSAY_RUBRIC;
+    if (ctx.subjectId === "russian") return RUSSIAN_ESSAY_RUBRIC;
+    return ctx.language === "uz" ? UZBEK_ESSAY_RUBRIC : RUSSIAN_ESSAY_RUBRIC;
+  }
   return GENERIC_RUBRIC;
 }
 
@@ -97,6 +108,7 @@ Return only valid JSON, no markdown fences.`;
 
 export type BatchEssayGradingContext = {
   language: string | null;
+  subjectId?: string | null;
   maxPoints: number;
   taskPrompt: string;
   sharedStimulus?: string | null;
@@ -107,6 +119,7 @@ export type BatchEssayGradingContext = {
 export function buildBatchEssayGradingPrompt(ctx: BatchEssayGradingContext): string {
   const rubric = pickRubric({
     language: ctx.language,
+    subjectId: ctx.subjectId ?? null,
     maxPoints: ctx.maxPoints,
     taskPrompt: ctx.taskPrompt,
     studentAnswer: "",

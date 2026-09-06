@@ -52,7 +52,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const mockTestId = params.id;
   const { data: mockTest } = await supabaseServer
     .from("mock_tests")
-    .select("id, language, created_by")
+    .select("id, language, subject_id, created_by")
     .eq("id", mockTestId)
     .single();
   if (!mockTest) return NextResponse.json({ error: "Тест не найден" }, { status: 404 });
@@ -125,6 +125,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       try {
         const prompt = buildBatchEssayGradingPrompt({
           language: (mockTest.language as string | null) ?? null,
+          subjectId: (mockTest.subject_id as string | null) ?? null,
           maxPoints: Number(batch[0].max_points) || 1,
           taskPrompt: batch[0].question_text || "",
           sharedStimulus: content?.sharedStimulus ?? null,

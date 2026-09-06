@@ -7,6 +7,7 @@ import supabase from "@/lib/supabase/client";
 import { CORE_SUBJECTS, CoreSubject, coreSubjectMatches } from "@/lib/mock-import-schema";
 import { accuracyColor } from "@/lib/status-colors";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
+import { averageCertificateScore } from "@/lib/certificate-scale";
 import { fetchClassMockResults } from "@/lib/class-utils";
 import { buildResultsCsv, exportFileName } from "@/lib/results-export";
 import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
@@ -108,20 +109,20 @@ export default function AdminFreeMockResultsPage() {
             // Пагинация обязательна: на моке со ста участниками плоский select
             // молча обрезался бы по max_rows PostgREST, и «сдали» показало бы
             // меньше, чем на самом деле.
-            const { data: results } = await fetchAllRows<{ mock_test_id: string; accuracy: number; revealed_at: string | null }>(
+            const { data: results } = await fetchAllRows<{ mock_test_id: string; level_score: number | null; level_score_max: number | null; revealed_at: string | null }>(
                 (from, to) => supabase.from("mock_results")
-                    .select("mock_test_id, accuracy, revealed_at")
+                    .select("mock_test_id, level_score, level_score_max, revealed_at")
                     .in("mock_test_id", testRows.map((test) => test.id))
                     .order("id").range(from, to)
             );
 
-            const byTest = new Map<string, number[]>();
+            const byTest = new Map<string, Array<{ score: number | null; max: number | null }>>();
             const takersByTest = new Map<string, number>();
             (results || []).forEach((r) => {
                 takersByTest.set(r.mock_test_id, (takersByTest.get(r.mock_test_id) || 0) + 1);
                 if (!r.revealed_at) return;
                 const list = byTest.get(r.mock_test_id) || [];
-                list.push(r.accuracy);
+                list.push({ score: r.level_score, max: r.level_score_max });
                 byTest.set(r.mock_test_id, list);
             });
 
@@ -133,10 +134,12 @@ export default function AdminFreeMockResultsPage() {
                     subjectId: test.subject_id,
                     createdAt: test.created_at,
                     completedCount: takersByTest.get(test.id) || 0,
-                    // Средний по тесту — в процентах: это агрегат, а балл за
-                    // отдельную работу открывается на странице результатов теста
-                    // (design/FIX.md, «Правило отображения баллов»).
-                    avgScore: scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null,
+                    // Средний балл сертификата, а не процент набранных сырых
+                    // баллов. Раньше здесь считался процент: после перевода
+                    // агрегатов в баллы (§8) я убрал у него знак «%», но не
+                    // сменил источник — и число стало выглядеть баллом, будучи
+                    // процентом. У математики это давало 22 при среднем балле 67.
+                    avgScore: averageCertificateScore(scores),
                 };
             }));
             setLoading(false);

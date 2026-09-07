@@ -4,7 +4,13 @@ import { useEffect, useState } from "react";
 import { GraduationCap, Mail, Phone, Users, Search, UserPlus, Loader2 } from "lucide-react";
 import supabase from "@/lib/supabase/client";
 import { User as UserType } from "@/lib/firestore-schema";
-import { fetchAdminTeachersOverview, searchStudentsForPromotion, promoteStudentToTeacherInBranch, PromotableStudent } from "@/lib/class-utils";
+import {
+    fetchAdminTeachersOverview,
+    searchBranchTeacherCandidates,
+    promoteStudentToTeacherInBranch,
+    assignTeacherToBranch,
+    BranchTeacherCandidate,
+} from "@/lib/class-utils";
 import { useToast } from "@/hooks/useToast";
 import { accuracyColor } from "@/lib/status-colors";
 import { formatScore } from "@/lib/certificate-scale";
@@ -22,7 +28,7 @@ export default function BranchTeachersPage() {
     const [loading, setLoading] = useState(true);
     // §11: назначение учителей — работа админа филиала, а не супер-админа.
     const [query, setQuery] = useState("");
-    const [found, setFound] = useState<PromotableStudent[]>([]);
+    const [found, setFound] = useState<BranchTeacherCandidate[]>([]);
     const [searched, setSearched] = useState(false);
     const [searching, setSearching] = useState(false);
     const [promoting, setPromoting] = useState<string | null>(null);
@@ -52,7 +58,7 @@ export default function BranchTeachersPage() {
         if (query.trim().length < 2) return;
         setSearching(true);
         try {
-            setFound(await searchStudentsForPromotion(query));
+            setFound(await searchBranchTeacherCandidates(query));
             setSearched(true);
         } catch (error) {
             toast.error(t("searchFailed"), { description: error instanceof Error ? error.message : String(error) });
@@ -61,16 +67,31 @@ export default function BranchTeachersPage() {
         }
     };
 
-    const promote = async (student: PromotableStudent) => {
-        const fullName = `${student.name} ${student.surname}`.trim();
-        if (!confirm(t("confirmPromote").replace("{name}", fullName))) return;
-        setPromoting(student.id);
+    // Одна кнопка на три случая — ученик, свободный учитель и учитель чужого
+    // филиала, — потому что человек вводит ID и не обязан заранее знать, кем
+    // тот оказался. Что именно произойдёт, написано и на кнопке, и в
+    // подтверждении.
+    const addToBranch = async (person: BranchTeacherCandidate) => {
+        const fullName = `${person.name} ${person.surname}`.trim();
+        const confirmText = person.role === "student"
+            ? t("confirmPromote").replace("{name}", fullName)
+            : person.branchName
+                ? t("confirmTransfer").replace("{name}", fullName).replace("{branch}", person.branchName)
+                : t("confirmAddTeacher").replace("{name}", fullName);
+        if (!confirm(confirmText)) return;
+
+        setPromoting(person.id);
         try {
-            // Филиал не передаём: RPC сама подставит филиал вызывающего —
-            // админ филиала может назначать только в свой (миграция 072).
-            await promoteStudentToTeacherInBranch(student.id, null);
-            toast.success(t("promotedToast").replace("{name}", fullName));
-            setFound((current) => current.filter((s) => s.id !== student.id));
+            // Филиал ни в одном случае не передаём: RPC сама подставит филиал
+            // вызывающего — админ филиала может назначать только в свой.
+            if (person.role === "student") {
+                await promoteStudentToTeacherInBranch(person.id, null);
+                toast.success(t("promotedToast").replace("{name}", fullName));
+            } else {
+                await assignTeacherToBranch(person.id);
+                toast.success(t("addedToast").replace("{name}", fullName));
+            }
+            setFound((current) => current.filter((s) => s.id !== person.id));
             await load();
         } catch (error) {
             toast.error(t("promoteFailed"), { description: error instanceof Error ? error.message : String(error) });
@@ -109,23 +130,47 @@ export default function BranchTeachersPage() {
                     </button>
                 </div>
                 {searched && found.length === 0 && (
-                    <p className="mt-3 text-sm text-muted-foreground">{t("noStudentsFound")}</p>
+                    <p className="mt-3 text-sm text-muted-foreground">{t("nobodyFound")}</p>
                 )}
                 {found.length > 0 && (
                     <div className="mt-3 space-y-2">
-                        {found.map((student) => (
-                            <div key={student.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-background p-3">
+                        {found.map((person) => (
+                            <div key={person.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-background p-3">
                                 <div className="min-w-0">
-                                    <p className="truncate text-sm font-semibold text-foreground">{student.name} {student.surname}</p>
-                                    <p className="font-mono text-xs text-muted-foreground">{student.shortId}</p>
+                                    <p className="truncate text-sm font-semibold text-foreground">{person.name} {person.surname}</p>
+                                    <p className="font-mono text-xs text-muted-foreground">{person.shortId}</p>
+                                    {/* Кто это и где он сейчас — без этого «Перевести»
+                                        появлялось бы без объяснения, откуда. */}
+                                    <p className="mt-0.5 text-xs text-muted-foreground">
+                                        {person.role === "student"
+                                            ? t("roleStudent")
+                                            : person.inMyBranch
+                                                ? t("alreadyInYourBranch")
+                                                : person.branchName
+                                                    ? t("teacherOfBranch").replace("{branch}", person.branchName)
+                                                    : t("teacherWithoutBranch")}
+                                    </p>
                                 </div>
-                                <button
-                                    onClick={() => promote(student)}
-                                    disabled={promoting === student.id}
-                                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-bold text-foreground hover:bg-muted disabled:opacity-50"
-                                >
-                                    <UserPlus size={13} /> {promoting === student.id ? t("promoting") : t("promoteAction")}
-                                </button>
+                                {person.inMyBranch ? (
+                                    <span className="shrink-0 rounded-lg bg-muted px-3 py-2 text-xs font-semibold text-muted-foreground">
+                                        {t("alreadyHere")}
+                                    </span>
+                                ) : (
+                                    <button
+                                        onClick={() => addToBranch(person)}
+                                        disabled={promoting === person.id}
+                                        className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-bold text-foreground hover:bg-muted disabled:opacity-50"
+                                    >
+                                        <UserPlus size={13} />
+                                        {promoting === person.id
+                                            ? t("promoting")
+                                            : person.role === "student"
+                                                ? t("promoteAction")
+                                                : person.branchName
+                                                    ? t("transferAction")
+                                                    : t("addTeacherAction")}
+                                    </button>
+                                )}
                             </div>
                         ))}
                     </div>

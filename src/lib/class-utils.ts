@@ -1297,17 +1297,43 @@ export const createBranch = async (name: string, adminId: string | null): Promis
 // Поиск идёт через RPC (миграция 082), а не выборкой по таблице: политика
 // users_branch_admin_read показывает админу филиала только СВОИХ, а у нового
 // ученика филиал пуст — обычным запросом он бы его не нашёл.
-export type PromotableStudent = { id: string; name: string; surname: string; shortId: string };
+// Кандидат для раздела «Учителя филиала»: и ученик (сделать учителем), и уже
+// существующий учитель (добавить в филиал или перевести из чужого). Раньше
+// поиск возвращал только учеников, и на ID учителя экран отвечал «Учеников не
+// найдено» — сообщение про не тот тип пользователя.
+export type BranchTeacherCandidate = {
+    id: string;
+    name: string;
+    surname: string;
+    shortId: string;
+    role: "student" | "teacher";
+    /** Филиал, где учитель числится сейчас. null — свободен или это ученик. */
+    branchName: string | null;
+    inMyBranch: boolean;
+};
 
-export const searchStudentsForPromotion = async (query: string): Promise<PromotableStudent[]> => {
-    const { data, error } = await supabase.rpc("search_students_for_promotion", { p_query: query });
+export const searchBranchTeacherCandidates = async (query: string): Promise<BranchTeacherCandidate[]> => {
+    const { data, error } = await supabase.rpc("search_branch_teacher_candidates", { p_query: query });
     if (error) throw error;
     return ((data || []) as Array<Record<string, unknown>>).map((row) => ({
         id: row.id as string,
         name: (row.name as string) ?? "",
         surname: (row.surname as string) ?? "",
         shortId: (row.shortid as string) ?? "",
+        role: row.role as "student" | "teacher",
+        branchName: (row.branch_name as string | null) ?? null,
+        inMyBranch: Boolean(row.in_my_branch),
     }));
+};
+
+// Привязка уже существующего учителя к филиалу — роль при этом не меняется.
+// Филиал не передаём: RPC подставит филиал вызывающего, админ филиала может
+// назначать только в свой.
+export const assignTeacherToBranch = async (teacherId: string): Promise<void> => {
+    const { error } = await supabase.rpc("assign_teacher_to_branch", { p_teacher_id: teacherId });
+    if (error) throw error;
+    pageCache.invalidate("branchOverview");
+    pageCache.invalidate("adminTeachersOverview");
 };
 
 // Учитель получает филиал назначившего, а его будущие группы наследуют филиал

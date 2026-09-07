@@ -24,6 +24,7 @@ import {
     CalendarDays,
     CreditCard,
     QrCode,
+    UserCog,
     PanelLeftClose,
     PanelLeft,
 } from "lucide-react";
@@ -64,6 +65,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         { name: t("navOylik"), href: "/admin/oylik", icon: CalendarDays },
         { name: t("navPayments"), href: "/admin/payments", icon: CreditCard },
         { name: t("navQr"), href: "/admin/qr", icon: QrCode },
+        { name: t("navProfile"), href: "/admin/profile", icon: UserCog },
     ];
 
     return (

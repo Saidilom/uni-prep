@@ -17,6 +17,7 @@ import {
     GraduationCap,
     UsersRound,
     ClipboardList,
+    UserCog,
     PanelLeftClose,
     PanelLeft,
 } from "lucide-react";
@@ -57,6 +58,7 @@ export default function BranchLayout({ children }: { children: React.ReactNode }
         { name: t("navClasses"), href: "/branch/classes", icon: UsersRound },
         { name: t("navTeachers"), href: "/branch/teachers", icon: GraduationCap },
         { name: t("navPlacementResults"), href: "/branch/placement-results", icon: ClipboardList },
+        { name: t("navProfile"), href: "/branch/profile", icon: UserCog },
     ];
 
     return (

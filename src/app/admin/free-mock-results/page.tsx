@@ -9,7 +9,7 @@ import { accuracyColor } from "@/lib/status-colors";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { averageCertificateScore, formatScore } from "@/lib/certificate-scale";
 import { fetchClassMockResults } from "@/lib/class-utils";
-import { buildResultsCsv, exportFileName } from "@/lib/results-export";
+import { buildResultsSheet, exportFileName, RESULTS_COLUMN_WIDTHS } from "@/lib/results-export";
 import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
 import { useToast } from "@/hooks/useToast";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
@@ -50,7 +50,7 @@ export default function AdminFreeMockResultsPage() {
                 toast.info(t("exportEmpty"));
                 return;
             }
-            const csv = buildResultsCsv(
+            const sheetData = buildResultsSheet(
                 summary.students.map((s) => ({
                     name: `${s.student.name} ${s.student.surname || ""}`.trim(),
                     levelScore: s.levelScore,
@@ -65,14 +65,18 @@ export default function AdminFreeMockResultsPage() {
                     level: t("colLevel"),
                 },
             );
-            const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement("a");
-            link.href = url;
-            link.download = exportFileName(row.title, row.createdAt.slice(0, 10));
-            link.click();
-            // Иначе blob висит в памяти вкладки до перезагрузки страницы.
-            URL.revokeObjectURL(url);
+
+            // Пакет грузится только по нажатию кнопки: он нужен одному
+            // обработчику из всей админки, и тянуть его в бандл страницы,
+            // которую открывают посмотреть список тестов, незачем.
+            const { default: writeXlsxFile } = await import("write-excel-file/browser");
+            await writeXlsxFile(sheetData, {
+                sheet: t("sheetName"),
+                columns: RESULTS_COLUMN_WIDTHS.map((width) => ({ width })),
+                // Шапка примерзает: на 54 учениках при прокрутке иначе не
+                // видно, какая колонка балл, а какая уровень.
+                stickyRowsCount: 1,
+            }).toFile(exportFileName(row.title, row.createdAt.slice(0, 10)));
             toast.success(t("exportDone").replace("{count}", String(summary.students.length)));
         } catch (error) {
             toast.error(t("exportFailed"), { description: error instanceof Error ? error.message : String(error) });

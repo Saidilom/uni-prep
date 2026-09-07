@@ -1032,6 +1032,7 @@ const uz: typeof ru = {
     colStudent: "O'quvchi",
     colScore: "Ball",
     colLevel: "Daraja",
+    sheetName: "Natijalar",
     statusPending: "Tekshirish kutilmoqda",
     title: "Bepul moklar natijalari",
     subtitle: "Barcha bepul Mock-testlar fanlar bo'yicha va har biri bo'yicha natijalar. Bo'lim o'zi to'ladi: bepul deb belgilangan har qanday test shu yerga tushadi.",

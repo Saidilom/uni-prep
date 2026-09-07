@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildResultsCsv, exportFileName, ExportRow, ExportLabels } from "./results-export";
+import { buildResultsSheet, exportFileName, RESULTS_COLUMN_WIDTHS, ExportRow, ExportLabels } from "./results-export";
 
 const labels: ExportLabels = {
     number: "№", student: "Ученик", score: "Балл", level: "Уровень",
@@ -9,101 +9,103 @@ const row = (over: Partial<ExportRow> = {}): ExportRow => ({
     name: "Lola Xurramova", levelScore: 100, gradeLevel: "A+", ...over,
 });
 
-describe("buildResultsCsv", () => {
-    it("начинается с BOM — иначе Excel покажет кракозябры", () => {
-        // Без BOM Excel читает файл как ANSI, и «Набихўжаева» превращается в
-        // мусор. Это первое, на что жалуются при выгрузке.
-        expect(buildResultsCsv([row()], labels).charCodeAt(0)).toBe(0xfeff);
-    });
+// Ячейка в формате write-excel-file. Тип объявлен здесь, а не берётся из
+// пакета: в модуле он импортирован только как тип и в рантайм не попадает.
+type Cell = { value?: unknown; type?: unknown; format?: string; fontWeight?: string } | null;
+const cells = (sheet: unknown[][], rowIndex: number) => sheet[rowIndex] as Cell[];
 
-    it("не объявляет sep= — Excel всё равно его игнорировал", () => {
-        // Владелец увидел «sep=;» отдельной строкой прямо в таблице: его Excel
-        // директиву не понял и вывел как текст. Обычный CSV читается без неё.
-        expect(buildResultsCsv([row()], labels)).not.toContain("sep=");
-    });
-
-    it("переносы строк в стиле Windows", () => {
-        const csv = buildResultsCsv([row()], labels);
-        expect(csv).toContain("\r\n");
-        expect(csv.split("\r\n").filter(Boolean)).toHaveLength(2); // шапка + строка
-    });
-
+describe("buildResultsSheet", () => {
     it("ровно четыре колонки: номер, ФИО, балл, уровень", () => {
-        // BOM теперь стоит на строке шапки — раньше его забирала строка `sep=`.
-        const header = buildResultsCsv([], labels).replace("﻿", "").split("\r\n")[0];
-        expect(header).toBe("№,Ученик,Балл,Уровень");
+        const header = cells(buildResultsSheet([], labels), 0);
+        expect(header.map((c) => c?.value)).toEqual(["№", "Ученик", "Балл", "Уровень"]);
+    });
+
+    it("шапка выделена жирным", () => {
+        // Иначе на 54 строках шапка теряется среди данных.
+        for (const cell of cells(buildResultsSheet([row()], labels), 0)) {
+            expect(cell?.fontWeight).toBe("bold");
+        }
+    });
+
+    it("строка ученика выглядит ровно так", () => {
+        const first = cells(buildResultsSheet([row()], labels), 1);
+        expect(first.map((c) => c?.value)).toEqual([1, "Lola Xurramova", 100, "A+"]);
+    });
+
+    // То, ради чего и переходили на .xlsx: у CSV балл был текстом, и его
+    // десятичный разделитель конфликтовал с разделителем колонок.
+    it("балл лежит ЧИСЛОМ, а не строкой", () => {
+        const scoreCell = cells(buildResultsSheet([row({ levelScore: 99.8 })], labels), 1)[2];
+        expect(scoreCell?.value).toBe(99.8);
+        expect(typeof scoreCell?.value).toBe("number");
+        expect(scoreCell?.type).toBe(Number);
+    });
+
+    it("балл показывается с одним знаком после запятой", () => {
+        // Иначе в одной колонке оказались бы «99» и «99,8» вперемешку. Сам
+        // символ разделителя подставит Excel по своей локали.
+        const scoreCell = cells(buildResultsSheet([row({ levelScore: 100 })], labels), 1)[2];
+        expect(scoreCell?.format).toBe("0.0");
+    });
+
+    it("номер строки — тоже число, чтобы сортировка не была текстовой", () => {
+        const sheet = buildResultsSheet([row(), row(), row()], labels);
+        expect([1, 2, 3].map((n) => cells(sheet, n)[0]?.value)).toEqual([1, 2, 3]);
+        expect(cells(sheet, 1)[0]?.type).toBe(Number);
+    });
+
+    it("непосчитанный балл — пустая ячейка, а не ноль", () => {
+        // Ноль читался бы как настоящий результат ученика.
+        const line = cells(buildResultsSheet([row({ levelScore: null, gradeLevel: null })], labels), 1);
+        expect(line[2]).toBeNull();
+        expect(line[3]?.value).toBe("");
     });
 
     it("не выгружает ID ученика и прочее лишнее", () => {
         // Владелец попросил убрать ID и оставить только суть — если колонки
         // вернутся, тест это поймает.
-        const csv = buildResultsCsv([row()], labels);
-        expect(csv).not.toContain("STU-");
-        expect(csv.split("\r\n")[0].split(",")).toHaveLength(4);
+        const sheet = buildResultsSheet([row()], labels);
+        expect(JSON.stringify(sheet)).not.toContain("STU-");
+        for (const line of sheet) expect(line).toHaveLength(4);
     });
 
-    it("строка ученика выглядит ровно так", () => {
-        expect(buildResultsCsv([row()], labels).split("\r\n")[1]).toBe("1,Lola Xurramova,100.0,A+");
+    it("запятая и кавычки в фамилии больше ничего не значат", () => {
+        // В CSV из-за них строка разъезжалась и требовала экранирования. В
+        // .xlsx имя — просто значение ячейки.
+        const nameCell = cells(buildResultsSheet([row({ name: 'Иванов, "Ваня"' })], labels), 1)[1];
+        expect(nameCell?.value).toBe('Иванов, "Ваня"');
     });
 
-    it("нумерует строки подряд", () => {
-        const lines = buildResultsCsv([row(), row(), row()], labels).split("\r\n");
-        expect(lines[1].startsWith("1,")).toBe(true);
-        expect(lines[2].startsWith("2,")).toBe(true);
-        expect(lines[3].startsWith("3,")).toBe(true);
+    it("пустой список даёт лист с одной шапкой", () => {
+        expect(buildResultsSheet([], labels)).toHaveLength(1);
     });
 
-    it("запятая в фамилии не ломает таблицу", () => {
-        const line = buildResultsCsv([row({ name: 'Иванов, "Ваня"' })], labels).split("\r\n")[1];
-        expect(line).toBe('1,"Иванов, ""Ваня""",100.0,A+');
-    });
-
-    it("непосчитанный балл остаётся пустым, а не нулём", () => {
-        // Ноль читался бы как настоящий результат ученика.
-        expect(buildResultsCsv([row({ levelScore: null, gradeLevel: null })], labels).split("\r\n")[1])
-            .toBe("1,Lola Xurramova,,");
-    });
-
-    // Тот самый баг, из-за которого таблица разъезжалась: балл «99,8» с
-    // запятой Excel считал за две колонки, и строка «1;Lola Xurramova;99,8;A+»
-    // распадалась на «1;Lola Xurramova;99» и «8;A+».
-    it("балл пишется с точкой, а не с запятой — иначе колонки разъезжаются", () => {
-        const line = buildResultsCsv([row({ levelScore: 99.8 })], labels).split("\r\n")[1];
-        expect(line).toBe("1,Lola Xurramova,99.8,A+");
-        expect(line.split(",")).toHaveLength(4);
-    });
-
-    it("каждая строка даёт ровно четыре ячейки", () => {
-        // Прямая проверка того, на что жаловался владелец: сколько бы ни было
-        // дробных баллов, колонок остаётся четыре.
-        const csv = buildResultsCsv(
-            [row({ levelScore: 99.8 }), row({ levelScore: 86.4 }), row({ levelScore: 68.9 })],
-            labels,
-        );
-        for (const line of csv.replace("﻿", "").trim().split("\r\n")) {
-            expect(line.split(",")).toHaveLength(4);
-        }
-    });
-
-    it("пустой список даёт файл с одной шапкой", () => {
-        expect(buildResultsCsv([], labels).split("\r\n").filter(Boolean)).toHaveLength(1);
+    it("ширины колонок заданы на все четыре", () => {
+        // Узбекские ФИО легко занимают 30+ знаков, и по умолчанию колонка
+        // обрезала бы имя.
+        expect(RESULTS_COLUMN_WIDTHS).toHaveLength(4);
+        for (const width of RESULTS_COLUMN_WIDTHS) expect(width).toBeGreaterThan(0);
     });
 });
 
 describe("exportFileName", () => {
+    it("даёт расширение .xlsx", () => {
+        expect(exportFileName("Mock")).toBe("Mock.xlsx");
+    });
+
     it("убирает символы, которых не бывает в именах файлов", () => {
-        expect(exportFileName('Ona tili: 7/9 "milliy"')).toBe("Ona tili 7 9 milliy.csv");
+        expect(exportFileName('Ona tili: 7/9 "milliy"')).toBe("Ona tili 7 9 milliy.xlsx");
     });
 
     it("подрезает слишком длинное название", () => {
-        expect(exportFileName("A".repeat(200)).length).toBeLessThanOrEqual(64 + 4);
+        expect(exportFileName("A".repeat(200)).length).toBeLessThanOrEqual(64 + 5);
     });
 
     it("добавляет дату, когда она есть", () => {
-        expect(exportFileName("Mock", "2026-09-06")).toBe("Mock 2026-09-06.csv");
+        expect(exportFileName("Mock", "2026-09-06")).toBe("Mock 2026-09-06.xlsx");
     });
 
     it("не оставляет файл без имени", () => {
-        expect(exportFileName("///")).toBe("results.csv");
+        expect(exportFileName("///")).toBe("results.xlsx");
     });
 });

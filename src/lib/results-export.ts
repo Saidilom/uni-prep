@@ -1,26 +1,32 @@
-// Выгрузка результатов мока в файл, который открывается в Excel.
+// Выгрузка результатов мока в настоящий Excel-файл (.xlsx).
 //
-// Без библиотеки намеренно. Настоящий .xlsx требует внешнего пакета, а оба
-// подходящих оказались негодными: у `xlsx` с npm две уязвимости без
-// исправления (пакет заброшен на 0.18.5), у `exceljs` — 23 МБ и замечание
-// через зависимость. Ради одной кнопки экспорта это неоправданная цена.
+// До этого выгружался CSV, и он дважды подвёл на локали. Сначала разделителем
+// стояла точка с запятой плюс директива `sep=;` — Excel владельца её
+// проигнорировал и вывел отдельной строкой как текст. Потом разделитель сменили
+// на запятую, но тогда балл «99,8» пришлось писать с точкой, иначе строка
+// «1;Lola Xurramova;99,8;A+» распадалась на «1;Lola Xurramova;99» и «8;A+».
 //
-// Формат — обычный CSV по RFC 4180: разделитель запятая, десятичная точка,
-// BOM в начале. BOM обязателен, иначе Excel читает файл как ANSI и узбекские с
-// русскими буквами превращаются в кракозябры.
+// Корень в том, что у CSV нет типов: и разделитель колонок, и десятичный
+// разделитель зависят от локали читающего, и одновременно угадать оба нельзя.
+// У .xlsx этой проблемы не существует — балл лежит в файле ЧИСЛОМ, а как его
+// отрисовать (99.8 или 99,8), Excel решает сам по своим настройкам. Заодно по
+// колонке сразу работают СРЗНАЧ и сортировка: числу не нужно объяснять, что оно
+// число.
 //
-// Раньше здесь стояла точка с запятой плюс строка `sep=;` первой, а балл
-// печатался с запятой («67,8») — в расчёте на Excel с русской локалью, который
-// читает запятую как десятичный разделитель. На деле у владельца Excel строку
-// `sep=;` проигнорировал (она легла в таблицу как текст) и поделил строки по
-// ЗАПЯТОЙ — из-за чего «1;Lola Xurramova;99,8;A+» разорвалось на две ячейки:
-// «1;Lola Xurramova;99» и «8;A+». Поэтому никаких договорённостей с локалью:
-// запятая-разделитель и точка в дробной части — это читает и Excel, и Numbers,
-// и Google Sheets, и любой парсер.
+// Пакет — `write-excel-file`: 0 уязвимостей на момент подключения, одна
+// зависимость (fflate, и она уже была в дереве через @react-three/drei). Прежде
+// отвергнутые варианты были хуже: у `xlsx` с npm две неисправленных уязвимости
+// (пакет заброшен на 0.18.5), у `exceljs` — 23 МБ и замечание через зависимость.
+//
+// Здесь только ЧИСТОЕ построение данных листа — без импорта пакета в рантайме,
+// чтобы модуль оставался тестируемым в Node (см. CLAUDE.md про юнит-тесты).
+// Сам вызов writeXlsxFile и скачивание — на странице.
 //
 // Колонок намеренно четыре. Сначала выгружались ещё ID ученика, число верных,
 // процент, дата и статус — владелец попросил оставить только то, ради чего
 // таблицу открывают: кто, сколько баллов, какой уровень.
+
+import type { SheetData } from "write-excel-file/browser";
 
 import { SCORE_DECIMALS } from "./certificate-scale";
 
@@ -37,42 +43,35 @@ export type ExportLabels = {
     level: string;
 };
 
-const DELIMITER = ",";
+// Формат числа для Excel: ровно один знак после запятой, как и на экране.
+// Без него балл 99 показался бы как «99», а 99.8 как «99,8» — в одной колонке
+// вперемешку. Сам символ разделителя подставляет Excel по своей локали.
+const SCORE_FORMAT = `0.${"0".repeat(SCORE_DECIMALS)}`;
 
-// Балл в файл пишется с ТОЧКОЙ, а не с запятой: запятая теперь разделяет
-// колонки. На экране балл по-прежнему с запятой (formatScore) — там это
-// уместно, а в файле рвало бы таблицу.
-function csvScore(score: number | null): string {
-    if (score === null || !Number.isFinite(score)) return "";
-    return score.toFixed(SCORE_DECIMALS);
-}
+// Ширины колонок в символах. Имя с фамилией у узбекских ФИО легко занимает
+// 30+ знаков, а по умолчанию колонка узкая и текст обрезается — открывшему
+// пришлось бы растягивать её руками при каждой выгрузке.
+export const RESULTS_COLUMN_WIDTHS = [6, 34, 10, 12];
 
-// Экранирование по RFC 4180: кавычка удваивается, а поле берётся в кавычки,
-// если внутри есть разделитель, кавычка или перевод строки. Имена приходят из
-// профиля, и запятая в фамилии не должна ломать таблицу.
-function escapeCell(value: string | number | null | undefined): string {
-    if (value === null || value === undefined) return "";
-    const text = String(value);
-    if (text === "") return "";
-    if (text.includes(DELIMITER) || text.includes('"') || text.includes("\n") || text.includes("\r")) {
-        return `"${text.replace(/"/g, '""')}"`;
-    }
-    return text;
-}
+export function buildResultsSheet(rows: ExportRow[], labels: ExportLabels): SheetData {
+    const header = [labels.number, labels.student, labels.score, labels.level].map((value) => ({
+        value,
+        type: String,
+        fontWeight: "bold" as const,
+    }));
 
-export function buildResultsCsv(rows: ExportRow[], labels: ExportLabels): string {
-    const header = [labels.number, labels.student, labels.score, labels.level];
     const body = rows.map((row, index) => [
-        index + 1,
-        row.name,
-        csvScore(row.levelScore),
-        row.gradeLevel ?? "",
+        { value: index + 1, type: Number },
+        { value: row.name, type: String },
+        // Балл — число, а не строка. Непосчитанный балл остаётся ПУСТОЙ ячейкой:
+        // ноль читался бы как настоящий результат ученика.
+        row.levelScore === null || !Number.isFinite(row.levelScore)
+            ? null
+            : { value: row.levelScore, type: Number, format: SCORE_FORMAT },
+        { value: row.gradeLevel ?? "", type: String },
     ]);
 
-    const lines = [header, ...body].map((cells) => cells.map(escapeCell).join(DELIMITER));
-    // BOM — чтобы Excel не принял UTF-8 за ANSI. Строки \r\n, а не \n: иначе
-    // Excel на Windows показывает файл одной строкой.
-    return `﻿${lines.join("\r\n")}\r\n`;
+    return [header, ...body];
 }
 
 // Имя файла из названия теста: убираем то, что файловые системы не принимают,
@@ -83,5 +82,5 @@ export function exportFileName(title: string, date = ""): string {
         .replace(/\s+/g, " ")
         .trim()
         .slice(0, 60) || "results";
-    return `${safe}${date ? ` ${date}` : ""}.csv`;
+    return `${safe}${date ? ` ${date}` : ""}.xlsx`;
 }

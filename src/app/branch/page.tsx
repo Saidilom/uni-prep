@@ -79,7 +79,6 @@ export default function BranchOverviewPage() {
                     ) : (
                         <p className="mt-1 text-sm font-medium text-muted-foreground">{t("noResultsYet")}</p>
                     )}
-                    <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">{t("avgScoreHint")}</p>
                 </div>
             </section>
         </div>

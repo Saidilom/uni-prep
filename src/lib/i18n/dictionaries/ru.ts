@@ -766,7 +766,6 @@ const ru = {
     teachersLabel: "Учителей",
     studentsLabel: "Учеников",
     avgScoreLabel: "Средний балл",
-    avgScoreHint: "Среднее из средних баллов групп филиала, а не среднее по всем попыткам.",
     noResultsYet: "Нет результатов",
   },
   branchClasses: {

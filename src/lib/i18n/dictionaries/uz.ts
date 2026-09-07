@@ -768,7 +768,6 @@ const uz: typeof ru = {
     teachersLabel: "O'qituvchilar",
     studentsLabel: "O'quvchilar",
     avgScoreLabel: "O'rtacha ball",
-    avgScoreHint: "Filial guruhlari o'rtacha ballarining o'rtachasi, barcha urinishlar bo'yicha o'rtacha emas.",
     noResultsYet: "Natijalar yo'q",
   },
   branchClasses: {

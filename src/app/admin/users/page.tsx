@@ -9,13 +9,12 @@ import { useToast } from "@/hooks/useToast";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 type AdminUser = UserType & { registeredVia?: string; shortid?: string; branch_id?: string | null };
-type AssignableRole = "student" | "teacher" | "staff" | "branch_admin" | "admin";
+type AssignableRole = "student" | "teacher" | "branch_admin" | "admin";
 type RoleFilter = "all" | AssignableRole;
-const ROLE_FILTERS: RoleFilter[] = ["all", "student", "teacher", "staff", "branch_admin", "admin"];
-const ROLE_FILTER_LABEL_KEYS: Partial<Record<RoleFilter, "roleStudent" | "roleTeacher" | "roleStaff" | "roleBranchAdmin" | "roleAdmin">> = {
+const ROLE_FILTERS: RoleFilter[] = ["all", "student", "teacher", "branch_admin", "admin"];
+const ROLE_FILTER_LABEL_KEYS: Partial<Record<RoleFilter, "roleStudent" | "roleTeacher" | "roleBranchAdmin" | "roleAdmin">> = {
     student: "roleStudent",
     teacher: "roleTeacher",
-    staff: "roleStaff",
     branch_admin: "roleBranchAdmin",
     admin: "roleAdmin",
 };
@@ -92,7 +91,6 @@ export default function AdminUsersPage() {
         if (role === u.role) return;
         const fullName = `${u.name} ${u.surname || ""}`.trim();
         if (role === "admin" && !confirm(t("confirmMakeAdmin").replace("{name}", fullName))) return;
-        if (role === "staff" && !confirm(t("confirmMakeStaff").replace("{name}", fullName))) return;
         try {
             // Через RPC, а не прямым UPDATE: у последнего отказ выглядел как
             // успех (см. setUserRole и миграцию 079).
@@ -217,8 +215,6 @@ export default function AdminUsersPage() {
                                             className={`rounded-xl border px-3 py-2 text-xs font-semibold transition-all ${
                                                 u.role === "admin"
                                                     ? "border-amber-200 bg-amber-50 text-amber-700 dark:bg-amber-950/40"
-                                                    : u.role === "staff"
-                                                    ? "border-blue-200 bg-blue-50 text-blue-700 dark:bg-blue-950/40"
                                                     : u.role === "branch_admin"
                                                     ? "border-teal-200 bg-teal-50 text-teal-700 dark:bg-teal-950/40"
                                                     : u.role === "teacher"
@@ -228,7 +224,6 @@ export default function AdminUsersPage() {
                                         >
                                             <option value="student">{t("roleStudent")}</option>
                                             <option value="teacher">{t("roleTeacher")}</option>
-                                            <option value="staff">{t("roleStaff")}</option>
                                             <option value="branch_admin">{t("roleBranchAdmin")}</option>
                                             <option value="admin">{t("roleAdmin")}</option>
                                         </select>

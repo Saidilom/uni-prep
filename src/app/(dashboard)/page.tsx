@@ -53,14 +53,10 @@ export default function HomePage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [user]);
 
-    // A "staff" account only ever uses the isolated /staff panel (see
-    // src/app/staff/layout.tsx) — this dashboard's home view has nothing
-    // relevant to show them (it only special-cases teacher below, everyone
-    // else falls into the student view, which would be wrong for staff).
+    // У админа филиала свой раздел, а этот дашборд без явной ветки показал бы
+    // ему ученический вид: ниже отдельно разобран только учитель, все
+    // остальные попадают в ученический.
     useEffect(() => {
-        if (user?.role === "staff") router.push("/staff");
-        // Админ филиала — та же логика: у него свой раздел, а этот дашборд
-        // без явной ветки показал бы ему ученический вид.
         if (user?.role === "branch_admin") router.push("/branch");
     }, [user, router]);
 
@@ -105,7 +101,7 @@ export default function HomePage() {
 
     if (!user) return <LandingView />;
     if (user.role === "teacher") return <TeacherHome />;
-    if (user.role === "staff" || user.role === "branch_admin") return null;
+    if (user.role === "branch_admin") return null;
 
     return (
         <div className="flex flex-col gap-10 py-4 animate-in fade-in slide-in-from-bottom-4 duration-700">

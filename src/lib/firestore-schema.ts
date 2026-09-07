@@ -4,15 +4,16 @@
 
 // Schema types — decouple from Firebase Timestamp. Use ISO strings or Date where needed.
 
-// "staff" is a limited admin role granted by a full admin — its only power
-// is promoting a student to teacher (see the /staff panel and
-// promote_student_to_teacher, 049_staff_role.sql). It is deliberately
-// distinct from "admin" (full power, unchanged) everywhere in RLS.
-// 'staff' — узкий админ, который только делает учеников учителями (миграция
-// 049). 'branch_admin' — администратор филиала: видит и ведёт только свой
-// филиал, работает в разделе /branch (миграция 072). 'admin' — Super Admin,
+// 'branch_admin' — администратор филиала: видит и ведёт только свой филиал,
+// работает в разделе /branch (миграция 072). 'admin' — Super Admin,
 // единственная роль с полными правами.
-export type UserRole = "student" | "teacher" | "branch_admin" | "admin" | "staff";
+//
+// Была ещё роль 'staff' — узкий админ, умевший ровно одно: делать учеников
+// учителями (миграция 049, раздел /staff). Убрана: по решению владельца
+// («два админа не нужны», §9) это действие перешло к админу филиала, и роль
+// осталась дублирующей — с нулём носителей и собственным разделом, который
+// повторял /branch/teachers и /admin/placement/results. Снята миграцией 087.
+export type UserRole = "student" | "teacher" | "branch_admin" | "admin";
 
 export type RegisteredVia = "qr" | "google" | "phone" | "admin";
 

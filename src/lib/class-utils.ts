@@ -124,7 +124,7 @@ export const fetchReviewerCandidates = async (): Promise<ReviewerCandidate[]> =>
     const { data, error } = await supabase
         .from("users")
         .select("id, name, surname, role")
-        .in("role", ["teacher", "staff", "branch_admin", "admin"])
+        .in("role", ["teacher", "branch_admin", "admin"])
         .order("name");
     if (error) throw error;
     return ((data || []) as Array<Record<string, unknown>>).map((row) => ({

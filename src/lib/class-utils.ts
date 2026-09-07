@@ -4,6 +4,7 @@ import { pageCache } from "./page-cache";
 import { fetchAllRows } from "./supabase/fetch-all";
 import { formatCorrectAnswer, formatStudentAnswer } from "./answer-display";
 import { certificatePercent, roundScore } from "./certificate-scale";
+import type { DistributionClass } from "./oylik-distribution";
 
 // Same reasoning as registan-utils.ts's STUDENT_CACHE_TTL — short enough
 // that a just-created class/assignment shows up on its own, long enough that
@@ -1373,6 +1374,19 @@ export type OylikSet = {
     createdAt: string;
     publishedAt: string | null;
     tests: Array<{ id: string; title: string; subjectId: string | null; closedAt: string | null; assignedCount: number }>;
+};
+
+// Предметы групп — чтобы показать, кому достанется тест, ДО публикации.
+//
+// Своя лёгкая выборка, а не готовая fetchAdminClassesOverview: та считает
+// средние баллы и состав каждой группы, а здесь нужны два поля.
+export const fetchClassSubjects = async (): Promise<DistributionClass[]> => {
+    const { data, error } = await supabase.from("classes").select("id, subject_id");
+    if (error) throw error;
+    return ((data || []) as Array<Record<string, unknown>>).map((row) => ({
+        id: row.id as string,
+        subjectId: (row.subject_id as string | null) ?? null,
+    }));
 };
 
 export const fetchOylikSets = async (): Promise<OylikSet[]> => {

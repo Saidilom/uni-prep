@@ -7,6 +7,7 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { useToast } from "@/hooks/useToast";
 import {
     fetchOylikSets,
+    fetchClassSubjects,
     createOylikSet,
     publishOylikSet,
     closeMockForAllClasses,
@@ -16,6 +17,7 @@ import {
     MockClassAssignmentRow,
 } from "@/lib/class-utils";
 import { CORE_SUBJECTS, CoreSubject, coreSubjectMatches } from "@/lib/mock-import-schema";
+import { summarizeOylikDistribution, DistributionClass } from "@/lib/oylik-distribution";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 // §6 и §7: комплекты «Ойлик тест».
@@ -40,6 +42,7 @@ export default function AdminOylikPage() {
     const [busyTest, setBusyTest] = useState<string | null>(null);
     const [expandedTest, setExpandedTest] = useState<string | null>(null);
     const [assignments, setAssignments] = useState<MockClassAssignmentRow[]>([]);
+    const [classes, setClasses] = useState<DistributionClass[]>([]);
 
     const subjectLabels: Record<CoreSubject, string> = useMemo(() => ({
         math: tSubjects("subjectMath"),
@@ -54,13 +57,23 @@ export default function AdminOylikPage() {
     const load = async () => {
         setLoading(true);
         try {
-            setSets(await fetchOylikSets());
+            const [loadedSets, loadedClasses] = await Promise.all([fetchOylikSets(), fetchClassSubjects()]);
+            setSets(loadedSets);
+            setClasses(loadedClasses);
         } catch (error) {
             toast.error(t("loadFailed"), { description: error instanceof Error ? error.message : String(error) });
         } finally {
             setLoading(false);
         }
     };
+
+    // Сколько групп получит каждый тест — тем же правилом, что и раздача в базе
+    // (publish_oylik_set). Считается по всем тестам всех комплектов разом.
+    const distribution = useMemo(
+        () => summarizeOylikDistribution(sets.flatMap((set) => set.tests), classes),
+        [sets, classes],
+    );
+    const matchingClasses = (test: { id: string }) => distribution.matchingClassesByTest.get(test.id);
 
     useEffect(() => {
         load();
@@ -193,6 +206,20 @@ export default function AdminOylikPage() {
                     </div>
                 ) : (
                     <div className="space-y-4">
+                        {/* Группы без предмета не получат ни одного теста ни из какого
+                            комплекта — это причина, по которой месячный тест на проде ушёл в
+                            ноль групп. Факт общий, поэтому стоит один раз над списком, а не
+                            повторяется у каждого комплекта. Ссылка обязательна: без неё
+                            непонятно, где чинить. */}
+                        {distribution.classesWithoutSubject > 0 && (
+                            <p className="rounded-2xl bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800 dark:bg-amber-950/40">
+                                {t("classesWithoutSubjectWarning").replace("{count}", String(distribution.classesWithoutSubject))}
+                                {" "}
+                                <Link href="/admin/classes" className="underline underline-offset-2">
+                                    {t("fixClassSubjectsAction")}
+                                </Link>
+                            </p>
+                        )}
                         {sets.map((set) => (
                             <div key={set.id} className="rounded-2xl border border-border bg-card p-5">
                                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -228,10 +255,24 @@ export default function AdminOylikPage() {
                                                 <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
                                                     <div className="min-w-0">
                                                         <p className="truncate text-sm font-medium text-foreground">{test.title}</p>
+                                                        {/* До публикации «назначено» всегда ноль и потому ничего не
+                                                            говорит. Показываем, сколько групп тест ПОЛУЧИТ — по тому же
+                                                            правилу, по которому раздаёт publish_oylik_set. */}
                                                         <p className="text-[11px] text-muted-foreground">
-                                                            {subjectLabelFor(test.subjectId)} · {t("assignedToClasses").replace("{count}", String(test.assignedCount))}
+                                                            {subjectLabelFor(test.subjectId)}
+                                                            {" · "}
+                                                            {set.publishedAt
+                                                                ? t("assignedToClasses").replace("{count}", String(test.assignedCount))
+                                                                : t("willReachClasses").replace("{count}", String(matchingClasses(test) ?? 0))}
                                                             {test.closedAt && ` · ${t("closedLabel")}`}
                                                         </p>
+                                                        {/* Ноль групп — тихая раздача в никуда, ровно то, что случилось с
+                                                            тестом по истории. Предупреждаем до публикации, а не после. */}
+                                                        {matchingClasses(test) === 0 && (
+                                                            <p className="mt-1 inline-flex rounded-lg bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800 dark:bg-amber-950/40">
+                                                                {t("reachesNobodyWarning")}
+                                                            </p>
+                                                        )}
                                                     </div>
                                                     <div className="flex shrink-0 items-center gap-2">
                                                         <button

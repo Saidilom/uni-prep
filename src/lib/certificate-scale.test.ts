@@ -9,6 +9,7 @@ import {
     CERTIFICATE_MAX_ENGLISH,
     CERTIFICATE_MAX_GENERAL,
 } from "./certificate-scale";
+import { MOCK_SUBJECTS } from "./mock-import-schema";
 
 describe("certificateMaxForSubject", () => {
     it("иностранные языки остаются на 75", () => {
@@ -28,6 +29,23 @@ describe("certificateMaxForSubject", () => {
         // но отдать такому английскую шкалу было бы страннее.
         expect(certificateMaxForSubject(null)).toBe(100);
         expect(certificateMaxForSubject(undefined)).toBe(100);
+    });
+
+    // Потолок каждого предмета, который можно выбрать при импорте, теперь
+    // показывается прямо на экране проверки («Математика · итог до 100»).
+    // Список закреплён целиком: добавит кто-нибудь предмет в MOCK_SUBJECTS —
+    // тест упадёт и заставит решить, какая у него шкала, а не оставит бейдж
+    // молча показывать 100 по умолчанию.
+    it("у каждого предмета из MOCK_SUBJECTS потолок задан осознанно", () => {
+        const expected: Record<(typeof MOCK_SUBJECTS)[number], number> = {
+            math: 100, physics: 100, chemistry: 100, biology: 100,
+            geography: 100, history: 100, russian: 100, uzbek: 100,
+            it: 100, other: 100,
+            english: 75,
+        };
+        for (const subject of MOCK_SUBJECTS) {
+            expect(certificateMaxForSubject(subject)).toBe(expected[subject]);
+        }
     });
 });
 

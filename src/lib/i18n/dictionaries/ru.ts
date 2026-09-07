@@ -709,7 +709,9 @@ const ru = {
     recalcPartialWarning: "Результаты опубликованы, но пересчёт уровня прошёл не полностью",
     completedCountShort: "Сдали: {count}",
     pointsLabel: "Баллы",
-    pointsTotalLabel: "Итого: {total} баллов",
+    subjectWithCeilingBadge: "{subject} · итог до {max}",
+    changeSubjectAction: "Изменить предмет",
+    pointsMissingWarning: "У заданий не проставлены баллы",
   },
   adminLayout: {
     navPanel: "Панель",

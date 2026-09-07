@@ -38,6 +38,7 @@ import {
   MockImportResponse,
 } from "@/lib/mock-import-schema";
 import { sumPoints } from "@/lib/mock-points";
+import { certificateMaxForSubject } from "@/lib/certificate-scale";
 import { fetchOylikSets, fetchReviewerCandidates, fetchMockReviewerId, setMockReviewer, OylikSet, ReviewerCandidate } from "@/lib/class-utils";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
@@ -156,6 +157,9 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
   // потолок балла (английский 75, остальные 100), и ошибиться тут дороже,
   // чем в названии: пересчитать балл задним числом уже нельзя.
   const [subjectChoice, setSubjectChoice] = useState<string>("");
+  // Предмет на экране проверки показан бейджем, а не списком, — список
+  // открывается только по клику. См. комментарий у самого бейджа.
+  const [editingSubject, setEditingSubject] = useState(false);
   const [oylikSets, setOylikSets] = useState<OylikSet[]>([]);
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
@@ -744,25 +748,60 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
             <p className="mt-2 text-sm text-muted-foreground">{t("reviewSubtitle")}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs">
-            {/* Селект, а не бейдж: предмет задаёт потолок балла, и молча
-                ошибиться в нём не должно быть возможности. */}
-            <select
-              value={draft.subject}
-              onChange={(event) => setDraft({ ...draft, subject: event.target.value as ImportedMock["subject"] })}
-              className="rounded-full border border-border bg-muted px-3 py-1.5 font-semibold text-foreground"
-            >
-              {MOCK_SUBJECTS.map((subject) => (
-                <option key={subject} value={subject}>{SUBJECT_LABELS[subject] || subject}</option>
-              ))}
-            </select>
+            {/* Предмет — КОНСТАТАЦИЯ, а не вопрос.
+                Раньше здесь стоял выпадающий список, и владелец читал его как
+                «предмет спрашивают второй раз»: он ведь уже выбрал его до
+                распознавания. Система его и так помнит — runImport подставляет
+                subjectChoice в черновик, перебивая угаданное Gemini.
+                Поэтому показываем выбранное вместе с потолком балла, а список
+                открывается по клику: ошибиться в предмете по-прежнему нельзя
+                молча, но и переспрашивать не за чем.
+                Потолок берём из certificateMaxForSubject — той самой функции,
+                по которой балл считается на самом деле, чтобы на экране и в
+                расчёте не разошлись два разных правила. */}
+            {editingSubject ? (
+              <select
+                autoFocus
+                value={draft.subject}
+                onChange={(event) => {
+                  setDraft({ ...draft, subject: event.target.value as ImportedMock["subject"] });
+                  setEditingSubject(false);
+                }}
+                onBlur={() => setEditingSubject(false)}
+                className="rounded-full border border-border bg-muted px-3 py-1.5 font-semibold text-foreground"
+              >
+                {MOCK_SUBJECTS.map((subject) => (
+                  <option key={subject} value={subject}>{SUBJECT_LABELS[subject] || subject}</option>
+                ))}
+              </select>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setEditingSubject(true)}
+                title={t("changeSubjectAction")}
+                aria-label={t("changeSubjectAction")}
+                className="rounded-full border border-border bg-muted px-3 py-1.5 font-semibold text-foreground transition-colors hover:bg-muted/60"
+              >
+                {t("subjectWithCeilingBadge")
+                  .replace("{subject}", SUBJECT_LABELS[draft.subject] || draft.subject)
+                  .replace("{max}", String(certificateMaxForSubject(draft.subject)))}
+              </button>
+            )}
             <span className="rounded-full border border-border bg-muted px-3 py-1.5 font-semibold">{t("answersCountLabel").replace("{count}", String(itemCount))}</span>
             {missingKeys > 0 && <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 font-semibold text-amber-800">{t("missingKeysLabel").replace("{count}", String(missingKeys))}</span>}
-            {/* Сумма ни к чему не приводится, поэтому «правильного» значения у
-                неё нет — тревожный цвет остаётся только для нулевой суммы,
-                которую getPublicationIssues и так не пропустит. */}
-            <span className={`rounded-full border px-3 py-1.5 font-semibold ${totalPoints > 0 ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
-              {t("pointsTotalLabel").replace("{total}", String(totalPoints))}
-            </span>
+            {/* Сумма баллов за задания с экрана убрана: владелец принимал её за
+                максимум теста («50,5 балла» при потолке предмета 100), хотя на
+                итоговый балл она не влияет вовсе — его считает модель Раша и
+                выдаёт по шкале предмета (design/FIX.md, «Две шкалы 75»).
+                Ноль остаётся видимым: это не справка, а сломанный тест —
+                распознавание не проставило балл ни одному заданию. Публикацию
+                getPublicationIssues и так не пропустит, но узнать об этом при
+                проверке лучше, чем на кнопке публикации. */}
+            {totalPoints <= 0 && (
+              <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 font-semibold text-amber-800">
+                {t("pointsMissingWarning")}
+              </span>
+            )}
           </div>
         </div>
 

@@ -711,7 +711,9 @@ const uz: typeof ru = {
     recalcPartialWarning: "Natijalar e'lon qilindi, ammo daraja to'liq qayta hisoblanmadi",
     completedCountShort: "Topshirdi: {count}",
     pointsLabel: "Ballar",
-    pointsTotalLabel: "Jami: {total} ball",
+    subjectWithCeilingBadge: "{subject} · yakuniy ball {max} gacha",
+    changeSubjectAction: "Fanni o'zgartirish",
+    pointsMissingWarning: "Topshiriqlarga ball qo'yilmagan",
   },
   adminLayout: {
     navPanel: "Panel",

@@ -7,6 +7,7 @@ import { User as UserType } from "@/lib/firestore-schema";
 import { fetchAdminTeachersOverview, searchStudentsForPromotion, promoteStudentToTeacherInBranch, PromotableStudent } from "@/lib/class-utils";
 import { useToast } from "@/hooks/useToast";
 import { accuracyColor } from "@/lib/status-colors";
+import { formatScore } from "@/lib/certificate-scale";
 import { useTranslations } from "@/lib/i18n/locale-provider";
 
 type TeacherRow = UserType & { classCount: number; avgScore: number | null };
@@ -164,7 +165,7 @@ export default function BranchTeachersPage() {
                                     </span>
                                     {teacher.avgScore !== null && (
                                         <span className={`rounded-xl px-3 py-2 text-xs font-extrabold tabular-nums ${accuracyColor(teacher.avgScore)}`}>
-                                            {teacher.avgScore}
+                                            {formatScore(teacher.avgScore)}
                                         </span>
                                     )}
                                 </div>

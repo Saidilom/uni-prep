@@ -141,15 +141,18 @@ describe("модель Раша на когорте из 50 (узбекский)
     it("уровни A+..C распределяются, а не сваливаются в один", () => {
         const levels = new Set(tScores.map(gradeLevelFromScore));
         expect(levels.size).toBeGreaterThan(2);
-        // Сверка порогов с документом на самих полученных баллах.
+        // Сверка порогов с документом на самих полученных баллах. Порог
+        // сравнивается с ближайшим целым T — решение владельца, см.
+        // gradeLevelFromScore.
         for (const t of tScores) {
             const level = gradeLevelFromScore(t);
-            if (t >= 70) expect(level).toBe("A+");
-            else if (t >= 65) expect(level).toBe("A");
-            else if (t >= 60) expect(level).toBe("B+");
-            else if (t >= 55) expect(level).toBe("B");
-            else if (t >= 50) expect(level).toBe("C+");
-            else if (t >= 46) expect(level).toBe("C");
+            const rounded = Math.round(t);
+            if (rounded >= 70) expect(level).toBe("A+");
+            else if (rounded >= 65) expect(level).toBe("A");
+            else if (rounded >= 60) expect(level).toBe("B+");
+            else if (rounded >= 55) expect(level).toBe("B");
+            else if (rounded >= 50) expect(level).toBe("C+");
+            else if (rounded >= 46) expect(level).toBe("C");
             else expect(level).toBe("below_c");
         }
     });
@@ -159,8 +162,35 @@ describe("модель Раша на когорте из 50 (узбекский)
             const certificate = tScoreToCertificate(t, "uzbek");
             expect(certificate).toBeGreaterThanOrEqual(0);
             expect(certificate).toBeLessThanOrEqual(100);
-            expect(certificate).toBe(Math.round((t / 75) * 100));
+            expect(certificate).toBeCloseTo((t / 75) * 100, 1);
         }
+    });
+
+    // Свойство модели Раша, о которое разбивается ожидание «десятые разведут
+    // всех»: сырой балл — достаточная статистика, поэтому одинаковое число
+    // верных ответов даёт в точности одинаковую способность и одинаковый балл.
+    // На проде это подтвердилось буквально — разброс θ внутри такой группы
+    // равен нулю. Десятые убирают искусственное слипание от округлений, но
+    // настоящие ничьи остаются, и это правильно.
+    it("одинаковое число верных даёт одинаковый балл", () => {
+        const rawByPerson = new Array(PERSONS).fill(0);
+        for (const obs of observations) rawByPerson[obs.person] += obs.correct;
+
+        const byRaw = new Map<number, number[]>();
+        rawByPerson.forEach((raw, n) => {
+            const bucket = byRaw.get(raw) ?? [];
+            bucket.push(tScores[n]);
+            byRaw.set(raw, bucket);
+        });
+
+        let checkedGroups = 0;
+        for (const scores of Array.from(byRaw.values())) {
+            if (scores.length < 2) continue;
+            checkedGroups++;
+            for (const score of scores) expect(score).toBeCloseTo(scores[0], 8);
+        }
+        // Иначе тест молча ничего не проверял бы.
+        expect(checkedGroups).toBeGreaterThan(0);
     });
 });
 
@@ -176,15 +206,17 @@ describe("узбекский: два раздела — тест и сочине
         const essaySection = essayPointsToScore75(20, 24);
         const total = combineSectionScores([testSection, essaySection])!;
 
+        // Таблица перевода сочинения остаётся целочисленной: её значения — это
+        // сам документ (Baholash_mezoni.pdf, стр. 3-4), а не наше округление.
         expect(essaySection).toBe(67);
-        expect(total).toBe(Math.round((testSection + essaySection) / 2));
+        expect(total).toBeCloseTo((testSection + essaySection) / 2, 10);
         expect(total).toBeGreaterThan(testSection);
     });
 
     it("несданное сочинение обнуляет свой раздел, но не весь балл", () => {
         const testSection = tScores[40];
         const total = combineSectionScores([testSection, essayPointsToScore75(0, 24)])!;
-        expect(total).toBe(Math.round(testSection / 2));
+        expect(total).toBeCloseTo(testSection / 2, 10);
     });
 
     it("математика без сочинения считается одним разделом", () => {

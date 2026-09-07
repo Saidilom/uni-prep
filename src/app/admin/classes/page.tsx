@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Users, User as UserIcon, GraduationCap, ChevronRight } from "lucide-react";
 import { fetchAdminClassesOverview, AdminClassSummary } from "@/lib/class-utils";
 import { accuracyColor } from "@/lib/status-colors";
+import { formatScore } from "@/lib/certificate-scale";
 import { pluralizeRu } from "@/lib/pluralize-ru";
 import { CoreSubject } from "@/lib/mock-import-schema";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
@@ -80,7 +81,7 @@ export default function AdminClassesPage() {
                                         <Users size={13} /> {c.memberCount} {locale === "ru" ? pluralizeRu(c.memberCount, ["ученик", "ученика", "учеников"]) : t("studentWord")}
                                     </span>
                                     <span className={`rounded-xl px-3 py-2 text-xs font-extrabold tabular-nums ${accuracyColor(c.avgScore)}`}>
-                                        {c.avgScore ?? "—"}
+                                        {c.avgScore !== null ? formatScore(c.avgScore) : "—"}
                                     </span>
                                     <ChevronRight size={16} className="text-muted-foreground" />
                                 </div>

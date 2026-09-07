@@ -233,5 +233,12 @@ export function raschThetaToT(theta: number, cohortMean: number, cohortStdev: nu
     const spread = degenerate ? REFERENCE_ABILITY_STDEV : cohortStdev;
     const z = (theta - center) / spread;
     const t = z * 10 + 50;
-    return Math.max(0, Math.min(MOCK_SCALE_MAX, Math.round(t)));
+    // Без округления. T — величина ПРОМЕЖУТОЧНАЯ: её ещё делят между разделами
+    // и переводят в шкалу предмета, и округление на каждом из этих шагов
+    // накапливалось. Особенно заметно это было на сотенной шкале: шаг целого T
+    // после перевода равен 100/75 = 1,33 балла, поэтому баллы прыгали
+    // 61 → 64 → 65 → 67, а по родному языку деление на два сливало 8 разных
+    // результатов в одинаковые баллы. Округляет теперь только последний шаг —
+    // roundScore в src/lib/certificate-scale.ts.
+    return Math.max(0, Math.min(MOCK_SCALE_MAX, t));
 }

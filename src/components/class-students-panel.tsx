@@ -4,7 +4,7 @@ import { ReactNode, useMemo, useState } from "react";
 import { ChevronDown, Circle } from "lucide-react";
 import { ClassStudentOverview, StudentMockScore, ClassMockAssignment } from "@/lib/class-utils";
 import { accuracyColor } from "@/lib/status-colors";
-import { certificatePercent } from "@/lib/certificate-scale";
+import { certificatePercent, formatScore } from "@/lib/certificate-scale";
 import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
 import { pluralizeRu } from "@/lib/pluralize-ru";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
@@ -88,7 +88,7 @@ export default function ClassStudentsPanel({ students, mockScores, assignments, 
         }
         return (
             <span className={`rounded-xl px-3 py-1.5 text-sm font-extrabold tabular-nums ${accuracyColor(certificatePercent(score.levelScore, score.levelScoreMax))}`}>
-                {score.levelScore}
+                {formatScore(score.levelScore)}
             </span>
         );
     };

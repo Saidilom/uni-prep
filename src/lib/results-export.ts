@@ -17,6 +17,8 @@
 // процент, дата и статус — владелец попросил оставить только то, ради чего
 // таблицу открывают: кто, сколько баллов, какой уровень.
 
+import { formatScore } from "./certificate-scale";
+
 export type ExportRow = {
     name: string;
     levelScore: number | null;
@@ -47,10 +49,14 @@ function escapeCell(value: string | number | null | undefined): string {
 
 export function buildResultsCsv(rows: ExportRow[], labels: ExportLabels): string {
     const header = [labels.number, labels.student, labels.score, labels.level];
+    // Балл через formatScore: с запятой, а не с точкой. Разделитель колонок
+    // здесь `;`, поэтому запятая внутри числа таблицу не рвёт, зато Excel с
+    // русской локалью читает «67,8» как ЧИСЛО — с точкой он счёл бы это текстом,
+    // и среднее по колонке в таблице посчитать бы не вышло.
     const body = rows.map((row, index) => [
         index + 1,
         row.name,
-        row.levelScore,
+        formatScore(row.levelScore),
         row.gradeLevel ?? "",
     ]);
 

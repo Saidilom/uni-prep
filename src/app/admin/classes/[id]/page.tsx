@@ -18,6 +18,7 @@ import {
 } from "@/lib/class-utils";
 import { Class, User } from "@/lib/firestore-schema";
 import { accuracyColor } from "@/lib/status-colors";
+import { formatScore, roundScore } from "@/lib/certificate-scale";
 import ClassStudentsPanel from "@/components/class-students-panel";
 import { pluralizeRu } from "@/lib/pluralize-ru";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
@@ -78,7 +79,7 @@ export default function AdminClassDetailPage() {
     const avgScore = (() => {
         const scored = students.filter((s): s is ClassStudentOverview & { avgScore: number } => s.avgScore !== null);
         if (scored.length === 0) return null;
-        return Math.round(scored.reduce((sum, s) => sum + s.avgScore, 0) / scored.length);
+        return roundScore(scored.reduce((sum, s) => sum + s.avgScore, 0) / scored.length);
     })();
 
     return (
@@ -93,7 +94,7 @@ export default function AdminClassDetailPage() {
                     {avgScore !== null && (
                         <>
                             {" · "}
-                            <span className={`inline-flex items-center rounded-lg px-2 py-0.5 font-extrabold tabular-nums ${accuracyColor(avgScore)}`}>{t("avgResultSuffix").replace("{score}", String(avgScore))}</span>
+                            <span className={`inline-flex items-center rounded-lg px-2 py-0.5 font-extrabold tabular-nums ${accuracyColor(avgScore)}`}>{t("avgResultSuffix").replace("{score}", formatScore(avgScore))}</span>
                         </>
                     )}
                 </p>

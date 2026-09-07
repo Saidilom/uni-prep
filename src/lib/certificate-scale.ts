@@ -21,6 +21,37 @@ export const CERTIFICATE_MAX_GENERAL = 100;
 // одну строку, а не поиском по проекту.
 const FOREIGN_LANGUAGE_SUBJECTS = new Set(["english"]);
 
+// ЕДИНСТВЕННОЕ место, где балл округляется.
+//
+// Раньше округление стояло трижды: в raschThetaToT (θ → T), в
+// combineSectionScores (среднее разделов) и здесь. Каждое срезало точность
+// независимо, и по методике Агентства балл выходил целым — 56, 68 — тогда как
+// в сертификате у него есть десятая. Теперь первые два шага считают точно, а
+// округление осталось одно, последнее.
+//
+// Один знак, а не два: столько же держит cefr_score
+// (/api/mock-tests/[id]/cefr-recalculate) и столько же отдаёт
+// get_my_class_subject_ranking (миграция 081). Третьей точности в проекте
+// быть не должно.
+export const SCORE_DECIMALS = 1;
+
+export function roundScore(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.round(value * 10) / 10;
+}
+
+// Балл для показа. Печатать его сырым нельзя: 86.4 в double хранится неточно,
+// и на экран вылезало бы «86.40000000000001».
+//
+// Запятая, а не точка. Так в ru/uz, и так же это важно для выгрузки: колонки в
+// CSV разделены `;`, поэтому запятая внутри числа таблицу не ломает, зато Excel
+// с русской локалью читает «67,8» как ЧИСЛО, а «67.8» — как текст, и среднее по
+// колонке посчитать бы не вышло.
+export function formatScore(score: number | null | undefined): string {
+  if (score === null || score === undefined || !Number.isFinite(score)) return "";
+  return score.toFixed(SCORE_DECIMALS).replace(".", ",");
+}
+
 export function certificateMaxForSubject(subjectId: string | null | undefined): number {
   return subjectId !== null && subjectId !== undefined && FOREIGN_LANGUAGE_SUBJECTS.has(subjectId)
     ? CERTIFICATE_MAX_ENGLISH
@@ -38,15 +69,17 @@ export function tScoreToCertificate(tScore: number, subjectId: string | null | u
   const max = certificateMaxForSubject(subjectId);
   if (!Number.isFinite(tScore)) return 0;
   const clamped = Math.max(0, Math.min(MOCK_SCALE_MAX, tScore));
-  return Math.round((clamped / MOCK_SCALE_MAX) * max);
+  return roundScore((clamped / MOCK_SCALE_MAX) * max);
 }
 
 // Доля от максимума предмета — для цветовой заливки бейджа. Балл английского
 // из 75 и балл математики из 100 нельзя красить по одному и тому же числу:
 // 60 у англичанина это 80%, а у математика 60%.
+// Не округляет: эта доля идёт и в цвет бейджа (порогам десятые не мешают), и в
+// усреднение ниже, где округление до целого теряло точность впустую.
 export function certificatePercent(score: number | null, max: number | null): number | null {
   if (score === null || max === null || !Number.isFinite(score) || !Number.isFinite(max) || max <= 0) return null;
-  return Math.round((score / max) * 100);
+  return (score / max) * 100;
 }
 
 // Средний балл по нескольким работам — группы, учителя, филиала.
@@ -65,5 +98,5 @@ export function averageCertificateScore(
     .map((r) => certificatePercent(r.score, r.max))
     .filter((v): v is number => v !== null);
   if (normalized.length === 0) return null;
-  return Math.round(normalized.reduce((a, b) => a + b, 0) / normalized.length);
+  return roundScore(normalized.reduce((a, b) => a + b, 0) / normalized.length);
 }

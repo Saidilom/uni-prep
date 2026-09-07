@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createRouteHandlerClient } from "@/lib/supabase/server";
 import { estimateRasch, Observation } from "@/lib/rasch";
 import { raschThetaToT, writingPointsToScore, cefrBandFromScore, mean, stdev } from "@/lib/english-cefr";
+import { roundScore } from "@/lib/certificate-scale";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { isInternalCall } from "@/lib/internal-auth";
 
@@ -128,7 +129,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     if (sectionScores.length === 0) return { resultId, cefrScore: null, cefrBand: null };
     const avg = mean(sectionScores);
-    return { resultId, cefrScore: Math.round(avg * 10) / 10, cefrBand: cefrBandFromScore(avg) };
+    // Уровень — от ближайшего целого, как и буква A+..C у остальных предметов
+    // (см. gradeLevelFromScore). Сам балл при этом остаётся дробным.
+    return { resultId, cefrScore: roundScore(avg), cefrBand: cefrBandFromScore(Math.round(avg)) };
   });
 
   const updateResults = await Promise.all(

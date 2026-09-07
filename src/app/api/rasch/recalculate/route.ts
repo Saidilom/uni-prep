@@ -202,10 +202,15 @@ export async function POST(req: NextRequest) {
         ? essayPointsToScore75
         : subjectId === "english"
             ? (earned: number, max: number) => (max > 0 ? writingPointsToScore(Math.max(0, Math.min(max, earned))) : 0)
-            : (earned: number, max: number) => (max > 0 ? Math.round(Math.max(0, Math.min(max, earned)) / max * MOCK_SCALE_MAX) : 0);
+            : (earned: number, max: number) => (max > 0 ? Math.max(0, Math.min(max, earned)) / max * MOCK_SCALE_MAX : 0);
 
     // T-балл (0-75) — промежуточная величина модели Раша. От НЕЁ считается
     // буква A+..C: пороги 70/65/60/55/50/46 в документе заданы на T-шкале.
+    //
+    // T больше не округляется — ни здесь, ни в raschThetaToT, ни в
+    // combineSectionScores. Единственное округление балла живёт в roundScore
+    // (src/lib/certificate-scale.ts), а буква сравнивает пороги с ближайшим
+    // целым T внутри gradeLevelFromScore.
     const tScores = resultIds.map((_, n) => {
         const sections: number[] = [];
         if (hasObjectiveSection) sections.push(raschThetaToT(personAbility[n], abilityMean, abilityStdev));

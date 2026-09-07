@@ -3,7 +3,7 @@ import { User, Class, MockTest } from "./firestore-schema";
 import { pageCache } from "./page-cache";
 import { fetchAllRows } from "./supabase/fetch-all";
 import { formatCorrectAnswer, formatStudentAnswer } from "./answer-display";
-import { certificatePercent } from "./certificate-scale";
+import { certificatePercent, roundScore } from "./certificate-scale";
 
 // Same reasoning as registan-utils.ts's STUDENT_CACHE_TTL — short enough
 // that a just-created class/assignment shows up on its own, long enough that
@@ -677,7 +677,7 @@ export const fetchClassMockResults = async (classId: string | null, mockTestId: 
         completedCount: students.filter((s) => s.completedAt !== null).length,
         totalCount: members.length,
         mockMaxScore,
-        avgScore: scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null,
+        avgScore: scores.length > 0 ? roundScore(scores.reduce((a, b) => a + b, 0) / scores.length) : null,
         topScore: scores.length > 0 ? Math.max(...scores) : null,
         lowScore: scores.length > 0 ? Math.min(...scores) : null,
         pendingReviewCount: students.reduce((sum, s) => sum + s.pendingReviewCount, 0),
@@ -928,7 +928,7 @@ export const fetchClassStudentsOverview = async (classId: string): Promise<Class
                 return {
                     student,
                     attemptCount: scores.length,
-                    avgScore: scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null,
+                    avgScore: scores.length ? roundScore(scores.reduce((a, b) => a + b, 0) / scores.length) : null,
                     bestScore: scores.length ? Math.max(...scores) : null,
                 };
             })
@@ -1063,7 +1063,7 @@ export const fetchTeacherResultsOverview = async (teacherId: string): Promise<Te
             return {
                 ...cls,
                 attemptCount: scores.length,
-                avgScore: scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null,
+                avgScore: scores.length ? roundScore(scores.reduce((a, b) => a + b, 0) / scores.length) : null,
             };
         });
 
@@ -1074,7 +1074,7 @@ export const fetchTeacherResultsOverview = async (teacherId: string): Promise<Te
         let topStudent: TeacherTopStudent | null = null;
         for (const [studentId, scores] of Array.from(studentScores.entries())) {
             if (scores.length === 0) continue;
-            const avg = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+            const avg = roundScore(scores.reduce((a, b) => a + b, 0) / scores.length);
             if (!topStudent || avg > topStudent.avgScore) {
                 const student = userMap.get(studentId);
                 if (!student) continue;
@@ -1088,7 +1088,7 @@ export const fetchTeacherResultsOverview = async (teacherId: string): Promise<Te
             .map((r) => certificatePercent(r.level_score, r.level_score_max))
             .filter((v): v is number => v !== null);
         const overallAvgScore = allScores.length
-            ? Math.round(allScores.reduce((a, b) => a + b, 0) / allScores.length)
+            ? roundScore(allScores.reduce((a, b) => a + b, 0) / allScores.length)
             : null;
 
         return { classes: classSummaries, topClass, topStudent, overallAvgScore, overallAttemptCount: allScores.length };
@@ -1145,7 +1145,7 @@ export const fetchAdminClassesOverview = async (): Promise<AdminClassSummary[]> 
                 memberCount: ids.length,
                 teacherName: teacherMap.get(c.teacher_id as string) || "—",
                 attemptCount: scores.length,
-                avgScore: scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null,
+                avgScore: scores.length ? roundScore(scores.reduce((a, b) => a + b, 0) / scores.length) : null,
             };
         });
     }, TEACHER_CACHE_TTL);
@@ -1227,7 +1227,7 @@ export const fetchAdminTeachersOverview = async (): Promise<Map<string, AdminTea
             const scores = Array.from(students).flatMap((id) => scoresByStudent.get(id) || []);
             entry.studentCount = students.size;
             entry.attemptCount = scores.length;
-            entry.avgScore = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
+            entry.avgScore = scores.length ? roundScore(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
         }
         return overview;
     }, TEACHER_CACHE_TTL);

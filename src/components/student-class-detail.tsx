@@ -7,7 +7,7 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { fetchClassById, fetchStudentClassMocks, fetchMySubjectRanking, StudentClassMock, SubjectRanking } from "@/lib/class-utils";
 import { Class } from "@/lib/firestore-schema";
 import { accuracyColor } from "@/lib/status-colors";
-import { certificatePercent } from "@/lib/certificate-scale";
+import { certificatePercent, formatScore } from "@/lib/certificate-scale";
 import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
@@ -128,7 +128,7 @@ export default function StudentClassDetail({ classId }: { classId: string }) {
                                             «Две шкалы 75» в design/FIX.md). */}
                                         {m.myResult.levelScore != null ? (
                                             <span className={`rounded-xl px-3 py-1.5 text-sm font-extrabold tabular-nums ${accuracyColor(certificatePercent(m.myResult.levelScore, m.myResult.levelScoreMax))}`}>
-                                                {m.myResult.levelScore}
+                                                {formatScore(m.myResult.levelScore)}
                                             </span>
                                         ) : (
                                             <span className="rounded-xl border border-border bg-muted px-3 py-1.5 text-[10px] font-semibold text-muted-foreground">

@@ -5,7 +5,7 @@ import { Trophy, Calendar, Clock } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { fetchUserMockResults, MockResultRow } from "@/lib/registan-utils";
 import { accuracyColor } from "@/lib/status-colors";
-import { averageCertificateScore, certificatePercent } from "@/lib/certificate-scale";
+import { averageCertificateScore, certificatePercent, formatScore } from "@/lib/certificate-scale";
 import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
 import TeacherResultsExplorer from "@/components/teacher-results-explorer";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
@@ -54,7 +54,7 @@ export default function ResultsPage() {
                         <Trophy size={18} className="text-primary" />
                         <div>
                             <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{t("averageScore")}</p>
-                            <p className="text-xl font-extrabold tabular-nums text-foreground">{avgScore}</p>
+                            <p className="text-xl font-extrabold tabular-nums text-foreground">{formatScore(avgScore)}</p>
                         </div>
                     </div>
                 ) : null}
@@ -117,7 +117,7 @@ export default function ResultsPage() {
                                                 процент убраны: см. design/FIX.md. */}
                                             {r.level_score != null ? (
                                                 <span className={`rounded-xl px-4 py-2 text-sm font-extrabold tabular-nums ${accuracyColor(certificatePercent(r.level_score, r.level_score_max))}`}>
-                                                    {r.level_score}
+                                                    {formatScore(r.level_score)}
                                                 </span>
                                             ) : (
                                                 <span className="rounded-xl border border-border bg-muted px-4 py-2 text-xs font-semibold text-muted-foreground">

@@ -75,9 +75,11 @@ export function essayPointsToScore75(earnedPoints: number, maxPoints: number): n
 // сочинения это один Rasch-балл, у теста из одного сочинения — один переводной.
 // Пустой список даёт null, а не 0: «нечего усреднять» и «ноль баллов» это
 // разные вещи, и ноль тут читался бы как реальный результат.
+// Среднее возвращается неокруглённым: это ещё T-шкала, и округлять её здесь
+// значило бы терять точность дважды — по разу на каждом последующем шаге.
+// Округляет только roundScore в src/lib/certificate-scale.ts.
 export function combineSectionScores(sectionScores: number[]): number | null {
   const usable = sectionScores.filter((s) => Number.isFinite(s));
   if (usable.length === 0) return null;
-  const avg = usable.reduce((a, b) => a + b, 0) / usable.length;
-  return Math.round(avg);
+  return usable.reduce((a, b) => a + b, 0) / usable.length;
 }

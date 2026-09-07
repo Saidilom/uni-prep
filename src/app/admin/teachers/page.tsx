@@ -8,6 +8,7 @@ import { User as UserType } from "@/lib/firestore-schema";
 import { pluralizeRu } from "@/lib/pluralize-ru";
 import { fetchAdminTeachersOverview } from "@/lib/class-utils";
 import { accuracyColor } from "@/lib/status-colors";
+import { formatScore } from "@/lib/certificate-scale";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 type TeacherRow = UserType & { shortid?: string; classCount: number; avgScore: number | null; attemptCount: number };
@@ -107,7 +108,7 @@ export default function AdminTeachersPage() {
                                         <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">{t("avgScoreLabel")}</span>
                                         {teacher.avgScore !== null ? (
                                             <span className={`mt-0.5 rounded-lg px-2 py-0.5 text-xs font-extrabold tabular-nums ${accuracyColor(teacher.avgScore)}`}>
-                                                {teacher.avgScore}
+                                                {formatScore(teacher.avgScore)}
                                             </span>
                                         ) : (
                                             <span className="mt-0.5 flex items-center gap-1 text-xs font-semibold text-muted-foreground">

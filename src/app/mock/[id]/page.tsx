@@ -21,6 +21,7 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { invalidateStudentMockCaches } from "@/lib/registan-utils";
 import { getMockEntryState } from "@/lib/mock-schedule";
 import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
+import { formatScore } from "@/lib/certificate-scale";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 type AnswerValue = string | string[] | Record<string, string>;
@@ -409,7 +410,7 @@ export default function MockTestPage() {
                 см. design/FIX.md, раздел «Две шкалы 75». */}
             {result.levelScore != null ? (
               <>
-                <p className="mt-8 text-6xl font-black tabular-nums">{result.levelScore}</p>
+                <p className="mt-8 text-6xl font-black tabular-nums">{formatScore(result.levelScore)}</p>
                 <p className="mt-1 text-xs font-bold uppercase tracking-widest text-muted-foreground">{t("pointsLabel")}</p>
                 {result.gradeLevel && (
                   <div className="mx-auto mt-4 inline-flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 dark:border-emerald-900 dark:bg-emerald-950/30">

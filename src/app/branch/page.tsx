@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Building2, Users, GraduationCap, Trophy } from "lucide-react";
 import { fetchBranchOverview, BranchOverview } from "@/lib/class-utils";
 import { accuracyColor } from "@/lib/status-colors";
+import { formatScore } from "@/lib/certificate-scale";
 import { useTranslations } from "@/lib/i18n/locale-provider";
 
 // Сводка по СВОЕМУ филиалу. Фильтрацию делает не эта страница, а сам
@@ -73,7 +74,7 @@ export default function BranchOverviewPage() {
                     <p className="text-xs text-muted-foreground">{t("avgScoreLabel")}</p>
                     {branch.avgScore !== null ? (
                         <p className={`mt-1 inline-flex rounded-lg px-2 py-0.5 text-2xl font-semibold tabular-nums ${accuracyColor(branch.avgScore)}`}>
-                            {branch.avgScore}
+                            {formatScore(branch.avgScore)}
                         </p>
                     ) : (
                         <p className="mt-1 text-sm font-medium text-muted-foreground">{t("noResultsYet")}</p>

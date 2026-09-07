@@ -8,7 +8,7 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { fetchAvailableMockTests, fetchUserMockAccess, fetchUserClassMockAccess, fetchUserMockResults, fetchHasPlacementResult, userHasMockAccess, MockTest, MockAccess, MockResultRow } from "@/lib/registan-utils";
 import { pageCache } from "@/lib/page-cache";
 import { accuracyColor } from "@/lib/status-colors";
-import { averageCertificateScore, certificatePercent } from "@/lib/certificate-scale";
+import { averageCertificateScore, certificatePercent, formatScore } from "@/lib/certificate-scale";
 import PaymentModal from "@/components/payment-modal";
 import TeacherHome from "@/components/teacher-home";
 import LandingView from "@/components/landing";
@@ -339,7 +339,7 @@ export default function HomePage() {
                                         в карточке среднего выше. */}
                                     {r.level_score != null ? (
                                         <span className={`shrink-0 rounded-xl px-3 py-1.5 text-sm font-bold tabular-nums ${accuracyColor(certificatePercent(r.level_score, r.level_score_max))}`}>
-                                            {r.level_score}
+                                            {formatScore(r.level_score)}
                                         </span>
                                     ) : (
                                         <span className="shrink-0 rounded-xl border border-border bg-muted px-3 py-1.5 text-[10px] font-semibold text-muted-foreground">

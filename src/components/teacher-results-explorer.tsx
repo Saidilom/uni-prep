@@ -12,7 +12,7 @@ import {
 } from "@/lib/class-utils";
 import { fetchUserMockResults, MockResultRow } from "@/lib/registan-utils";
 import { accuracyColor } from "@/lib/status-colors";
-import { certificatePercent } from "@/lib/certificate-scale";
+import { certificatePercent, formatScore } from "@/lib/certificate-scale";
 import { pluralizeRu } from "@/lib/pluralize-ru";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
@@ -118,7 +118,7 @@ export default function TeacherResultsExplorer() {
                                 {overview?.topStudent ? (
                                     <>
                                         <p className="truncate font-bold text-foreground">{overview.topStudent.student.name} {overview.topStudent.student.surname || ""}</p>
-                                        <p className="text-sm text-muted-foreground">{overview.topStudent.avgScore} • {overview.topStudent.className}</p>
+                                        <p className="text-sm text-muted-foreground">{formatScore(overview.topStudent.avgScore)} • {overview.topStudent.className}</p>
                                     </>
                                 ) : (
                                     <p className="text-sm text-muted-foreground">{t("noCompletedTestsYet")}</p>
@@ -239,7 +239,7 @@ export default function TeacherResultsExplorer() {
                                     <div className="flex shrink-0 flex-col items-end gap-0.5 self-start sm:self-auto">
                                         {a.level_score != null ? (
                                             <span className={`rounded-xl px-4 py-2 text-sm font-extrabold tabular-nums ${accuracyColor(certificatePercent(a.level_score, a.level_score_max))}`}>
-                                                {a.level_score}
+                                                {formatScore(a.level_score)}
                                             </span>
                                         ) : (
                                             <span className="rounded-xl border border-border bg-muted px-4 py-2 text-[10px] font-semibold text-muted-foreground">

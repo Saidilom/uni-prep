@@ -7,7 +7,7 @@ import supabase from "@/lib/supabase/client";
 import { CORE_SUBJECTS, CoreSubject, coreSubjectMatches } from "@/lib/mock-import-schema";
 import { accuracyColor } from "@/lib/status-colors";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
-import { averageCertificateScore } from "@/lib/certificate-scale";
+import { averageCertificateScore, formatScore } from "@/lib/certificate-scale";
 import { fetchClassMockResults } from "@/lib/class-utils";
 import { buildResultsCsv, exportFileName } from "@/lib/results-export";
 import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
@@ -219,7 +219,7 @@ export default function AdminFreeMockResultsPage() {
                                 <div className="flex shrink-0 items-center gap-3 self-start sm:self-auto">
                                     {row.avgScore !== null ? (
                                         <span className={`rounded-xl px-3 py-1.5 text-sm font-extrabold tabular-nums ${accuracyColor(row.avgScore)}`}>
-                                            {row.avgScore}
+                                            {formatScore(row.avgScore)}
                                         </span>
                                     ) : (
                                         <span className="rounded-xl border border-border bg-muted px-3 py-1.5 text-xs font-semibold text-muted-foreground">

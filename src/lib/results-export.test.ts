@@ -16,20 +16,22 @@ describe("buildResultsCsv", () => {
         expect(buildResultsCsv([row()], labels).charCodeAt(0)).toBe(0xfeff);
     });
 
-    it("объявляет разделитель, иначе всё слипается в одну колонку", () => {
-        // Excel берёт разделитель из этой строки, а не из настроек Windows.
-        expect(buildResultsCsv([row()], labels)).toContain("sep=;");
+    it("не объявляет sep= — Excel всё равно его игнорировал", () => {
+        // Владелец увидел «sep=;» отдельной строкой прямо в таблице: его Excel
+        // директиву не понял и вывел как текст. Обычный CSV читается без неё.
+        expect(buildResultsCsv([row()], labels)).not.toContain("sep=");
     });
 
     it("переносы строк в стиле Windows", () => {
         const csv = buildResultsCsv([row()], labels);
         expect(csv).toContain("\r\n");
-        expect(csv.split("\r\n").filter(Boolean)).toHaveLength(3); // sep + шапка + строка
+        expect(csv.split("\r\n").filter(Boolean)).toHaveLength(2); // шапка + строка
     });
 
     it("ровно четыре колонки: номер, ФИО, балл, уровень", () => {
-        const header = buildResultsCsv([], labels).split("\r\n")[1];
-        expect(header).toBe("№;Ученик;Балл;Уровень");
+        // BOM теперь стоит на строке шапки — раньше его забирала строка `sep=`.
+        const header = buildResultsCsv([], labels).replace("﻿", "").split("\r\n")[0];
+        expect(header).toBe("№,Ученик,Балл,Уровень");
     });
 
     it("не выгружает ID ученика и прочее лишнее", () => {
@@ -37,42 +39,54 @@ describe("buildResultsCsv", () => {
         // вернутся, тест это поймает.
         const csv = buildResultsCsv([row()], labels);
         expect(csv).not.toContain("STU-");
-        expect(csv.split("\r\n")[1].split(";")).toHaveLength(4);
+        expect(csv.split("\r\n")[0].split(",")).toHaveLength(4);
     });
 
     it("строка ученика выглядит ровно так", () => {
-        expect(buildResultsCsv([row()], labels).split("\r\n")[2]).toBe("1;Lola Xurramova;100,0;A+");
+        expect(buildResultsCsv([row()], labels).split("\r\n")[1]).toBe("1,Lola Xurramova,100.0,A+");
     });
 
     it("нумерует строки подряд", () => {
         const lines = buildResultsCsv([row(), row(), row()], labels).split("\r\n");
-        expect(lines[2].startsWith("1;")).toBe(true);
-        expect(lines[3].startsWith("2;")).toBe(true);
-        expect(lines[4].startsWith("3;")).toBe(true);
+        expect(lines[1].startsWith("1,")).toBe(true);
+        expect(lines[2].startsWith("2,")).toBe(true);
+        expect(lines[3].startsWith("3,")).toBe(true);
     });
 
-    it("точка с запятой в фамилии не ломает таблицу", () => {
-        const line = buildResultsCsv([row({ name: 'Иванов; "Ваня"' })], labels).split("\r\n")[2];
-        expect(line).toBe('1;"Иванов; ""Ваня""";100,0;A+');
+    it("запятая в фамилии не ломает таблицу", () => {
+        const line = buildResultsCsv([row({ name: 'Иванов, "Ваня"' })], labels).split("\r\n")[1];
+        expect(line).toBe('1,"Иванов, ""Ваня""",100.0,A+');
     });
 
     it("непосчитанный балл остаётся пустым, а не нулём", () => {
         // Ноль читался бы как настоящий результат ученика.
-        expect(buildResultsCsv([row({ levelScore: null, gradeLevel: null })], labels).split("\r\n")[2])
-            .toBe("1;Lola Xurramova;;");
+        expect(buildResultsCsv([row({ levelScore: null, gradeLevel: null })], labels).split("\r\n")[1])
+            .toBe("1,Lola Xurramova,,");
     });
 
-    it("балл пишется с запятой — иначе Excel прочтёт его как текст", () => {
-        // Колонки разделены `;`, поэтому запятая внутри числа таблицу не рвёт.
-        // А вот точка на русской локали превратила бы балл в текст, и среднее
-        // по колонке посчитать бы не вышло.
-        const line = buildResultsCsv([row({ levelScore: 86.4 })], labels).split("\r\n")[2];
-        expect(line).toBe("1;Lola Xurramova;86,4;A+");
-        expect(line).not.toContain("86.4");
+    // Тот самый баг, из-за которого таблица разъезжалась: балл «99,8» с
+    // запятой Excel считал за две колонки, и строка «1;Lola Xurramova;99,8;A+»
+    // распадалась на «1;Lola Xurramova;99» и «8;A+».
+    it("балл пишется с точкой, а не с запятой — иначе колонки разъезжаются", () => {
+        const line = buildResultsCsv([row({ levelScore: 99.8 })], labels).split("\r\n")[1];
+        expect(line).toBe("1,Lola Xurramova,99.8,A+");
+        expect(line.split(",")).toHaveLength(4);
+    });
+
+    it("каждая строка даёт ровно четыре ячейки", () => {
+        // Прямая проверка того, на что жаловался владелец: сколько бы ни было
+        // дробных баллов, колонок остаётся четыре.
+        const csv = buildResultsCsv(
+            [row({ levelScore: 99.8 }), row({ levelScore: 86.4 }), row({ levelScore: 68.9 })],
+            labels,
+        );
+        for (const line of csv.replace("﻿", "").trim().split("\r\n")) {
+            expect(line.split(",")).toHaveLength(4);
+        }
     });
 
     it("пустой список даёт файл с одной шапкой", () => {
-        expect(buildResultsCsv([], labels).split("\r\n").filter(Boolean)).toHaveLength(2);
+        expect(buildResultsCsv([], labels).split("\r\n").filter(Boolean)).toHaveLength(1);
     });
 });
 

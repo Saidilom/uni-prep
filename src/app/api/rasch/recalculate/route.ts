@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createRouteHandlerClient } from "@/lib/supabase/server";
-import { estimateRasch, Observation, raschThetaToT, MOCK_SCALE_MAX } from "@/lib/rasch";
+import { estimateRasch, Observation, raschThetaToT, measurementPrecision, itemPrecision, MOCK_SCALE_MAX } from "@/lib/rasch";
 import { referencePopulationFor } from "@/lib/reference-population";
 import { essayPointsToScore75, combineSectionScores, isNativeCertSubject } from "@/lib/native-cert";
 import { writingPointsToScore } from "@/lib/english-cefr";
@@ -140,25 +140,56 @@ export async function POST(req: NextRequest) {
     }
 
     let personAbility: number[] = new Array(resultIds.length).fill(0);
+    // Сложности нужны и ниже, при расчёте погрешности каждого балла, поэтому
+    // живут снаружи блока, а не только внутри него.
+    let itemDifficultyByIndex: number[] = new Array(questionIds.length).fill(0);
     let converged = true;
     let iterations = 0;
 
     if (hasObjectiveSection) {
         const estimated = estimateRasch(observations, resultIds.length, questionIds.length);
         personAbility = estimated.personAbility;
+        itemDifficultyByIndex = estimated.itemDifficulty;
         converged = estimated.converged;
         iterations = estimated.iterations;
 
         const sampleSizeByItem = new Array(questionIds.length).fill(0);
-        for (const obs of observations) sampleSizeByItem[obs.item]++;
+        // Крайний балл задания: все ответили верно или все неверно. По §165 и
+        // E.9 сложность такого задания не оценивается (b уходит в ±∞), и держать
+        // её наравне с остальными нельзя — только помечать.
+        const correctByItem = new Array(questionIds.length).fill(0);
+        // Способности тех, кто отвечал именно на это задание: из них считается
+        // погрешность его сложности. При полных данных это все, но матрица
+        // ответов бывает разреженной (E.11), и тогда суммировать надо только по
+        // фактически отвечавшим.
+        const abilitiesByItem: number[][] = Array.from({ length: questionIds.length }, () => []);
+        for (const obs of observations) {
+            sampleSizeByItem[obs.item]++;
+            correctByItem[obs.item] += obs.correct;
+            abilitiesByItem[obs.item].push(personAbility[obs.person]);
+        }
 
-        const calibrationRows = questionIds.map((id, i) => ({
-            mock_test_id: mockTestId,
-            question_id: id,
-            difficulty: estimated.itemDifficulty[i],
-            sample_size: sampleSizeByItem[i],
-            calibrated_at: new Date().toISOString(),
-        }));
+        const calibratedAt = new Date().toISOString();
+        const calibrationRows = questionIds.map((id, i) => {
+            const n = sampleSizeByItem[i];
+            const precision = itemPrecision(estimated.itemDifficulty[i], abilitiesByItem[i]);
+            const itemStatus = n === 0
+                ? "NO_OBSERVATIONS"
+                : (correctByItem[i] === 0 || correctByItem[i] === n)
+                    ? "EXTREME_SCORE"
+                    : "OK";
+            return {
+                mock_test_id: mockTestId,
+                question_id: id,
+                difficulty: estimated.itemDifficulty[i],
+                difficulty_se: precision.thetaSe,
+                item_status: itemStatus,
+                sample_size: n,
+                converged: estimated.converged,
+                iterations: estimated.iterations,
+                calibrated_at: calibratedAt,
+            };
+        });
 
         const { error: calibrationError } = await admin
             .from("mock_item_calibration")
@@ -220,6 +251,28 @@ export async function POST(req: NextRequest) {
     // «макс 75 во всех предметах»). См. src/lib/certificate-scale.ts.
     const certificateMax = certificateMaxForSubject(subjectId);
 
+    // ═══ Погрешность балла (ТЗ D.3, D.4, §215, §217) ═══
+    //
+    // Без неё одна десятая в балле обещает точность, которой нет: на этом же
+    // тесте SE вышла ±3,2–4,6 балла, и работы на 31,4 и 32,1 статистически
+    // неразличимы. Это и есть ответ на «почему баллы повторяются» — повторы не
+    // потеря информации, а её отсутствие сверх этого.
+    //
+    // Сложности берутся те, на которые ученик РЕАЛЬНО отвечал: при полных
+    // данных это все задания, но матрица бывает разреженной (E.11), и тогда
+    // суммировать по чужим заданиям означало бы завысить точность.
+    const difficultiesByPerson: number[][] = Array.from({ length: resultIds.length }, () => []);
+    if (hasObjectiveSection) {
+        for (const obs of observations) {
+            difficultiesByPerson[obs.person].push(itemDifficultyByIndex[obs.item]);
+        }
+    }
+
+    // Сколько разделов участвует в итоге. Итог — среднее арифметическое
+    // разделов (Baholash_mezoni.pdf стр. 4), поэтому вклад Раш-раздела в
+    // погрешность итога делится на их число.
+    const sectionCount = (hasObjectiveSection ? 1 : 0) + (hasEssaySection ? 1 : 0);
+
     const updateResults = await Promise.all(
         resultIds.map((id, n) => {
             const t = tScores[n];
@@ -230,6 +283,21 @@ export async function POST(req: NextRequest) {
             // уровней не было расхождений»), поэтому полоса определяется по
             // тому самому числу, которое лежит в базе и стоит на экране.
             const certificate = t === null ? null : tScoreToCertificate(t, subjectId);
+
+            // Погрешность есть только у Раш-раздела: у сочинения балл берётся
+            // из таблицы документа, а не оценивается моделью, и своей ошибки у
+            // него не посчитать (её дала бы MFRM, §87–93, OPTIONAL). Поэтому:
+            //   один раздел  — score_se точна;
+            //   два раздела  — делим на два, и это ТОЧНО, пока сочинение не
+            //                  написано (ноль по таблице даёт ровно 0, без
+            //                  оценивания), и НИЖНЯЯ ГРАНИЦА, когда написано.
+            const precision = hasObjectiveSection
+                ? measurementPrecision(personAbility[n], difficultiesByPerson[n])
+                : null;
+            const scoreSe = precision?.scoreSe !== null && precision?.scoreSe !== undefined && sectionCount > 0
+                ? precision.scoreSe / sectionCount
+                : null;
+
             return admin.from("mock_results").update({
                 // rasch_score пишется только когда его есть из чего считать:
                 // у теста из одного сочинения способности по Рашу не существует,
@@ -238,6 +306,14 @@ export async function POST(req: NextRequest) {
                 level_score: certificate,
                 level_score_max: certificateMax,
                 grade_level: certificate === null ? null : gradeLevelFromScore(certificate),
+                theta_se: precision?.thetaSe ?? null,
+                score_se: scoreSe,
+                test_information: precision?.information ?? null,
+                // Статус измерения, а не молчание: §215 требует различать
+                // «результат существует» и «измерению можно доверять». У теста
+                // из одного сочинения способности по Рашу нет вовсе — это тоже
+                // INSUFFICIENT_INFORMATION, а не OK с пустой погрешностью.
+                measurement_status: precision?.status ?? "INSUFFICIENT_INFORMATION",
             }).eq("id", id);
         })
     );

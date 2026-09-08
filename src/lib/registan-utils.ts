@@ -104,6 +104,13 @@ export type MockResultRow = {
   level_score: number | null;
   level_score_max: number | null;
   grade_level: string | null;
+  // Погрешность балла в баллах шкалы (ТЗ D.4). NULL у работ, посчитанных до
+  // миграции 093, и там, где измерения нет вовсе — тогда «±» не показывается,
+  // а не подставляется нулём (§233).
+  score_se: number | null;
+  // OK | LOW_INFORMATION | INSUFFICIENT_INFORMATION. Различает «балл есть, но
+  // точным его называть нельзя» и «измерения нет» (§215, §216, §217).
+  measurement_status: string | null;
   completed_at: string;
   revealed_at: string | null;
 };
@@ -112,7 +119,7 @@ export async function fetchUserMockResults(userId: string): Promise<MockResultRo
   return pageCache.fetch(`mockResults:${userId}`, async () => {
     const { data } = await supabase
       .from("mock_results")
-      .select("id, mock_test_id, mock_test_title, score, max_score, total_questions, correct_answers, accuracy, level_score, level_score_max, grade_level, completed_at, revealed_at")
+      .select("id, mock_test_id, mock_test_title, score, max_score, total_questions, correct_answers, accuracy, level_score, level_score_max, grade_level, score_se, measurement_status, completed_at, revealed_at")
       .eq("user_id", userId)
       .order("completed_at", { ascending: false });
     return (data || []) as MockResultRow[];

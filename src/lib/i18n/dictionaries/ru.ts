@@ -170,6 +170,7 @@ const ru = {
     correctSuffix: "верно",
     resultsPendingLabel: "Ожидайте результат",
     levelPendingShort: "Мало сдавших",
+    scoreErrorHint: "Погрешность измерения. Два балла, различающиеся меньше чем на неё, означают одинаковый результат.",
   },
   rating: {
     title: "Рейтинг",

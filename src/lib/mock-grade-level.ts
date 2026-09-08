@@ -46,6 +46,43 @@ export function gradeLevelFromScore(score: number): GradeLevel {
 // "A+".."C" are already language-neutral letter badges, shown as-is
 // everywhere — only "below_c" needs an actual localized label, per the
 // BMBA-sourced spec this platform's grading matches ("Ниже C" / "C dan quyi").
+// Нижние границы полос, от верхней к нижней. Один источник и для
+// gradeLevelFromScore, и для проверки пограничности ниже — иначе пороги
+// разъедутся между двумя списками.
+const LEVEL_FLOORS: Array<readonly [GradeLevel, number]> = [
+  ["A+", 70], ["A", 65], ["B+", 60], ["B", 55], ["C+", 50], ["C", 46],
+];
+
+// Уровни, которые накрывает доверительный интервал балла (ТЗ L.5).
+//
+// Пороги — не точки, а границы решения, и у границы цена ошибки максимальна.
+// При SE ±3,2 балла ученик с 45,2 может по-настоящему быть и «Ниже C», и «C»:
+// интервал 39,0–51,4 накрывает обе полосы и ещё C+. Показать это честнее, чем
+// объявить уровень так, будто он измерен точно.
+//
+// Возвращает список от нижнего уровня к верхнему. Один элемент — уровень
+// определён уверенно. null — погрешности нет, судить не о чем (§233: не
+// выдумывать её вместо отсутствующей).
+export function levelsWithinInterval(
+  interval: { low: number; high: number } | null,
+): GradeLevel[] | null {
+  if (!interval) return null;
+  const lowLevel = gradeLevelFromScore(interval.low);
+  const highLevel = gradeLevelFromScore(interval.high);
+  if (lowLevel === highLevel) return [lowLevel];
+
+  const levels: GradeLevel[] = ["below_c"];
+  for (let i = LEVEL_FLOORS.length - 1; i >= 0; i--) levels.push(LEVEL_FLOORS[i][0]);
+  const from = levels.indexOf(lowLevel);
+  const to = levels.indexOf(highLevel);
+  return levels.slice(from, to + 1);
+}
+
+export function levelIsBorderline(interval: { low: number; high: number } | null): boolean {
+  const levels = levelsWithinInterval(interval);
+  return levels !== null && levels.length > 1;
+}
+
 const BELOW_C_LABEL: Record<"ru" | "uz", string> = {
   ru: "Ниже C",
   uz: "C dan quyi",

@@ -172,6 +172,7 @@ const uz: typeof ru = {
     correctSuffix: "to'g'ri",
     resultsPendingLabel: "Natijani kuting",
     levelPendingShort: "Kam topshirgan",
+    scoreErrorHint: "O'lchov xatoligi. Undan kam farq qiladigan ikki ball bir xil natijani bildiradi.",
   },
   rating: {
     title: "Reyting",

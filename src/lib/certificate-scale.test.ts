@@ -7,6 +7,8 @@ import {
     formatScore,
     roundScore,
     scoreOnCertificateScale,
+    formatScoreWithError,
+    formatScoreInterval,
     CERTIFICATE_MAX,
 } from "./certificate-scale";
 import { MOCK_SUBJECTS } from "./mock-import-schema";
@@ -202,5 +204,39 @@ describe("averageCertificateScore", () => {
             { score: 50.5, max: 75 },
             { score: 51.1, max: 75 },
         ])).toBe(50.5);
+    });
+});
+
+// Балл с погрешностью. Появился из вопроса «почему баллы повторяются»: пока
+// рядом не стоит ±, одна десятая читается как «эти двое разные», а на реальном
+// моке SE вышла ±3–4 балла и они неразличимы.
+describe("formatScoreWithError", () => {
+    it("пишет балл и погрешность через ±", () => {
+        expect(formatScoreWithError(31.4, 3.9)).toBe("31,4 ± 3,9");
+        expect(formatScoreWithError(50, 3.24)).toBe("50,0 ± 3,2");
+    });
+
+    it("без погрешности отдаёт просто балл, а не «± null»", () => {
+        // У работ, посчитанных до миграции 093, SE в базе нет, и выдумывать её
+        // нельзя (§233).
+        expect(formatScoreWithError(31.4, null)).toBe("31,4");
+        expect(formatScoreWithError(31.4, undefined)).toBe("31,4");
+        expect(formatScoreWithError(31.4, Number.NaN)).toBe("31,4");
+        expect(formatScoreWithError(31.4, 0)).toBe("31,4");
+    });
+
+    it("без балла ничего не пишет", () => {
+        expect(formatScoreWithError(null, 3.9)).toBe("");
+        expect(formatScoreWithError(undefined, 3.9)).toBe("");
+    });
+});
+
+describe("formatScoreInterval", () => {
+    it("пишет интервал через тире", () => {
+        expect(formatScoreInterval({ low: 20.2, high: 35.6 })).toBe("20,2 – 35,6");
+    });
+
+    it("на отсутствующем интервале даёт пустую строку", () => {
+        expect(formatScoreInterval(null)).toBe("");
     });
 });

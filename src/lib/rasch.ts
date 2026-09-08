@@ -236,3 +236,135 @@ export function raschThetaToT(theta: number, referenceMean: number, referenceStd
     // roundScore в src/lib/certificate-scale.ts.
     return Math.max(0, Math.min(MOCK_SCALE_MAX, t));
 }
+
+// ═══ Точность измерения: информация теста и стандартная ошибка ═══
+//
+// Балл без погрешности обещает точность, которой нет. На реальном моке по
+// математике SE вышла ±3,2–4,6 балла, а из 630 пар работ статистически
+// различимы только 206 — то есть 31,4 и 32,1 это ОДИН результат. Ровно поэтому
+// в модели Раша баллы «повторяются»: одинаковое число верных даёт одинаковую
+// способность (достаточность сырого балла, §7–8), и добавлять сюда уникальности
+// значило бы рисовать различия, которых в измерении нет.
+//
+// Формулы — ТЗ D.1–D.4:
+//
+//   I_i(θ) = P_i(1 − P_i)     информация одного задания, максимум 0.25 при θ = b
+//   I(θ)   = Σ_i I_i(θ)       информация теста
+//   SE(θ)  = 1 / √I(θ)
+//
+// Информация аддитивна по заданиям, SE — нет (D.5), поэтому храним обе.
+
+export type MeasurementStatus =
+    /** Измерение годное. */
+    | "OK"
+    /** Информации мало: балл есть, но точным его называть нельзя (§216). */
+    | "LOW_INFORMATION"
+    /** Информации нет вовсе, SE бесконечна — возвращаем статус, а не число (§217). */
+    | "INSUFFICIENT_INFORMATION";
+
+// Граница «мало информации»: одна логита SE.
+//
+// Одна логита — это 10 баллов T, то есть доверительный интервал ±19,6 балла
+// при 95%. Он накрывает больше двух полос уровня разом: измерение, которое не
+// может отнести ученика даже к паре соседних уровней, уровнем не является.
+// Число не подобрано под данные — оно следует из ширины полос (по 5 баллов) и
+// множителя 1,96.
+export const LOW_INFORMATION_SE = 1.0;
+
+// Ниже этого информация считается нулевой. Не «=== 0»: сумма P(1−P) по 55
+// заданиям складывается из слагаемых порядка 1e-16 у экстремальной θ, и такая
+// сумма арифметически положительна, но измерением не является.
+const ZERO_INFORMATION = 1e-9;
+
+export function testInformation(theta: number, itemDifficulty: number[]): number {
+    if (!Number.isFinite(theta)) return 0;
+    let info = 0;
+    for (const b of itemDifficulty) {
+        if (!Number.isFinite(b)) continue;
+        const p = probability(theta, b);
+        info += p * (1 - p);
+    }
+    return info;
+}
+
+export type Precision = {
+    /** Информация теста в точке θ. Аддитивна по заданиям. */
+    information: number;
+    /** Стандартная ошибка θ в логитах. null — когда её не существует. */
+    thetaSe: number | null;
+    /** Та же ошибка в баллах шкалы: одна логита стоит 10 баллов T. */
+    scoreSe: number | null;
+    status: MeasurementStatus;
+};
+
+// Погрешность оценки способности по набору заданий, на которые ученик отвечал.
+//
+// Крайние случаи возвращают СТАТУС, а не выдуманное число (§215, §217, §233).
+// Живой пример с прода: ученик, не ответивший верно ни на одно из 55 заданий,
+// имеет I(θ) = 0,30 и SE = 1,84 логиты — это ±18 баллов, и показывать ему
+// «0,0» как точный балл было бы неправдой о точности, а не о нём.
+export function measurementPrecision(theta: number, itemDifficulty: number[]): Precision {
+    const information = testInformation(theta, itemDifficulty);
+    if (!Number.isFinite(information) || information <= ZERO_INFORMATION) {
+        return { information: 0, thetaSe: null, scoreSe: null, status: "INSUFFICIENT_INFORMATION" };
+    }
+    const thetaSe = 1 / Math.sqrt(information);
+    return {
+        information,
+        thetaSe,
+        // T = 50 + 10·(θ−μ)/σ, поэтому при σ = 1 (нулевой эталон) множитель
+        // ровно 10. Если эталон однажды сменится, множитель обязан приехать
+        // оттуда же — см. src/lib/reference-population.ts.
+        scoreSe: thetaSe * 10,
+        status: thetaSe >= LOW_INFORMATION_SE ? "LOW_INFORMATION" : "OK",
+    };
+}
+
+// Погрешность СЛОЖНОСТИ задания (E.10): та же формула, только сумма идёт по
+// ученикам, а не по заданиям.
+//
+//   SE(b_i) = 1 / √( Σ_n P_ni(1 − P_ni) )
+//
+// Функция та же, что и для способности, и это не экономия на копипасте:
+// P(1−P) не меняется при обмене θ и b местами, потому что logistic(−x) = 1 −
+// logistic(x), а произведение p(1−p) симметрично относительно 0.5. То есть
+// информация задания о сложности и информация теста о способности — буквально
+// одна величина, посчитанная по другой оси матрицы ответов.
+export function itemPrecision(difficulty: number, personAbility: number[]): Precision {
+    return measurementPrecision(difficulty, personAbility);
+}
+
+// Доверительный интервал балла (D.7): S ± z·SE, зажатый в границы шкалы.
+//
+// Зажатие делает интервал НЕсимметричным у краёв, и это правильно: балл 2,4 с
+// погрешностью ±9 не может уйти ниже нуля, и рисовать «−6,6» было бы ложью.
+export function scoreConfidenceInterval(
+    score: number,
+    scoreSe: number | null,
+    z = 1.96,
+): { low: number; high: number } | null {
+    if (scoreSe === null || !Number.isFinite(scoreSe) || !Number.isFinite(score)) return null;
+    const margin = z * scoreSe;
+    return {
+        low: Math.max(0, score - margin),
+        high: Math.min(MOCK_SCALE_MAX, score + margin),
+    };
+}
+
+// Различимы ли две работы статистически (D.8).
+//
+//   SE(θ₁ − θ₂) = √(SE(θ₁)² + SE(θ₂)²)
+//
+// Нужна, чтобы не выдавать за прогресс или за разницу между учениками то, что
+// целиком лежит внутри погрешности. На реальном моке так различимы лишь 33%
+// пар работ.
+export function scoresAreDistinguishable(
+    scoreA: number, seA: number | null,
+    scoreB: number, seB: number | null,
+    z = 1.96,
+): boolean | null {
+    if (seA === null || seB === null) return null;
+    if (!Number.isFinite(seA) || !Number.isFinite(seB)) return null;
+    const seDiff = Math.sqrt(seA ** 2 + seB ** 2);
+    return Math.abs(scoreA - scoreB) > z * seDiff;
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { gradeLevelDisplay, gradeLevelFromScore } from "./mock-grade-level";
+import { gradeLevelDisplay, gradeLevelFromScore, levelsWithinInterval, levelIsBorderline } from "./mock-grade-level";
 
 describe("gradeLevelFromScore", () => {
   it("returns A+ at the top boundary", () => {
@@ -60,5 +60,36 @@ describe("gradeLevelDisplay", () => {
   it("localizes below_c", () => {
     expect(gradeLevelDisplay("below_c", "ru")).toBe("Ниже C");
     expect(gradeLevelDisplay("below_c", "uz")).toBe("C dan quyi");
+  });
+});
+
+// Пограничность уровня (ТЗ L.5). Появилась вместе с погрешностью: при SE
+// ±3,2 балла ученик у порога может по-настоящему быть на соседнем уровне, и
+// молчать об этом — обещать точность, которой нет.
+describe("levelsWithinInterval", () => {
+  it("уверенный уровень — один элемент", () => {
+    expect(levelsWithinInterval({ low: 30, high: 40 })).toEqual(["below_c"]);
+    expect(levelsWithinInterval({ low: 66, high: 68 })).toEqual(["A"]);
+  });
+
+  it("интервал через порог отдаёт оба уровня, снизу вверх", () => {
+    expect(levelsWithinInterval({ low: 44, high: 48 })).toEqual(["below_c", "C"]);
+    expect(levelsWithinInterval({ low: 64, high: 66 })).toEqual(["B+", "A"]);
+  });
+
+  it("широкий интервал перечисляет все накрытые уровни без пропусков", () => {
+    // Реальный случай с прода: балл 45,2 при SE ±3,2 даёт 39,0–51,4.
+    expect(levelsWithinInterval({ low: 39.0, high: 51.4 })).toEqual(["below_c", "C", "C+"]);
+    expect(levelsWithinInterval({ low: 0, high: 75 })).toEqual(["below_c", "C", "C+", "B", "B+", "A", "A+"]);
+  });
+
+  it("без интервала не судит", () => {
+    expect(levelsWithinInterval(null)).toBeNull();
+    expect(levelIsBorderline(null)).toBe(false);
+  });
+
+  it("пограничность — это «накрыто больше одного уровня»", () => {
+    expect(levelIsBorderline({ low: 30, high: 40 })).toBe(false);
+    expect(levelIsBorderline({ low: 44, high: 48 })).toBe(true);
   });
 });

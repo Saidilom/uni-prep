@@ -5,7 +5,7 @@ import { Trophy, Calendar, Clock } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { fetchUserMockResults, MockResultRow } from "@/lib/registan-utils";
 import { accuracyColor } from "@/lib/status-colors";
-import { averageCertificateScore, certificatePercent, formatScore } from "@/lib/certificate-scale";
+import { averageCertificateScore, certificatePercent, formatScore, roundScore } from "@/lib/certificate-scale";
 import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
 import TeacherResultsExplorer from "@/components/teacher-results-explorer";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
@@ -116,9 +116,26 @@ export default function ResultsPage() {
                                                 он нужен лишь для раскраски. Сырая сумма и
                                                 процент убраны: см. design/FIX.md. */}
                                             {r.level_score != null ? (
-                                                <span className={`rounded-xl px-4 py-2 text-sm font-extrabold tabular-nums ${accuracyColor(certificatePercent(r.level_score, r.level_score_max))}`}>
-                                                    {formatScore(r.level_score)}
-                                                </span>
+                                                <>
+                                                    <span className={`rounded-xl px-4 py-2 text-sm font-extrabold tabular-nums ${accuracyColor(certificatePercent(r.level_score, r.level_score_max))}`}>
+                                                        {formatScore(r.level_score)}
+                                                    </span>
+                                                    {/* Погрешность балла (ТЗ D.7). Без неё одна
+                                                        десятая обещает точность, которой нет: на
+                                                        реальном моке SE вышла ±3–4 балла, и два
+                                                        балла в пределах этого — один результат.
+                                                        Показывается только когда посчитана: у работ
+                                                        до миграции 093 её нет, и выдумывать нельзя
+                                                        (§233). */}
+                                                    {r.score_se != null && (
+                                                        <span
+                                                            className="text-[11px] font-semibold tabular-nums text-muted-foreground"
+                                                            title={t("scoreErrorHint")}
+                                                        >
+                                                            ± {formatScore(roundScore(r.score_se))}
+                                                        </span>
+                                                    )}
+                                                </>
                                             ) : (
                                                 <span className="rounded-xl border border-border bg-muted px-4 py-2 text-xs font-semibold text-muted-foreground">
                                                     {t("levelPendingShort")}

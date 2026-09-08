@@ -60,6 +60,31 @@ export function formatScore(score: number | null | undefined): string {
   return score.toFixed(SCORE_DECIMALS).replace(".", ",");
 }
 
+// Балл с погрешностью: «31,4 ± 3,9».
+//
+// Нужен потому, что одна десятая в балле обещает точность, которой нет. На
+// реальном моке по математике SE вышла ±3,2–4,6 балла, и работы на 31,4 и 32,1
+// статистически неразличимы. Пока рядом не стоит ±, десятая читается как «эти
+// двое разные», а это неправда.
+//
+// Без погрешности возвращает просто балл, а не «± null»: у работ, посчитанных
+// до миграции 093, SE в базе нет, и дописывать им выдуманную нельзя (§233).
+export function formatScoreWithError(
+  score: number | null | undefined,
+  scoreSe: number | null | undefined,
+): string {
+  const base = formatScore(score);
+  if (base === "") return "";
+  if (scoreSe === null || scoreSe === undefined || !Number.isFinite(scoreSe) || scoreSe <= 0) return base;
+  return `${base} ± ${formatScore(roundScore(scoreSe))}`;
+}
+
+// Интервал для показа: «20,2 – 35,6».
+export function formatScoreInterval(interval: { low: number; high: number } | null): string {
+  if (!interval) return "";
+  return `${formatScore(interval.low)} – ${formatScore(interval.high)}`;
+}
+
 // Предмет остаётся в сигнатуре, хотя ответ сейчас один для всех. Это не
 // забытый аргумент: §L.1 требует свою трансформацию θ → балл НА ПРЕДМЕТ, а
 // §R.3 велит оценивать её линкингом с настоящими сертификатами — по 100–150

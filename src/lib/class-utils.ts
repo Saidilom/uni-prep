@@ -577,6 +577,11 @@ export type StudentMockResult = {
 
 export type ClassMockResultsSummary = {
     mockTitle: string;
+    // Предмет теста. Нужен экрану проверки: критерий оценивания сочинения свой
+    // у каждого языка, и применять узбекские 12 критериев к русскому эссе
+    // нельзя (документ по русскому — tests-pdf/русский/rustili_check.pdf — с
+    // нашим списком не сверялся).
+    subjectId: string | null;
     students: StudentMockResult[];
     completedCount: number;
     totalCount: number;
@@ -609,7 +614,7 @@ export const fetchMockTakers = async (mockTestId: string): Promise<User[]> => {
 export const fetchClassMockResults = async (classId: string | null, mockTestId: string): Promise<ClassMockResultsSummary> => {
     const [members, { data: test }, { data: results }] = await Promise.all([
         classId ? fetchClassMembers(classId) : fetchMockTakers(mockTestId),
-        supabase.from("mock_tests").select("title").eq("id", mockTestId).single(),
+        supabase.from("mock_tests").select("title, subject_id").eq("id", mockTestId).single(),
         supabase.from("mock_results").select("id, user_id, score, max_score, accuracy, correct_answers, total_questions, cefr_band, cefr_score, level_score, level_score_max, grade_level, completed_at").eq("mock_test_id", mockTestId),
     ]);
 
@@ -670,6 +675,7 @@ export const fetchClassMockResults = async (classId: string | null, mockTestId: 
 
     return {
         mockTitle: test?.title || "—",
+        subjectId: (test?.subject_id as string | null) ?? null,
         students,
         // Именно «сдали», а не «посчитан балл». Раньше сюда шло scores.length и
         // совпадало случайно — сырой балл был у всех, у кого есть результат.

@@ -14,6 +14,8 @@ import {
 } from "@/lib/class-utils";
 import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
 import { certificatePercent, formatScore } from "@/lib/certificate-scale";
+import EssayCriteriaForm, { EssayCriteriaPayload } from "@/components/essay-criteria-form";
+import { ESSAY_MAX_POINTS } from "@/lib/essay-rubric";
 import { accuracyColor } from "@/lib/status-colors";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
@@ -134,6 +136,46 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
             setReviewingId(null);
         }
     };
+
+    // Оценка сочинения ПО КРИТЕРИЯМ. Балл не отправляется: его считает база из
+    // самих критериев (review_mock_essay_criteria), иначе сумма могла бы
+    // разойтись с тем, из чего сложена.
+    const reviewEssayByCriteria = async (
+        resultId: string,
+        detail: MockAnswerDetail,
+        payload: EssayCriteriaPayload,
+    ) => {
+        setReviewingId(detail.id);
+        try {
+            const response = await fetch(`/api/mock-responses/${detail.id}/review`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            });
+            const body = await response.json();
+            if (!response.ok) throw new Error(body.error || t("reviewError"));
+            const refreshed = await fetchMockAnswerDetails(resultId);
+            setDetails((current) => ({ ...current, [resultId]: refreshed }));
+            setSummary(await fetchClassMockResults(classId ?? null, mockTestId));
+            toast.success(t("gradeSavedToast"));
+        } catch (error) {
+            toast.error(t("gradeSaveFailed"), { description: error instanceof Error ? error.message : String(error) });
+        } finally {
+            setReviewingId(null);
+        }
+    };
+
+    // Форма по критериям — только для сочинения родного языка на 24 балла.
+    //
+    // Английские Task 1 и Task 2 идут по своим официальным таблицам перевода
+    // (0.6, 1.3 … 10.0), критериев в нашем смысле там нет.
+    //
+    // Русский исключён НАМЕРЕННО, хотя у него тоже 24: его документ
+    // (tests-pdf/русский/rustili_check.pdf) с этим списком не сверялся, а
+    // применить к русскому эссе узбекские двенадцать критериев значило бы
+    // оценивать не по тому инструменту.
+    const usesCriteriaForm = (detail: MockAnswerDetail) =>
+        detail.maxPoints === ESSAY_MAX_POINTS && summary?.subjectId === "uzbek";
 
     if (loading || !summary) {
         return (
@@ -380,12 +422,21 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
                                                                 </span>
                                                             )}
                                                         </div>
-                                                        {d.reviewStatus === "pending" && (
+                                                        {d.reviewStatus === "pending" && usesCriteriaForm(d) && (
+                                                            <EssayCriteriaForm
+                                                                maxPoints={d.maxPoints}
+                                                                saving={reviewingId === d.id}
+                                                                saveLabel={t("save")}
+                                                                onSubmit={(payload) => reviewEssayByCriteria(resultId, d, payload)}
+                                                            />
+                                                        )}
+                                                        {d.reviewStatus === "pending" && !usesCriteriaForm(d) && (
                                                             <div className="mt-3 rounded-xl border border-violet-200 bg-violet-50 p-3 dark:bg-violet-950/25">
-                                                                {/* Текст рубрики убран намеренно: он занимал полэкрана и
-                                                                    мешал быстро проставлять баллы. Из промпта ИИ
-                                                                    (buildBatchEssayGradingPrompt) он НЕ убран — без критериев
-                                                                    автопроверка эссе оценивает наугад. */}
+                                                                {/* Одно поле «сколько баллов» — путь для заданий БЕЗ
+                                                                    критериальной таблицы: английские Task 1 и Task 2
+                                                                    оцениваются по официальным таблицам перевода. У
+                                                                    сочинения родного языка форма другая, по 12
+                                                                    критериям (EssayCriteriaForm выше). */}
                                                                 <p className="text-xs font-bold text-violet-800">{t("manualReviewNeeded")}</p>
                                                                 <div className="mt-2 flex flex-wrap items-center gap-2">
                                                                     <input type="number" min={0} max={d.maxPoints} step={0.1} value={reviewPoints[d.id] ?? 0} onChange={(event) => setReviewPoints((current) => ({ ...current, [d.id]: Number(event.target.value) }))} className="w-20 rounded-lg border border-violet-200 bg-background px-3 py-2 text-sm" />
@@ -395,7 +446,19 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
                                                                 </div>
                                                             </div>
                                                         )}
-                                                        {d.reviewStatus === "ai_graded" && (
+                                                        {d.reviewStatus === "ai_graded" && usesCriteriaForm(d) && (
+                                                            <>
+                                                                <p className="mt-3 text-xs font-bold text-blue-800">{t("aiGradedLabel").replace("{earned}", String(d.pointsEarned)).replace("{max}", String(d.maxPoints))}</p>
+                                                                <EssayCriteriaForm
+                                                                    maxPoints={d.maxPoints}
+                                                                    initialFeedback={d.reviewFeedback}
+                                                                    saving={reviewingId === d.id}
+                                                                    saveLabel={t("fixGrade")}
+                                                                    onSubmit={(payload) => reviewEssayByCriteria(resultId, d, payload)}
+                                                                />
+                                                            </>
+                                                        )}
+                                                        {d.reviewStatus === "ai_graded" && !usesCriteriaForm(d) && (
                                                             <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3 dark:bg-blue-950/25">
                                                                 <p className="text-xs font-bold text-blue-800">{t("aiGradedLabel").replace("{earned}", String(d.pointsEarned)).replace("{max}", String(d.maxPoints))}</p>
                                                                 {d.reviewFeedback && (

@@ -246,10 +246,12 @@ SELECT ec.subject_id,
        count(*) AS certificates_total,
        count(*) FILTER (WHERE NOT ec.level_matches_score) AS level_mismatches,
        count(*) FILTER (WHERE ec.source = 'self') AS self_reported,
-       -- §R.2: нижняя граница выборки на предмет.
+       -- §R.2: нижняя граница выборки — 100 УЧЕНИКОВ на предмет.
+       -- Не баллов: шкала балла 75, и путать эти сотни нельзя.
+       100 AS target_students,
        greatest(0, 100 - count(*) FILTER (WHERE ec.verification_status = 'verified'
                                             AND ec.level_matches_score
-                                            AND mr.id IS NOT NULL)) AS still_needed
+                                            AND mr.id IS NOT NULL)) AS students_still_needed
 FROM public.external_certificates ec
 LEFT JOIN LATERAL (
   SELECT r.id
@@ -263,7 +265,7 @@ LEFT JOIN LATERAL (
 GROUP BY ec.subject_id;
 
 COMMENT ON VIEW public.linking_readiness IS
-  'Сколько пар «наш балл ↔ реальный сертификат» набрано по предмету и сколько ещё нужно до 100 (§R.2). Считает только подтверждённые и без расхождения уровня.';
+  'Сколько пар «наш балл ↔ реальный сертификат» набрано по предмету и сколько ещё нужно УЧЕНИКОВ до 100 (§R.2). Речь о людях, не о баллах: шкала балла — 75. Считает только подтверждённые и без расхождения уровня.';
 
 -- Линкинг этой миграцией НЕ считается, формула θ → балл не меняется:
 -- A_scale = 10 и B_scale = 50 остаются заглушкой до §R.3. Ни один балл на

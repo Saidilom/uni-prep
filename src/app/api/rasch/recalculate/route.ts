@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createRouteHandlerClient } from "@/lib/supabase/server";
 import { estimateRasch, Observation, raschThetaToT, measurementPrecision, itemPrecision, MOCK_SCALE_MAX } from "@/lib/rasch";
+import { estimateThetaWle, WLE_ESTIMATOR, WLE_VERSION } from "@/lib/rasch-wle";
+import { classifyResponses, countStates, responseForModel, ResponseState } from "@/lib/response-status";
 import { referencePopulationFor } from "@/lib/reference-population";
 import { essayPointsToScore75, combineSectionScores, isNativeCertSubject } from "@/lib/native-cert";
 import { writingPointsToScore } from "@/lib/english-cefr";
@@ -52,20 +54,34 @@ export async function POST(req: NextRequest) {
     const { data: test } = await admin.from("mock_tests").select("subject_id").eq("id", mockTestId).single();
     const subjectId = (test?.subject_id as string | null) ?? null;
 
-    const { data: sections } = await admin.from("mock_sections").select("id").eq("mock_test_id", mockTestId);
-    const sectionIds = (sections || []).map((s) => s.id as string);
+    // Порядок секций нужен не для красоты: NOT_REACHED (§A.4) определяется
+    // ТОЛЬКО положением задания в варианте — «дальше ученик не отвечал».
+    const { data: sections } = await admin
+        .from("mock_sections")
+        .select("id, order")
+        .eq("mock_test_id", mockTestId);
+    const sectionRows = (sections || []) as Array<{ id: string; order: number | null }>;
+    const sectionIds = sectionRows.map((s) => s.id);
     if (sectionIds.length === 0) {
         return NextResponse.json({ ok: true, itemCount: 0, personCount: 0 });
     }
+    const sectionOrder = new Map(sectionRows.map((s) => [s.id, Number(s.order ?? 0)]));
 
     const { data: questions } = await admin
         .from("mock_questions")
-        .select("id, question_type, points")
+        .select("id, question_type, points, section_id, order")
         .in("section_id", sectionIds);
-    const allQuestions = (questions || []) as Array<{ id: string; question_type: string | null; points: number | null }>;
+    const allQuestions = (questions || []) as Array<{
+        id: string; question_type: string | null; points: number | null;
+        section_id: string; order: number | null;
+    }>;
     if (allQuestions.length === 0) {
         return NextResponse.json({ ok: true, itemCount: 0, personCount: 0 });
     }
+    // Тот же порядок, в котором ученик видел задания на экране.
+    allQuestions.sort((a, b) =>
+        (sectionOrder.get(a.section_id) ?? 0) - (sectionOrder.get(b.section_id) ?? 0)
+        || Number(a.order ?? 0) - Number(b.order ?? 0));
 
     // Сочинение — не дихотомическое задание, и в пул Раша ему нельзя.
     //
@@ -95,10 +111,16 @@ export async function POST(req: NextRequest) {
     // ниже строится по ПОЛНОМУ набору результатов, поэтому ученики без
     // дошедших наблюдений всё равно получали записанную оценку и уровень —
     // вырожденный, но показанный им на экране. См. lib/supabase/fetch-all.ts.
-    const { data: answers, error: answersError } = await fetchAllRows<{ result_id: string; question_id: string; is_correct: boolean; points_earned: number | null }>(
+    const { data: answers, error: answersError } = await fetchAllRows<{
+        result_id: string; question_id: string; is_correct: boolean;
+        points_earned: number | null; selected_answer: string | null;
+    }>(
         (from, to) => admin
             .from("mock_answer_details")
-            .select("result_id, question_id, is_correct, points_earned")
+            // selected_answer нужен, чтобы отличить «не отвечено» от
+            // «ответил неверно»: у обоих is_correct = false. Неотвеченное
+            // submit_mock пишет литералом 'null' (см. 066_admin_free_mock.sql).
+            .select("result_id, question_id, is_correct, points_earned, selected_answer")
             .in("result_id", resultIds)
             .order("id")
             .range(from, to)
@@ -117,7 +139,18 @@ export async function POST(req: NextRequest) {
 
     // Раздел «сочинение»: сумма набранного за эссе по каждой работе.
     const essayEarnedByPerson = new Array(resultIds.length).fill(0);
-    const observations: Observation[] = [];
+
+    // ═══ Статусы ответов: пропуск больше не равен неверному (§A.3–A.4) ═══
+    //
+    // Было: всё неотвеченное уходило в модель нулём. На проде это 636 ответов,
+    // и 501 из них ХВОСТОВЫЕ — ученик не дошёл до конца. Модель читала это как
+    // «пытался и не смог», то есть завышала сложность последних заданий и
+    // занижала способность тех, кому не хватило времени.
+    //
+    // Стало: две политики (§A.3). Сложности калибруются БЕЗ пропусков, балл
+    // ученику считается с пропуском как с нулём — это политика оценивания, а
+    // не свойство модели.
+    const answerByPersonQuestion = new Map<string, { correct: boolean; answered: boolean }>();
     for (const a of answers) {
         const person = personIndex.get(a.result_id as string);
         if (person === undefined) continue;
@@ -125,9 +158,44 @@ export async function POST(req: NextRequest) {
             essayEarnedByPerson[person] += Number(a.points_earned || 0);
             continue;
         }
-        const item = itemIndex.get(a.question_id as string);
-        if (item === undefined) continue;
-        observations.push({ person, item, correct: a.is_correct ? 1 : 0 });
+        // Неотвеченное submit_mock пишет литералом 'null'; пустая строка и
+        // SQL NULL встречаются у более старых строк.
+        const raw = a.selected_answer;
+        const answered = raw !== null && raw !== undefined && raw !== "" && raw !== "null" && raw !== "undefined";
+        answerByPersonQuestion.set(`${person}:${a.question_id}`, { correct: !!a.is_correct, answered });
+    }
+
+    // Разметка по каждой работе, в порядке предъявления заданий.
+    const stateByPersonItem: ResponseState[][] = [];
+    const totals = { CORRECT: 0, INCORRECT: 0, OMITTED: 0, NOT_REACHED: 0 };
+    for (let person = 0; person < resultIds.length; person++) {
+        const ordered = questionIds.map((qid) => {
+            const found = answerByPersonQuestion.get(`${person}:${qid}`);
+            // Строки нет вовсе — задание ученику не предъявлялось или ответ
+            // потерян. Для модели это тоже отсутствие данных, не ноль.
+            return found ?? { correct: false, answered: false };
+        });
+        const states = classifyResponses(ordered);
+        stateByPersonItem.push(states);
+        const counts = countStates(states);
+        totals.CORRECT += counts.CORRECT;
+        totals.INCORRECT += counts.INCORRECT;
+        totals.OMITTED += counts.OMITTED;
+        totals.NOT_REACHED += counts.NOT_REACHED;
+    }
+
+    // Матрица для КАЛИБРОВКИ: пропуски исключены из likelihood (§A.3).
+    const observations: Observation[] = [];
+    // Матрица для БАЛЛА ученику: пропуск не даёт баллов (политика EXAM).
+    const examResponses: Array<Array<0 | 1>> = [];
+    for (let person = 0; person < resultIds.length; person++) {
+        const row: Array<0 | 1> = [];
+        stateByPersonItem[person].forEach((state, item) => {
+            const calibrated = responseForModel(state, "CALIBRATION");
+            if (calibrated !== null) observations.push({ person, item, correct: calibrated });
+            row.push(responseForModel(state, "EXAM") as 0 | 1);
+        });
+        examResponses.push(row);
     }
 
     // Тест, состоящий из одного сочинения (такой на проде есть — English
@@ -146,12 +214,40 @@ export async function POST(req: NextRequest) {
     let converged = true;
     let iterations = 0;
 
+    // Сколько работ WLE не сошлось (§C.4): молча такое проглатывать нельзя,
+    // поэтому счётчик уходит в ответ вместе с остальной диагностикой.
+    let wleNonConverged = 0;
+
     if (hasObjectiveSection) {
         const estimated = estimateRasch(observations, resultIds.length, questionIds.length);
-        personAbility = estimated.personAbility;
         itemDifficultyByIndex = estimated.itemDifficulty;
         converged = estimated.converged;
         iterations = estimated.iterations;
+
+        // ═══ Способность ученика — WLE, а не person-проход JMLE (§C.8, §20) ═══
+        //
+        // JMLE оценивает θ и b одновременно, и для крайних баллов ему нужен
+        // сдвиг наблюдаемого балла на 0.3 внутрь шкалы (поправка Wright &
+        // Panchapakesan). Метод опубликованный, но §C.8 требует другого: WLE
+        // (Warm, 1989) даёт конечную θ при 0 и 100% верных ПО ПОСТРОЕНИЮ,
+        // потому что поправка J/(2I) стремится к ±1/2 и корень уравнения
+        // остаётся конечным. Ничего подставлять не нужно — §20 это и
+        // запрещает.
+        //
+        // Порядок ровно как в §20.1: сначала загружаем калиброванные b, потом
+        // оцениваем θ против них. Сложности при этом берутся из JMLE и НЕ
+        // меняются — калибровочные формулы заданий этот шаг не трогает.
+        personAbility = examResponses.map((row) => {
+            const responses = row.map((correct, item) => ({
+                correct,
+                difficulty: itemDifficultyByIndex[item],
+            }));
+            const wle = estimateThetaWle(responses);
+            if (wle.status === "NON_CONVERGED") wleNonConverged++;
+            // NO_RESPONSES здесь недостижим: examResponses строится по всем
+            // заданиям варианта, а hasObjectiveSection уже проверен.
+            return Number.isFinite(wle.theta) ? wle.theta : 0;
+        });
 
         const sampleSizeByItem = new Array(questionIds.length).fill(0);
         // Крайний балл задания: все ответили верно или все неверно. По §165 и
@@ -187,6 +283,11 @@ export async function POST(req: NextRequest) {
                 sample_size: n,
                 converged: estimated.converged,
                 iterations: estimated.iterations,
+                // Какой политикой пропусков посчитаны эти сложности (§A.3) и
+                // каким оценщиком — способность (§109: смена метода это новая
+                // версия, и она обязана быть видна в данных).
+                missing_policy: "CALIBRATION",
+                person_estimator: `${WLE_ESTIMATOR}/${WLE_VERSION}`,
                 calibrated_at: calibratedAt,
             };
         });
@@ -329,5 +430,12 @@ export async function POST(req: NextRequest) {
         converged,
         iterations,
         failedCount,
+        // Диагностика шага 2: чем оценивали способность и сколько пропусков
+        // ушло из калибровки вместо того, чтобы посчитаться нулями (§A.3).
+        personEstimator: `${WLE_ESTIMATOR}/${WLE_VERSION}`,
+        wleNonConverged,
+        responseStates: totals,
+        calibrationObservations: observations.length,
+        examObservations: resultIds.length * questionIds.length,
     });
 }

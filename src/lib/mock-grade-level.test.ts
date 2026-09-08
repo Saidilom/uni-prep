@@ -20,23 +20,34 @@ describe("gradeLevelFromScore", () => {
     expect(gradeLevelFromScore(0)).toBe("below_c");
   });
 
-  // Решение владельца: «если ближе к 65 баллам, то уровень тот, что получает
-  // 65». Балл при этом остаётся дробным, а порог сравнивается с ближайшим
-  // целым T. Тест — страховка от того, что округление внутри функции уберут
-  // «за ненадобностью»: без него ученик с T = 64,79 потерял бы A и получил B+,
-  // уже увидев свой результат.
-  it("сравнивает порог с ближайшим целым, а не с точным T", () => {
-    expect(gradeLevelFromScore(64.79)).toBe("A");   // 64.79 → 65
-    expect(gradeLevelFromScore(64.5)).toBe("A");    // ровно половина — вверх
-    expect(gradeLevelFromScore(64.4)).toBe("B+");   // 64.4 → 64
-    expect(gradeLevelFromScore(45.5)).toBe("C");    // 45.5 → 46
+  // Полоса — интервал, а не точка, к которой округляют. Прежнее правило
+  // округляло T до ближайшего целого и на [64.5, 65) выдавало A там, где
+  // норма требует B+ (ТЗ §0.3). Тест сторожит, чтобы округление не вернулось:
+  // ошибка здесь — это неверный уровень ровно у границы.
+  it("не округляет T в полосу — сравнивает точное значение", () => {
+    expect(gradeLevelFromScore(64.99)).toBe("B+");
+    expect(gradeLevelFromScore(64.79)).toBe("B+");
+    expect(gradeLevelFromScore(64.5)).toBe("B+");
+    expect(gradeLevelFromScore(45.99)).toBe("below_c");
+    expect(gradeLevelFromScore(45.5)).toBe("below_c");
+    expect(gradeLevelFromScore(69.99)).toBe("A");
   });
 
-  it("буква не зависит от того, дробный балл или целый", () => {
-    // Ниже 0.5 от порога буква та же, что у целого — иначе десятичная часть
-    // молча переехала бы порогами.
-    expect(gradeLevelFromScore(70.4)).toBe(gradeLevelFromScore(70));
-    expect(gradeLevelFromScore(69.6)).toBe(gradeLevelFromScore(70));
+  // Полосы обязаны покрывать шкалу без дыр и без наложений. В таблице ТЗ дыра
+  // есть — «> 70» и «65 – 69.9» не покрывают ровно 70.0; здесь верхняя полоса
+  // открыта справа, поэтому 70.0 попадает в A+ по построению.
+  it("полосы покрывают шкалу без дыр", () => {
+    expect(gradeLevelFromScore(70)).toBe("A+");
+    const bands: Array<[number, string]> = [
+      [45.9999, "below_c"], [46, "C"], [49.9999, "C"], [50, "C+"],
+      [54.9999, "C+"], [55, "B"], [59.9999, "B"], [60, "B+"],
+      [64.9999, "B+"], [65, "A"], [69.9999, "A"], [70, "A+"],
+    ];
+    for (const [t, expected] of bands) expect(gradeLevelFromScore(t)).toBe(expected);
+  });
+
+  it("нечисловой балл не выдаёт уровень наугад", () => {
+    expect(gradeLevelFromScore(Number.NaN)).toBe("below_c");
   });
 });
 

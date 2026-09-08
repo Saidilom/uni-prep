@@ -42,7 +42,12 @@ export function writingPointsToScore(earnedPoints: number): number {
 
 export type CefrBand = "C1" | "B2" | "B1" | "<B1";
 
+// Полосы — полуоткрытые интервалы по ТОЧНОМУ баллу, как и буква A+..C
+// (src/lib/mock-grade-level.ts). Округлять балл перед выбором полосы нельзя:
+// полоса это интервал, а не точка, к которой округляют, и на [64.5, 65) так
+// выдавался бы C1 вместо B2.
 export function cefrBandFromScore(avgScore: number): CefrBand {
+  if (!Number.isFinite(avgScore)) return "<B1";
   if (avgScore >= 65) return "C1";
   if (avgScore >= 51) return "B2";
   if (avgScore >= 38) return "B1";

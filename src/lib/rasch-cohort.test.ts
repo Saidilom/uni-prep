@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { estimateRasch, Observation, mean, stdev, raschThetaToT, MOCK_SCALE_MAX } from "./rasch";
 import { gradeLevelFromScore } from "./mock-grade-level";
 import { essayPointsToScore75, combineSectionScores } from "./native-cert";
-import { tScoreToCertificate } from "./certificate-scale";
+import { tScoreToCertificate, formatScore } from "./certificate-scale";
 import { REFERENCE_DEFAULT } from "./reference-population";
 
 // Проверка модели Раша на СИНТЕТИЧЕСКОЙ когорте — та самая, о которой просил
@@ -149,28 +149,41 @@ describe("модель Раша на когорте из 50 (узбекский)
     it("уровни A+..C распределяются, а не сваливаются в один", () => {
         const levels = new Set(tScores.map(gradeLevelFromScore));
         expect(levels.size).toBeGreaterThan(2);
-        // Сверка порогов с документом на самих полученных баллах. Порог
-        // сравнивается с ближайшим целым T — решение владельца, см.
-        // gradeLevelFromScore.
+        // Сверка порогов с документом на самих полученных баллах. Полосы —
+        // полуоткрытые интервалы по ТОЧНОМУ T, без округления в полосу
+        // (ТЗ §0.3, см. gradeLevelFromScore).
         for (const t of tScores) {
             const level = gradeLevelFromScore(t);
-            const rounded = Math.round(t);
-            if (rounded >= 70) expect(level).toBe("A+");
-            else if (rounded >= 65) expect(level).toBe("A");
-            else if (rounded >= 60) expect(level).toBe("B+");
-            else if (rounded >= 55) expect(level).toBe("B");
-            else if (rounded >= 50) expect(level).toBe("C+");
-            else if (rounded >= 46) expect(level).toBe("C");
+            if (t >= 70) expect(level).toBe("A+");
+            else if (t >= 65) expect(level).toBe("A");
+            else if (t >= 60) expect(level).toBe("B+");
+            else if (t >= 55) expect(level).toBe("B");
+            else if (t >= 50) expect(level).toBe("C+");
+            else if (t >= 46) expect(level).toBe("C");
             else expect(level).toBe("below_c");
         }
     });
 
-    it("итоговый балл узбекского выдаётся из 100, а не из 75", () => {
+    // Решение владельца от 2026-09-08: «макс 75 во всех предметах». Балл и
+    // порог уровня стали одним числом — на сотенной шкале 60.3 означало
+    // «Ниже C», потому что порог C = 46 задан на T-шкале.
+    it("итоговый балл выдаётся из 75, как и T", () => {
         for (const t of tScores) {
             const certificate = tScoreToCertificate(t, "uzbek");
             expect(certificate).toBeGreaterThanOrEqual(0);
-            expect(certificate).toBeLessThanOrEqual(100);
-            expect(certificate).toBeCloseTo((t / 75) * 100, 1);
+            expect(certificate).toBeLessThanOrEqual(MOCK_SCALE_MAX);
+            expect(certificate).toBeCloseTo(t, 1);
+        }
+    });
+
+    // Балл показывается с одной десятой, поэтому и полоса берётся от него же,
+    // а не от неокруглённого T: иначе ученик с T = 64,96 увидел бы «65,0»
+    // рядом с буквой B+. Границы у БМБА заданы с той же точностью 0.1 (§L.8).
+    it("буква согласована с тем баллом, который показан", () => {
+        for (const t of tScores) {
+            const certificate = tScoreToCertificate(t, "uzbek");
+            const shown = Number(formatScore(certificate).replace(",", "."));
+            expect(gradeLevelFromScore(shown)).toBe(gradeLevelFromScore(certificate));
         }
     });
 

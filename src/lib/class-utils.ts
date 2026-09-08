@@ -3,7 +3,7 @@ import { User, Class, MockTest } from "./firestore-schema";
 import { pageCache } from "./page-cache";
 import { fetchAllRows } from "./supabase/fetch-all";
 import { formatCorrectAnswer, formatStudentAnswer } from "./answer-display";
-import { certificatePercent, roundScore } from "./certificate-scale";
+import { scoreOnCertificateScale, roundScore } from "./certificate-scale";
 import type { DistributionClass } from "./oylik-distribution";
 
 // Same reasoning as registan-utils.ts's STUDENT_CACHE_TTL — short enough
@@ -909,15 +909,16 @@ export const fetchClassStudentsOverview = async (classId: string): Promise<Class
         const members = await fetchClassMembers(classId);
         if (members.length === 0) return [];
         // Средний считается по баллу сертификата, а не по проценту правильных
-        // (§8). В массив кладём уже приведённое к сотне значение: у английского
-        // потолок 75, и без приведения его группы выглядели бы слабее прочих.
+        // (§8), и по общей шкале 75 — той же, в которой балл показывается
+        // ученику. Приведение оставлено на случай строк с прежним максимумом
+        // 100 (см. scoreOnCertificateScale).
         const { data: results } = await supabase
             .from("mock_results")
             .select("user_id, level_score, level_score_max")
             .in("user_id", members.map((m) => m.id));
         const byStudent = new Map<string, number[]>();
         (results || []).forEach((r) => {
-            const normalized = certificatePercent(r.level_score as number | null, r.level_score_max as number | null);
+            const normalized = scoreOnCertificateScale(r.level_score as number | null, r.level_score_max as number | null);
             if (normalized === null) return;
             const list = byStudent.get(r.user_id as string) || [];
             list.push(normalized);
@@ -1005,10 +1006,9 @@ export type TeacherResultsOverview = {
     classes: TeacherClassSummary[];
     topClass: TeacherClassSummary | null;
     topStudent: TeacherTopStudent | null;
-    // Средний результат всех учеников учителя по всем их мокам, в процентах —
-    // агрегат по разным тестам, поэтому именно доля от максимума, а не баллы
-    // (см. «Правило отображения баллов» в design/FIX.md). Показывается на
-    // главной учителя.
+    // Средний балл всех учеников учителя по всем их мокам, по шкале 75.
+    // Раньше здесь была доля от максимума, потому что шкал было две; теперь
+    // шкала одна, и агрегат по разным тестам можно держать в баллах.
     overallAvgScore: number | null;
     overallAttemptCount: number;
 };
@@ -1044,7 +1044,7 @@ export const fetchTeacherResultsOverview = async (teacherId: string): Promise<Te
         const userMap = new Map((users || []).map((u) => [u.id as string, toUser(u)]));
         const studentScores = new Map<string, number[]>();
         (results || []).forEach((r) => {
-            const normalized = certificatePercent(r.level_score, r.level_score_max);
+            const normalized = scoreOnCertificateScale(r.level_score, r.level_score_max);
             if (normalized === null) return;
             const list = studentScores.get(r.user_id as string) || [];
             list.push(normalized);
@@ -1086,7 +1086,7 @@ export const fetchTeacherResultsOverview = async (teacherId: string): Promise<Te
         }
 
         const allScores = (results || [])
-            .map((r) => certificatePercent(r.level_score, r.level_score_max))
+            .map((r) => scoreOnCertificateScale(r.level_score, r.level_score_max))
             .filter((v): v is number => v !== null);
         const overallAvgScore = allScores.length
             ? roundScore(allScores.reduce((a, b) => a + b, 0) / allScores.length)
@@ -1121,10 +1121,10 @@ export const fetchAdminClassesOverview = async (): Promise<AdminClassSummary[]> 
             ? await supabase.from("mock_results").select("user_id, level_score, level_score_max").in("user_id", studentIds)
             : { data: [] as Array<{ user_id: string; level_score: number | null; level_score_max: number | null }> };
 
-        // Балл сертификата, приведённый к сотне (§8) — не процент правильных.
+        // Балл сертификата по общей шкале 75 (§8) — не процент правильных.
         const scoresByStudent = new Map<string, number[]>();
         (results || []).forEach((r) => {
-            const normalized = certificatePercent(r.level_score as number | null, r.level_score_max as number | null);
+            const normalized = scoreOnCertificateScale(r.level_score as number | null, r.level_score_max as number | null);
             if (normalized === null) return;
             const list = scoresByStudent.get(r.user_id as string) || [];
             list.push(normalized);
@@ -1164,9 +1164,9 @@ export type AdminTeacherOverview = {
 // учителю, а не по группе — для колонки «Средний скор» в /admin/teachers, где
 // до этого было только количество групп.
 //
-// Средний в процентах, а не в баллах: у учителя обычно несколько тестов с
-// разной суммой баллов, и складывать их сырые баллы бессмысленно
-// (design/FIX.md, «Правило отображения баллов»).
+// Средний — в баллах по шкале 75. Складывать СЫРЫЕ баллы за задания
+// по-прежнему нельзя (у тестов разная сумма), но балл сертификата у всех
+// предметов теперь на одной шкале, поэтому усредняется он сам.
 export const fetchAdminTeachersOverview = async (): Promise<Map<string, AdminTeacherOverview>> => {
     return pageCache.fetch("adminTeachersOverview", async () => {
         const { data: classes } = await supabase.from("classes").select("id, teacher_id");
@@ -1192,7 +1192,7 @@ export const fetchAdminTeachersOverview = async (): Promise<Map<string, AdminTea
         // §16: у супер-админа в «Учителях» стоял процент, нужен балл.
         const scoresByStudent = new Map<string, number[]>();
         (results || []).forEach((r) => {
-            const normalized = certificatePercent(r.level_score, r.level_score_max);
+            const normalized = scoreOnCertificateScale(r.level_score, r.level_score_max);
             if (normalized === null) return;
             const list = scoresByStudent.get(r.user_id) || [];
             list.push(normalized);
@@ -1246,8 +1246,8 @@ export type BranchOverview = {
     studentCount: number;
     // Среднее из средних баллов ГРУПП филиала — именно так его определил
     // владелец. Это не то же самое, что среднее по всем попыткам: большая
-    // группа здесь не перевешивает маленькую. В баллах, приведённых к сотне
-    // (§8), а не в процентах правильных.
+    // группа здесь не перевешивает маленькую. В баллах по шкале 75 (§8), а не
+    // в процентах правильных.
     avgScore: number | null;
     // §12: то же самое, но только по тестам последнего опубликованного
     // комплекта «Ойлик тест» — «как филиал сдал в этом месяце».
@@ -1369,8 +1369,8 @@ export type RatingScope = "class" | "branch" | "platform";
 export type MyRating = {
     myRank: number;
     totalStudents: number;
-    // Средний балл, приведённый к сотне (миграция 081). Раньше здесь был
-    // процент правильных — владелец перевёл все агрегаты в баллы.
+    // Средний балл по шкале 75 (миграция 081, пересчёт шкалы — 092). Раньше
+    // здесь был процент правильных — владелец перевёл все агрегаты в баллы.
     myAvgScore: number;
     myAttempts: number;
 };

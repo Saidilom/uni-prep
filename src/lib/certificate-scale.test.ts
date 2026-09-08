@@ -6,87 +6,73 @@ import {
     certificatePercent,
     formatScore,
     roundScore,
-    CERTIFICATE_MAX_ENGLISH,
-    CERTIFICATE_MAX_GENERAL,
+    scoreOnCertificateScale,
+    CERTIFICATE_MAX,
 } from "./certificate-scale";
 import { MOCK_SUBJECTS } from "./mock-import-schema";
 
+// Решение владельца от 2026-09-08: «макс 75 во всех предметах» — та же шкала,
+// что у модели Раша, и та, на которой заданы пороги уровней (ТЗ §0.3).
 describe("certificateMaxForSubject", () => {
-    it("иностранные языки остаются на 75", () => {
-        expect(certificateMaxForSubject("english")).toBe(CERTIFICATE_MAX_ENGLISH);
-        expect(CERTIFICATE_MAX_ENGLISH).toBe(75);
-    });
-
-    it("все общеобразовательные предметы — 100", () => {
-        for (const subject of ["math", "physics", "chemistry", "biology", "history", "geography", "native", "uzbek", "russian"]) {
-            expect(certificateMaxForSubject(subject)).toBe(CERTIFICATE_MAX_GENERAL);
-        }
-        expect(CERTIFICATE_MAX_GENERAL).toBe(100);
-    });
-
-    it("предмет без указания считается общеобразовательным", () => {
-        // Безопаснее ошибиться в сторону 100: моков без subject_id на проде нет,
-        // но отдать такому английскую шкалу было бы страннее.
-        expect(certificateMaxForSubject(null)).toBe(100);
-        expect(certificateMaxForSubject(undefined)).toBe(100);
-    });
-
-    // Потолок каждого предмета, который можно выбрать при импорте, теперь
-    // показывается прямо на экране проверки («Математика · итог до 100»).
-    // Список закреплён целиком: добавит кто-нибудь предмет в MOCK_SUBJECTS —
-    // тест упадёт и заставит решить, какая у него шкала, а не оставит бейдж
-    // молча показывать 100 по умолчанию.
-    it("у каждого предмета из MOCK_SUBJECTS потолок задан осознанно", () => {
-        const expected: Record<(typeof MOCK_SUBJECTS)[number], number> = {
-            math: 100, physics: 100, chemistry: 100, biology: 100,
-            geography: 100, history: 100, russian: 100, uzbek: 100,
-            it: 100, other: 100,
-            english: 75,
-        };
+    it("одна шкала 75 на все предметы", () => {
+        expect(CERTIFICATE_MAX).toBe(75);
         for (const subject of MOCK_SUBJECTS) {
-            expect(certificateMaxForSubject(subject)).toBe(expected[subject]);
+            expect(certificateMaxForSubject(subject)).toBe(75);
         }
+    });
+
+    it("предмет без указания получает ту же шкалу", () => {
+        expect(certificateMaxForSubject(null)).toBe(75);
+        expect(certificateMaxForSubject(undefined)).toBe(75);
+    });
+
+    // Сторож смысла шкалы: балл и порог уровня обязаны быть одним числом.
+    // На сотенной шкале это разъезжалось — 60.3 из 100 означало «Ниже C»,
+    // потому что порог C = 46 задан на T-шкале. Если кто-то вернёт сюда 100,
+    // упадёт этот тест, а не ученик.
+    it("порог уровня выражен в тех же баллах, что и сам балл", () => {
+        expect(tScoreToCertificate(46, "math")).toBe(46);
+        expect(tScoreToCertificate(70, "math")).toBe(70);
     });
 });
 
 describe("tScoreToCertificate", () => {
-    it("английский отдаёт T как есть", () => {
-        expect(tScoreToCertificate(75, "english")).toBe(75);
-        expect(tScoreToCertificate(50, "english")).toBe(50);
-        expect(tScoreToCertificate(0, "english")).toBe(0);
+    it("отдаёт T как есть — шкалы совпадают", () => {
+        for (const subject of ["english", "math", "uzbek", null]) {
+            expect(tScoreToCertificate(75, subject)).toBe(75);
+            expect(tScoreToCertificate(50, subject)).toBe(50);
+            expect(tScoreToCertificate(0, subject)).toBe(0);
+        }
     });
 
-    it("общеобразовательные растягиваются до 100", () => {
-        expect(tScoreToCertificate(75, "math")).toBe(100);
-        expect(tScoreToCertificate(0, "math")).toBe(0);
-        // Пороги уровней на T-шкале — как они выглядят в итоговом балле.
-        expect(tScoreToCertificate(70, "math")).toBe(93.3);   // A+
-        expect(tScoreToCertificate(65, "math")).toBe(86.7);   // A
-        expect(tScoreToCertificate(60, "math")).toBe(80);     // B+
-        expect(tScoreToCertificate(55, "math")).toBe(73.3);   // B
-        expect(tScoreToCertificate(50, "math")).toBe(66.7);   // C+
-        expect(tScoreToCertificate(46, "math")).toBe(61.3);   // C
+    it("пороги уровней видны в самом балле", () => {
+        // Ровно то, чего не было на сотенной шкале: балл 46 — это порог C,
+        // а не 61.3.
+        expect(tScoreToCertificate(70, "math")).toBe(70);   // A+
+        expect(tScoreToCertificate(65, "math")).toBe(65);   // A
+        expect(tScoreToCertificate(60, "math")).toBe(60);   // B+
+        expect(tScoreToCertificate(55, "math")).toBe(55);   // B
+        expect(tScoreToCertificate(50, "math")).toBe(50);   // C+
+        expect(tScoreToCertificate(46, "math")).toBe(46);   // C
     });
 
     // Ради чего всё и делалось: балл округляется до одной десятой, а не до
     // целого. Раньше округлений было три — здесь, в raschThetaToT и в
     // combineSectionScores, — и балл выходил целым.
     it("держит одну десятую, а не целое", () => {
-        expect(tScoreToCertificate(64.79, "math")).toBe(86.4);
-        expect(tScoreToCertificate(51.67, "math")).toBe(68.9);
-        expect(tScoreToCertificate(74.878, "math")).toBe(99.8);
+        expect(tScoreToCertificate(64.79, "math")).toBe(64.8);
+        expect(tScoreToCertificate(51.67, "math")).toBe(51.7);
+        expect(tScoreToCertificate(74.878, "math")).toBe(74.9);
         // Второй десятой быть не должно: точность в проекте одна.
         expect(tScoreToCertificate(64.79, "math") * 10 % 1).toBe(0);
     });
 
     it("различает T, которые прежде сливались в один балл", () => {
-        // Шаг целого T на сотенной шкале — 1,33 балла, поэтому округление до
-        // целого делало из разных T один и тот же балл.
         expect(tScoreToCertificate(50.2, "math")).not.toBe(tScoreToCertificate(50.8, "math"));
     });
 
     it("не выходит за границы шкалы", () => {
-        expect(tScoreToCertificate(999, "math")).toBe(100);
+        expect(tScoreToCertificate(999, "math")).toBe(75);
         expect(tScoreToCertificate(-5, "math")).toBe(0);
         expect(tScoreToCertificate(999, "english")).toBe(75);
         expect(tScoreToCertificate(NaN, "math")).toBe(0);
@@ -95,7 +81,7 @@ describe("tScoreToCertificate", () => {
     it("сохраняет порядок: сильнее по T — выше итог", () => {
         expect(tScoreToCertificate(70, "math")).toBeGreaterThan(tScoreToCertificate(65, "math"));
         // Именно этим пропорция отличается от таблицы блоков поступления
-        // (×100/65), где и 65, и 70 дали бы ровно 100.
+        // (×93/65), где и 65, и 70 дали бы ровно максимум.
         expect(tScoreToCertificate(75, "math")).toBeGreaterThan(tScoreToCertificate(70, "math"));
     });
 });
@@ -156,45 +142,65 @@ describe("certificatePercent", () => {
     });
 });
 
-describe("averageCertificateScore", () => {
-    it("приводит к сотне до усреднения, а не после", () => {
-        // Английский 60/75 — это 80, а не 60. Складывай баллы как есть, и
-        // среднее вышло бы 65: английская группа выглядела бы слабее только
-        // из-за более низкой шкалы.
-        expect(averageCertificateScore([
-            { score: 60, max: 75 },
-            { score: 70, max: 100 },
-        ])).toBe(75);
+describe("scoreOnCertificateScale", () => {
+    it("на общей шкале ничего не меняет", () => {
+        expect(scoreOnCertificateScale(60, 75)).toBe(60);
+        expect(scoreOnCertificateScale(0, 75)).toBe(0);
     });
 
-    it("на одних общеобразовательных ничего не меняет", () => {
+    it("строку с прежним максимумом 100 приводит к 75", () => {
+        // Пока миграция 092 не прошла или кеш отдаёт старую строку, среднее
+        // не должно скакать между шкалами.
+        expect(scoreOnCertificateScale(100, 100)).toBe(75);
+        expect(scoreOnCertificateScale(42.5, 100)).toBeCloseTo(31.875, 6);
+    });
+
+    it("отдаёт null там, где считать нечего", () => {
+        expect(scoreOnCertificateScale(null, 75)).toBeNull();
+        expect(scoreOnCertificateScale(50, null)).toBeNull();
+        expect(scoreOnCertificateScale(50, 0)).toBeNull();
+    });
+});
+
+describe("averageCertificateScore", () => {
+    it("возвращает БАЛЛ по шкале 75, а не процент", () => {
+        // Раньше здесь был средний процент, и 60 из 75 давало 80. Рядом с
+        // баллами из 75 такое среднее читалось как завышенный балл.
         expect(averageCertificateScore([
-            { score: 80, max: 100 },
-            { score: 60, max: 100 },
-        ])).toBe(70);
+            { score: 60, max: 75 },
+            { score: 40, max: 75 },
+        ])).toBe(50);
+    });
+
+    it("смешанные максимумы приводит к одной шкале до усреднения", () => {
+        // 60/75 остаётся 60, а 100/100 становится 75 — среднее 67.5.
+        expect(averageCertificateScore([
+            { score: 60, max: 75 },
+            { score: 100, max: 100 },
+        ])).toBe(67.5);
     });
 
     it("работы без балла не занижают среднее", () => {
         // Ноль вместо непосчитанной работы уронил бы группу вдвое.
         expect(averageCertificateScore([
-            { score: 80, max: 100 },
-            { score: null, max: 100 },
-        ])).toBe(80);
+            { score: 60, max: 75 },
+            { score: null, max: 75 },
+        ])).toBe(60);
     });
 
     it("отличает «нечего считать» от нуля баллов", () => {
         expect(averageCertificateScore([])).toBeNull();
         expect(averageCertificateScore([{ score: null, max: null }])).toBeNull();
-        expect(averageCertificateScore([{ score: 0, max: 100 }])).toBe(0);
+        expect(averageCertificateScore([{ score: 0, max: 75 }])).toBe(0);
     });
 
     it("среднее тоже с десятой", () => {
         // Группа из дробных баллов не должна показывать целое среднее — это та
         // же потеря точности, только уровнем выше.
         expect(averageCertificateScore([
-            { score: 66.4, max: 100 },
-            { score: 67.3, max: 100 },
-            { score: 68.1, max: 100 },
-        ])).toBe(67.3);
+            { score: 49.8, max: 75 },
+            { score: 50.5, max: 75 },
+            { score: 51.1, max: 75 },
+        ])).toBe(50.5);
     });
 });

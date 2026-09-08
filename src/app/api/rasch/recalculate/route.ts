@@ -216,20 +216,30 @@ export async function POST(req: NextRequest) {
         return combineSectionScores(sections);
     });
 
-    // А ученику показывается балл сертификата — 100 у общеобразовательных,
-    // 75 у иностранных языков. См. src/lib/certificate-scale.ts.
+    // Балл сертификата — по той же шкале 75, что и T (решение владельца
+    // «макс 75 во всех предметах»). См. src/lib/certificate-scale.ts.
     const certificateMax = certificateMaxForSubject(subjectId);
 
     const updateResults = await Promise.all(
-        resultIds.map((id, n) => admin.from("mock_results").update({
-            // rasch_score пишется только когда его есть из чего считать:
-            // у теста из одного сочинения способности по Рашу не существует,
-            // и ноль здесь читался бы как «средняя способность».
-            rasch_score: hasObjectiveSection ? personAbility[n] : null,
-            level_score: tScores[n] === null ? null : tScoreToCertificate(tScores[n], subjectId),
-            level_score_max: certificateMax,
-            grade_level: tScores[n] === null ? null : gradeLevelFromScore(tScores[n]),
-        }).eq("id", id))
+        resultIds.map((id, n) => {
+            const t = tScores[n];
+            // Балл считаем ОДИН раз и от него же берём букву. Букву нельзя
+            // брать от неокруглённого T: балл показывается с одной десятой, и
+            // ученик с T = 64,96 увидел бы «65,0» рядом с буквой B+. Границы
+            // у БМБА заданы с той же точностью 0.1 (§L.8 — «чтобы у границ
+            // уровней не было расхождений»), поэтому полоса определяется по
+            // тому самому числу, которое лежит в базе и стоит на экране.
+            const certificate = t === null ? null : tScoreToCertificate(t, subjectId);
+            return admin.from("mock_results").update({
+                // rasch_score пишется только когда его есть из чего считать:
+                // у теста из одного сочинения способности по Рашу не существует,
+                // и ноль здесь читался бы как «средняя способность».
+                rasch_score: hasObjectiveSection ? personAbility[n] : null,
+                level_score: certificate,
+                level_score_max: certificateMax,
+                grade_level: certificate === null ? null : gradeLevelFromScore(certificate),
+            }).eq("id", id);
+        })
     );
     const failedCount = updateResults.filter((r) => r.error).length;
     if (failedCount > 0) {

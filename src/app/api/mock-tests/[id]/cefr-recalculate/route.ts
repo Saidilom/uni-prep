@@ -134,9 +134,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     if (sectionScores.length === 0) return { resultId, cefrScore: null, cefrBand: null };
     const avg = mean(sectionScores);
-    // Уровень — от ближайшего целого, как и буква A+..C у остальных предметов
-    // (см. gradeLevelFromScore). Сам балл при этом остаётся дробным.
-    return { resultId, cefrScore: roundScore(avg), cefrBand: cefrBandFromScore(Math.round(avg)) };
+    // Полоса — по ТОЧНОМУ баллу, как и буква A+..C (см. gradeLevelFromScore).
+    // Округление осталось только на показ балла: сначала полоса, потом
+    // округление, не наоборот.
+    return { resultId, cefrScore: roundScore(avg), cefrBand: cefrBandFromScore(avg) };
   });
 
   const updateResults = await Promise.all(

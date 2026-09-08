@@ -3,6 +3,7 @@ import {
     averageCertificateScore,
     certificateMaxForSubject,
     tScoreToCertificate,
+    tScoreToCertificateExact,
     certificatePercent,
     formatScore,
     roundScore,
@@ -12,6 +13,7 @@ import {
     CERTIFICATE_MAX,
 } from "./certificate-scale";
 import { MOCK_SUBJECTS } from "./mock-import-schema";
+import { gradeLevelFromScore } from "./mock-grade-level";
 
 // Решение владельца от 2026-09-08: «макс 75 во всех предметах» — та же шкала,
 // что у модели Раша, и та, на которой заданы пороги уровней (ТЗ §0.3).
@@ -238,5 +240,36 @@ describe("formatScoreInterval", () => {
 
     it("на отсутствующем интервале даёт пустую строку", () => {
         expect(formatScoreInterval(null)).toBe("");
+    });
+});
+
+// §202–203: внутренний расчёт в полной точности, округление только на выводе.
+// Отсюда две функции на один перевод, и путать их нельзя.
+describe("tScoreToCertificateExact против tScoreToCertificate", () => {
+    it("точный не округляет, показной округляет до десятой", () => {
+        expect(tScoreToCertificateExact(64.96, "math")).toBeCloseTo(64.96, 10);
+        expect(tScoreToCertificate(64.96, "math")).toBe(65);
+    });
+
+    it("округлённый есть в точности roundScore от точного", () => {
+        for (const t of [0, 12.34, 45.99, 46, 64.949, 64.96, 70.04, 74.999, 75]) {
+            expect(tScoreToCertificate(t, "math")).toBe(roundScore(tScoreToCertificateExact(t, "math")));
+        }
+    });
+
+    it("оба зажимают шкалу", () => {
+        expect(tScoreToCertificateExact(999, "math")).toBe(75);
+        expect(tScoreToCertificateExact(-5, "math")).toBe(0);
+        expect(tScoreToCertificateExact(Number.NaN, "math")).toBe(0);
+    });
+
+    // Тот самый случай, ради которого две функции и разведены: округление
+    // переносит балл через порог, а точное значение его не достигало.
+    it("на 0,05 ниже порога буква и показанный балл расходятся — и это ожидаемо", () => {
+        const exact = tScoreToCertificateExact(64.96, "math");
+        expect(gradeLevelFromScore(exact)).toBe("B+");        // точное 64.96 < 65
+        expect(formatScore(tScoreToCertificate(64.96, "math"))).toBe("65,0"); // показ округлён
+        // Буква обязана следовать точному значению, а не показанному.
+        expect(gradeLevelFromScore(tScoreToCertificate(64.96, "math"))).toBe("A");
     });
 });

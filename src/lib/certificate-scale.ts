@@ -95,16 +95,30 @@ export function certificateMaxForSubject(subjectId: string | null | undefined): 
   return CERTIFICATE_MAX;
 }
 
-// Перевод T-балла в балл сертификата. Шкалы теперь совпадают, поэтому функция
-// осталась только затвором: зажать в границы и округлить один раз.
+// Перевод T-балла в балл сертификата БЕЗ округления.
+//
+// §202–203 требуют разделить два разных действия: внутренний расчёт идёт в
+// полной точности double, а округление стоит один раз и только на выводе.
+// Отсюда две функции вместо одной.
+//
+// Эту берёт всё, что считает ДАЛЬШЕ: полоса уровня (§134 — интервал по точному
+// значению), доверительный интервал, усреднение. Округлённую — только показ и
+// запись показанного числа.
 //
 // Не выкинута, потому что это единственное место, через которое балл попадает
 // в базу, и §R.3 вернёт сюда `A·θ + B` — тогда правка будет здесь.
-export function tScoreToCertificate(tScore: number, subjectId: string | null | undefined): number {
+export function tScoreToCertificateExact(tScore: number, subjectId: string | null | undefined): number {
   const max = certificateMaxForSubject(subjectId);
   if (!Number.isFinite(tScore)) return 0;
   const clamped = Math.max(0, Math.min(MOCK_SCALE_MAX, tScore));
-  return roundScore((clamped / MOCK_SCALE_MAX) * max);
+  return (clamped / MOCK_SCALE_MAX) * max;
+}
+
+// Тот же перевод, округлённый до одной десятой — для показа и для записи того
+// числа, которое увидит ученик. Полосу уровня от него считать НЕЛЬЗЯ: округление
+// может перенести балл через порог, которого точное значение не достигало.
+export function tScoreToCertificate(tScore: number, subjectId: string | null | undefined): number {
+  return roundScore(tScoreToCertificateExact(tScore, subjectId));
 }
 
 // Доля от максимума — ТОЛЬКО для цветовой заливки бейджа, где нужен процент.

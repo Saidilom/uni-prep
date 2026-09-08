@@ -8,7 +8,7 @@ import { classifyResponses, countStates, responseForModel, ResponseState } from 
 import { referencePopulationFor } from "@/lib/reference-population";
 import { essayPointsToScore75, combineSectionScores, isNativeCertSubject } from "@/lib/native-cert";
 import { writingPointsToScore } from "@/lib/english-cefr";
-import { certificateMaxForSubject, tScoreToCertificate } from "@/lib/certificate-scale";
+import { certificateMaxForSubject, tScoreToCertificateExact, roundScore } from "@/lib/certificate-scale";
 import { gradeLevelFromScore } from "@/lib/mock-grade-level";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { isInternalCall } from "@/lib/internal-auth";
@@ -427,13 +427,21 @@ export async function POST(req: NextRequest) {
     const updateResults = await Promise.all(
         resultIds.map((id, n) => {
             const t = tScores[n];
-            // Балл считаем ОДИН раз и от него же берём букву. Букву нельзя
-            // брать от неокруглённого T: балл показывается с одной десятой, и
-            // ученик с T = 64,96 увидел бы «65,0» рядом с буквой B+. Границы
-            // у БМБА заданы с той же точностью 0.1 (§L.8 — «чтобы у границ
-            // уровней не было расхождений»), поэтому полоса определяется по
-            // тому самому числу, которое лежит в базе и стоит на экране.
-            const certificate = t === null ? null : tScoreToCertificate(t, subjectId);
+            // Два значения одного балла (§202–203): точное — для полосы
+            // уровня, округлённое — для показа и для записи в базу.
+            //
+            // Порядок жёсткий и именно такой: полоса берётся по ТОЧНОМУ
+            // значению (§134 — полосы это интервалы, а не точки, к которым
+            // округляют), и только потом балл округляется до одной десятой.
+            // Наоборот нельзя: округление перенесло бы балл через порог,
+            // которого точное значение не достигало.
+            //
+            // Цена решения: у балла, лежащего в пределах 0,05 ниже порога,
+            // показанное число может выглядеть достигшим порога, а буква —
+            // нет. Это следствие того, что показ грубее расчёта, а не ошибка
+            // расчёта.
+            const exactCertificate = t === null ? null : tScoreToCertificateExact(t, subjectId);
+            const certificate = exactCertificate === null ? null : roundScore(exactCertificate);
 
             // Погрешность есть только у Раш-раздела: у сочинения балл берётся
             // из таблицы документа, а не оценивается моделью, и своей ошибки у
@@ -456,7 +464,10 @@ export async function POST(req: NextRequest) {
                 rasch_score: hasObjectiveSection ? personAbility[n] : null,
                 level_score: certificate,
                 level_score_max: certificateMax,
-                grade_level: certificate === null ? null : gradeLevelFromScore(certificate),
+                // Буква — от ТОЧНОГО балла, а тот, в свою очередь, получен из
+                // раш-меры θ (raschThetaToT), а не из взвешенной суммы баллов
+                // за задания. Веса заданий в измерение не входят вовсе.
+                grade_level: exactCertificate === null ? null : gradeLevelFromScore(exactCertificate),
                 theta_se: precision?.thetaSe ?? null,
                 score_se: scoreSe,
                 test_information: precision?.information ?? null,

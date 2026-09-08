@@ -4,6 +4,7 @@ import { createRouteHandlerClient } from "@/lib/supabase/server";
 import { estimateRasch, Observation, raschThetaToT, measurementPrecision, itemPrecision, MOCK_SCALE_MAX } from "@/lib/rasch";
 import { estimateThetaWle, WLE_ESTIMATOR, WLE_VERSION } from "@/lib/rasch-wle";
 import { buildScoreTable, lookupScoreRow } from "@/lib/score-table";
+import { itemFitReport, personFitReport, FitObservation, FitReport } from "@/lib/rasch-fit";
 import { classifyResponses, countStates, responseForModel, ResponseState } from "@/lib/response-status";
 import { referencePopulationFor } from "@/lib/reference-population";
 import { essayPointsToScore75, combineSectionScores, isNativeCertSubject } from "@/lib/native-cert";
@@ -237,6 +238,10 @@ export async function POST(req: NextRequest) {
     // ненулевое значение означает, что ответы и вариант разошлись.
     let tableMisses = 0;
     let scoreTableRows = 0;
+    // Fit-диагностика (модуль F). Пустые массивы у теста без раздела Раша:
+    // соответствие модели там проверять не на чем.
+    let itemFitReports: FitReport[] = [];
+    let personFitReports: FitReport[] = [];
 
     if (hasObjectiveSection) {
         const estimated = estimateRasch(observations, resultIds.length, questionIds.length);
@@ -331,9 +336,35 @@ export async function POST(req: NextRequest) {
             abilitiesByItem[obs.item].push(personAbility[obs.person]);
         }
 
+        // ═══ Fit-диагностика (модуль F) ═══
+        //
+        // Считается по той же матрице EXAM, что и балл, и НИЧЕГО в нём не
+        // меняет: §224 требует помечать, а не удалять. Ни одно задание не
+        // исключается, ни один ответ не выбрасывается — только флаги рядом.
+        //
+        // Берётся политика EXAM, а не CALIBRATION: fit отвечает на вопрос
+        // «согласуются ли ФАКТИЧЕСКИЕ ответы с моделью», и пропуск, который
+        // ученику зачли нулём, — тоже факт его работы.
+        const fitByItem: FitObservation[][] = Array.from({ length: questionIds.length }, () => []);
+        const fitByPerson: FitObservation[][] = Array.from({ length: resultIds.length }, () => []);
+        for (let person = 0; person < resultIds.length; person++) {
+            examResponses[person].forEach((correct, item) => {
+                const observation: FitObservation = {
+                    correct,
+                    theta: personAbility[person],
+                    difficulty: itemDifficultyByIndex[item],
+                };
+                fitByItem[item].push(observation);
+                fitByPerson[person].push(observation);
+            });
+        }
+        itemFitReports = fitByItem.map((observations) => itemFitReport(observations));
+        personFitReports = fitByPerson.map((observations) => personFitReport(observations));
+
         const calibrationRows = questionIds.map((id, i) => {
             const n = sampleSizeByItem[i];
             const precision = itemPrecision(estimated.itemDifficulty[i], abilitiesByItem[i]);
+            const fit = itemFitReports[i];
             const itemStatus = n === 0
                 ? "NO_OBSERVATIONS"
                 : (correctByItem[i] === 0 || correctByItem[i] === n)
@@ -353,6 +384,14 @@ export async function POST(req: NextRequest) {
                 // версия, и она обязана быть видна в данных).
                 missing_policy: "CALIBRATION",
                 person_estimator: `${WLE_ESTIMATOR}/${WLE_VERSION}`,
+                // Модуль F. Флаги не влияют ни на балл, ни на сложность —
+                // задание остаётся в расчёте, пока человек не решит иначе.
+                infit: fit.infit,
+                outfit: fit.outfit,
+                infit_zstd: fit.infitZstd,
+                outfit_zstd: fit.outfitZstd,
+                point_measure: fit.pointMeasure,
+                fit_flags: fit.flags,
                 calibrated_at: calibratedAt,
             };
         });
@@ -475,6 +514,14 @@ export async function POST(req: NextRequest) {
                 // из одного сочинения способности по Рашу нет вовсе — это тоже
                 // INSUFFICIENT_INFORMATION, а не OK с пустой погрешностью.
                 measurement_status: precision?.status ?? "INSUFFICIENT_INFORMATION",
+                // Person-fit (§F.10). На балл и уровень НЕ влияет: §215
+                // требует различать «результат есть» и «результат доверенный»,
+                // а §N.2 прямо запрещает делать из misfit вывод о списывании.
+                person_infit: personFitReports[n]?.infit ?? null,
+                person_outfit: personFitReports[n]?.outfit ?? null,
+                person_infit_zstd: personFitReports[n]?.infitZstd ?? null,
+                person_outfit_zstd: personFitReports[n]?.outfitZstd ?? null,
+                person_fit_flags: personFitReports[n]?.flags ?? null,
             }).eq("id", id);
         })
     );
@@ -498,6 +545,10 @@ export async function POST(req: NextRequest) {
         scoreTableRows,
         tableMisses,
         responseStates: totals,
+        // Модуль F: сколько заданий и работ получили флаги. Ноль удалений —
+        // §224 запрещает удалять автоматически.
+        flaggedItems: itemFitReports.filter((r) => r.flags.length > 0).length,
+        flaggedPersons: personFitReports.filter((r) => r.flags.length > 0).length,
         calibrationObservations: observations.length,
         examObservations: resultIds.length * questionIds.length,
     });

@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createRouteHandlerClient } from "@/lib/supabase/server";
 import { estimateRasch, Observation, raschThetaToT, measurementPrecision, itemPrecision, MOCK_SCALE_MAX } from "@/lib/rasch";
 import { estimateThetaWle, WLE_ESTIMATOR, WLE_VERSION } from "@/lib/rasch-wle";
+import { buildScoreTable, lookupScoreRow } from "@/lib/score-table";
 import { classifyResponses, countStates, responseForModel, ResponseState } from "@/lib/response-status";
 import { referencePopulationFor } from "@/lib/reference-population";
 import { essayPointsToScore75, combineSectionScores, isNativeCertSubject } from "@/lib/native-cert";
@@ -207,6 +208,21 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true, itemCount: 0, personCount: 0 });
     }
 
+    // Z-стандартизация по ЭТАЛОННОЙ популяции, а не по сдавшим этот мок.
+    //
+    // Раньше μ и σ брались из когорты того же теста, и люди измерялись
+    // относительно самих себя: средний T выходил ровно 50 при любой подготовке,
+    // а средний балл — 66.67 из 100. Прогресс между месяцами измерить было
+    // нельзя, и сильная когорта понижала балл каждому.
+    //
+    // Формула та же, что в методике Агентства (стр. 1–2) — менялось только то,
+    // относительно кого считать. Подробности и слабые места эталона —
+    // src/lib/reference-population.ts и design/RASCH.md §268.
+    //
+    // Побочно исчезла ветка «вырожденная когорта»: у константы разброс не
+    // вырождается, подменять нечего (§233).
+    const reference = referencePopulationFor(subjectId);
+
     let personAbility: number[] = new Array(resultIds.length).fill(0);
     // Сложности нужны и ниже, при расчёте погрешности каждого балла, поэтому
     // живут снаружи блока, а не только внутри него.
@@ -217,6 +233,10 @@ export async function POST(req: NextRequest) {
     // Сколько работ WLE не сошлось (§C.4): молча такое проглатывать нельзя,
     // поэтому счётчик уходит в ответ вместе с остальной диагностикой.
     let wleNonConverged = 0;
+    // Сколько раз сырой балл не нашёлся в таблице варианта. Должно быть 0;
+    // ненулевое значение означает, что ответы и вариант разошлись.
+    let tableMisses = 0;
+    let scoreTableRows = 0;
 
     if (hasObjectiveSection) {
         const estimated = estimateRasch(observations, resultIds.length, questionIds.length);
@@ -224,30 +244,76 @@ export async function POST(req: NextRequest) {
         converged = estimated.converged;
         iterations = estimated.iterations;
 
-        // ═══ Способность ученика — WLE, а не person-проход JMLE (§C.8, §20) ═══
+        // ═══ Балл берётся из ТАБЛИЦЫ варианта (§R.6) ═══
         //
-        // JMLE оценивает θ и b одновременно, и для крайних баллов ему нужен
-        // сдвиг наблюдаемого балла на 0.3 внутрь шкалы (поправка Wright &
-        // Panchapakesan). Метод опубликованный, но §C.8 требует другого: WLE
-        // (Warm, 1989) даёт конечную θ при 0 и 100% верных ПО ПОСТРОЕНИЮ,
-        // потому что поправка J/(2I) стремится к ±1/2 и корень уравнения
-        // остаётся конечным. Ничего подставлять не нужно — §20 это и
-        // запрещает.
+        // Таблица «сырой балл → θ → балл → уровень» считается ОДИН раз на
+        // вариант, а не на ученика. Это возможно потому, что при полных данных
+        // в уравнение WLE входит только ЧИСЛО верных:
         //
-        // Порядок ровно как в §20.1: сначала загружаем калиброванные b, потом
-        // оцениваем θ против них. Сложности при этом берутся из JMLE и НЕ
-        // меняются — калибровочные формулы заданий этот шаг не трогает.
-        personAbility = examResponses.map((row) => {
-            const responses = row.map((correct, item) => ({
-                correct,
-                difficulty: itemDifficultyByIndex[item],
-            }));
-            const wle = estimateThetaWle(responses);
-            if (wle.status === "NON_CONVERGED") wleNonConverged++;
-            // NO_RESPONSES здесь недостижим: examResponses строится по всем
-            // заданиям варианта, а hasObjectiveSection уже проверен.
-            return Number.isFinite(wle.theta) ? wle.theta : 0;
+        //   U_W(θ) = r − Σ_i P_i(θ) + J(θ)/(2·I(θ)),   r = Σ_i x_i
+        //
+        // Какие именно задания решены верно, здесь не участвует (§B.6). Значит
+        // у всех, набравших r верных, θ одна и та же — и одинаковый балл у них
+        // не «слипание», а свойство модели Раша.
+        //
+        // Способ оценки θ при этом НЕ меняется: таблица вызывает тот же
+        // estimateThetaWle против тех же калиброванных b. Побочно уходит
+        // разброс в последнем бите: раньше сумма Σ(x_i − P_i) складывалась в
+        // порядке заданий, и у двоих с одинаковым числом верных θ отличалась
+        // на ~1e-16 (на проде это видно как разброс 4e-16). Теперь строка одна
+        // на всех по построению.
+        const scoreTable = buildScoreTable(itemDifficultyByIndex, reference, {
+            subjectId,
+            hasSecondSection: hasEssaySection,
         });
+
+        personAbility = examResponses.map((row) => {
+            const rawScore = row.reduce((sum: number, correct) => sum + correct, 0);
+            const tableRow = lookupScoreRow(scoreTable, rawScore);
+            if (!tableRow) {
+                // §233: строки нет — значит сырой балл вне варианта. Молча
+                // брать соседнюю нельзя, поэтому считаем напрямую и помечаем.
+                tableMisses++;
+                const fallback = estimateThetaWle(row.map((correct, item) => ({
+                    correct, difficulty: itemDifficultyByIndex[item],
+                })));
+                return Number.isFinite(fallback.theta) ? fallback.theta : 0;
+            }
+            if (tableRow.wleStatus === "NON_CONVERGED") wleNonConverged++;
+            return tableRow.theta;
+        });
+        scoreTableRows = scoreTable.rows.length;
+
+        // Одно время на весь прогон: таблица и калибровка получены из одной и
+        // той же матрицы ответов, и разные метки времени врали бы об этом.
+        const calibratedAt = new Date().toISOString();
+
+        // Сохраняем таблицу: §R.6 требует, чтобы её можно было показать и
+        // сверить, а §199 — чтобы по строке было видно, каким оценщиком и по
+        // какой точке отсчёта получено число. Ученику она объясняет его балл,
+        // учителю — почему у двоих он одинаковый.
+        const lookupRows = scoreTable.rows.map((r) => ({
+            mock_test_id: mockTestId,
+            raw_score: r.rawScore,
+            theta: r.theta,
+            theta_se: r.thetaSe,
+            test_information: r.information,
+            section_score: r.sectionScore,
+            score: r.score,
+            grade_level: r.level,
+            measurement_status: r.measurementStatus,
+            wle_status: r.wleStatus,
+            estimator: scoreTable.estimator,
+            reference_version: scoreTable.referenceVersion,
+            item_count: scoreTable.itemCount,
+            built_at: calibratedAt,
+        }));
+        const { error: lookupError } = await admin
+            .from("mock_score_lookup")
+            .upsert(lookupRows, { onConflict: "mock_test_id,raw_score" });
+        if (lookupError) {
+            return NextResponse.json({ error: `Не удалось сохранить таблицу баллов: ${lookupError.message}` }, { status: 500 });
+        }
 
         const sampleSizeByItem = new Array(questionIds.length).fill(0);
         // Крайний балл задания: все ответили верно или все неверно. По §165 и
@@ -265,7 +331,6 @@ export async function POST(req: NextRequest) {
             abilitiesByItem[obs.item].push(personAbility[obs.person]);
         }
 
-        const calibratedAt = new Date().toISOString();
         const calibrationRows = questionIds.map((id, i) => {
             const n = sampleSizeByItem[i];
             const precision = itemPrecision(estimated.itemDifficulty[i], abilitiesByItem[i]);
@@ -299,21 +364,6 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: calibrationError.message }, { status: 500 });
         }
     }
-
-    // Z-стандартизация по ЭТАЛОННОЙ популяции, а не по сдавшим этот мок.
-    //
-    // Раньше μ и σ брались из когорты того же теста, и люди измерялись
-    // относительно самих себя: средний T выходил ровно 50 при любой подготовке,
-    // а средний балл — 66.67 из 100. Прогресс между месяцами измерить было
-    // нельзя, и сильная когорта понижала балл каждому.
-    //
-    // Формула та же, что в методике Агентства (стр. 1–2) — менялось только то,
-    // относительно кого считать. Подробности и слабые места эталона —
-    // src/lib/reference-population.ts и design/RASCH.md §268.
-    //
-    // Побочно исчезла ветка «вырожденная когорта»: у константы разброс не
-    // вырождается, подменять нечего (§233).
-    const reference = referencePopulationFor(subjectId);
 
     // Итоговый балл — среднее арифметическое разделов, как в методике:
     // «birinchi va ikkinchi bo'limlarning o'rtacha arifmetik qiymati umumiy
@@ -434,6 +484,9 @@ export async function POST(req: NextRequest) {
         // ушло из калибровки вместо того, чтобы посчитаться нулями (§A.3).
         personEstimator: `${WLE_ESTIMATOR}/${WLE_VERSION}`,
         wleNonConverged,
+        // §R.6: балл взят из таблицы варианта. tableMisses обязан быть 0.
+        scoreTableRows,
+        tableMisses,
         responseStates: totals,
         calibrationObservations: observations.length,
         examObservations: resultIds.length * questionIds.length,

@@ -73,6 +73,40 @@ export function levelsWithinInterval(
   return levels.slice(from, to + 1);
 }
 
+/**
+ * Сколько баллов не хватает до следующего уровня (§R.7 — «сколько до
+ * следующего уровня» в отчёте ученику).
+ *
+ * Считается от ТОЧНОГО балла, а не от показанного: показ округлён до десятой,
+ * и «не хватает 0,0» выглядело бы издевательством у того, кому не хватает
+ * четырёх сотых.
+ *
+ * null у A+: выше уровня нет, и показывать там «до следующего» нечего.
+ */
+export function pointsToNextLevel(score: number): { nextLevel: GradeLevel; pointsNeeded: number } | null {
+  if (!Number.isFinite(score)) return null;
+  // Полосы идут сверху вниз, поэтому ближайшая цель — последняя граница,
+  // которая ещё выше текущего балла.
+  let target: readonly [GradeLevel, number] | null = null;
+  for (const floor of LEVEL_FLOORS) {
+    if (floor[1] > score) target = floor;
+  }
+  if (!target) return null;
+  return { nextLevel: target[0], pointsNeeded: target[1] - score };
+}
+
+/**
+ * Помещается ли этот разрыв в погрешность измерения (§D.7, §L.5).
+ *
+ * Нужно, чтобы не обещать ученику лишнего. При SE ±3,2 балла «до C не хватает
+ * 1,4» означает не «почти дотянул», а «мы не можем отличить тебя от того, кто
+ * уже дотянул». Показывать первое как факт — обещать точность, которой нет.
+ */
+export function gapIsWithinError(pointsNeeded: number, scoreSe: number | null | undefined, z = 1.96): boolean {
+  if (scoreSe === null || scoreSe === undefined || !Number.isFinite(scoreSe) || scoreSe <= 0) return false;
+  return pointsNeeded <= z * scoreSe;
+}
+
 export function levelIsBorderline(interval: { low: number; high: number } | null): boolean {
   const levels = levelsWithinInterval(interval);
   return levels !== null && levels.length > 1;

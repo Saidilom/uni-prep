@@ -8,6 +8,7 @@ import { accuracyColor } from "@/lib/status-colors";
 import { averageCertificateScore, certificatePercent, formatScore, roundScore } from "@/lib/certificate-scale";
 import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
 import TeacherResultsExplorer from "@/components/teacher-results-explorer";
+import StudentScoreReport from "@/components/student-score-report";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 type ResultRow = MockResultRow;
@@ -18,6 +19,7 @@ export default function ResultsPage() {
     const t = useTranslations("results");
     const [results, setResults] = useState<ResultRow[]>([]);
     const [loading, setLoading] = useState(true);
+    const [openReportId, setOpenReportId] = useState<string | null>(null);
 
     useEffect(() => {
         if (!user || user.role === "teacher") return;
@@ -77,10 +79,25 @@ export default function ResultsPage() {
                     <div className="space-y-3">
                         {results.map((r) => {
                             const pending = !r.revealed_at;
+                            // Отчёт (§R.7) раскрывается по клику: список из
+                            // десятка работ должен оставаться сканируемым, а
+                            // подробности нужны по одной работе за раз.
+                            const open = openReportId === r.id;
+                            const canOpen = !pending && r.level_score != null;
                             return (
+                                <div key={r.id} className="rounded-2xl border border-border bg-card transition-all hover:bg-muted/40">
                                 <div
-                                    key={r.id}
-                                    className="flex flex-col justify-between gap-3 rounded-2xl border border-border bg-card p-5 transition-all hover:bg-muted/40 sm:flex-row sm:items-center"
+                                    role={canOpen ? "button" : undefined}
+                                    tabIndex={canOpen ? 0 : undefined}
+                                    onClick={() => canOpen && setOpenReportId(open ? null : r.id)}
+                                    onKeyDown={(event) => {
+                                        if (!canOpen) return;
+                                        if (event.key === "Enter" || event.key === " ") {
+                                            event.preventDefault();
+                                            setOpenReportId(open ? null : r.id);
+                                        }
+                                    }}
+                                    className={`flex flex-col justify-between gap-3 p-5 sm:flex-row sm:items-center ${canOpen ? "cursor-pointer" : ""}`}
                                 >
                                     <div className="min-w-0">
                                         <div className="flex items-center gap-2">
@@ -143,6 +160,21 @@ export default function ResultsPage() {
                                             )}
                                         </div>
                                     )}
+                                </div>
+                                {open && (
+                                    <div className="border-t border-border p-5 pt-4">
+                                        {/* Ничего не считает заново: берёт то, что
+                                            уже лежит в mock_results, и оформляет.
+                                            Модель, θ, шкала и пороги не участвуют. */}
+                                        <StudentScoreReport
+                                            score={r.level_score}
+                                            scoreMax={r.level_score_max}
+                                            scoreSe={r.score_se}
+                                            level={(r.grade_level as GradeLevel | null) ?? null}
+                                            measurementStatus={r.measurement_status}
+                                        />
+                                    </div>
+                                )}
                                 </div>
                             );
                         })}

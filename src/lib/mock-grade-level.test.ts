@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { gradeLevelDisplay, gradeLevelFromScore, levelsWithinInterval, levelIsBorderline } from "./mock-grade-level";
+import { gradeLevelDisplay, gradeLevelFromScore, levelsWithinInterval, levelIsBorderline, pointsToNextLevel, gapIsWithinError } from "./mock-grade-level";
 
 describe("gradeLevelFromScore", () => {
   it("returns A+ at the top boundary", () => {
@@ -91,5 +91,62 @@ describe("levelsWithinInterval", () => {
   it("пограничность — это «накрыто больше одного уровня»", () => {
     expect(levelIsBorderline({ low: 30, high: 40 })).toBe(false);
     expect(levelIsBorderline({ low: 44, high: 48 })).toBe(true);
+  });
+});
+
+// §R.7: «сколько до следующего уровня» в отчёте ученику.
+describe("pointsToNextLevel", () => {
+  it("считает разрыв до ближайшей границы сверху", () => {
+    // Сравниваем через toBeCloseTo: 46 − 44,6 в double даёт
+    // 1.4000000000000057, и это нормально — разрыв остаётся ТОЧНЫМ, а до
+    // одной десятой его округляет только показ.
+    const a = pointsToNextLevel(44.6)!;
+    expect(a.nextLevel).toBe("C");
+    expect(a.pointsNeeded).toBeCloseTo(1.4, 10);
+
+    const b = pointsToNextLevel(47.3)!;
+    expect(b.nextLevel).toBe("C+");
+    expect(b.pointsNeeded).toBeCloseTo(2.7, 10);
+
+    expect(pointsToNextLevel(0)).toEqual({ nextLevel: "C", pointsNeeded: 46 });
+  });
+
+  it("на самой границе цель — СЛЕДУЮЩИЙ уровень, а не текущий", () => {
+    // Балл ровно 46 это уже C, значит цель — C+.
+    expect(pointsToNextLevel(46)).toEqual({ nextLevel: "C+", pointsNeeded: 4 });
+    expect(pointsToNextLevel(65)).toEqual({ nextLevel: "A+", pointsNeeded: 5 });
+  });
+
+  it("у A+ следующего уровня нет", () => {
+    expect(pointsToNextLevel(70)).toBeNull();
+    expect(pointsToNextLevel(75)).toBeNull();
+  });
+
+  it("считает от ТОЧНОГО балла, а не от округлённого", () => {
+    // У 64.96 до A не хватает 0.04, а не «нисколько»: показ округлил бы до
+    // 65,0 и разрыв выглядел бы нулевым.
+    const gap = pointsToNextLevel(64.96)!;
+    expect(gap.nextLevel).toBe("A");
+    expect(gap.pointsNeeded).toBeCloseTo(0.04, 10);
+  });
+
+  it("нечисловой балл не даёт цели", () => {
+    expect(pointsToNextLevel(Number.NaN)).toBeNull();
+  });
+});
+
+describe("gapIsWithinError (§D.7, §L.5)", () => {
+  it("разрыв меньше погрешности — «почти дотянул» обещать нельзя", () => {
+    // При SE ±3,2 интервал ±6,3: разрыв в 1,4 балла внутри него.
+    expect(gapIsWithinError(1.4, 3.2)).toBe(true);
+  });
+
+  it("разрыв заметно больше погрешности — цель настоящая", () => {
+    expect(gapIsWithinError(12, 3.2)).toBe(false);
+  });
+
+  it("без погрешности судить не о чем", () => {
+    expect(gapIsWithinError(1.4, null)).toBe(false);
+    expect(gapIsWithinError(1.4, 0)).toBe(false);
   });
 });

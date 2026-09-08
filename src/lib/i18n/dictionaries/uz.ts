@@ -546,6 +546,15 @@ const uz: typeof ru = {
     essayVerdictNotWritten: "Yozilmagan — 0 ball",
     essayCriteriaIncomplete: "Barcha 12 mezonni baholang",
   },
+  studentReport: {
+    scoreLabel: "Sizning ballingiz",
+    intervalExplain: "Bu — xatolikka ega o'lchov: 95% ehtimol bilan haqiqiy darajangiz {range} ball oralig'iga to'g'ri keladi. Xatolikdan kichik farq — farq emas.",
+    borderlineWarning: "Siz daraja chegarasidasiz: xatolikni hisobga olsak, bu {levels} bo'lishi mumkin.",
+    lowInformationWarning: "Bu testda sizning darajangizga mos topshiriqlar juda kam edi — ball hisoblandi, lekin uni aniq deb bo'lmaydi.",
+    nextLevelGap: "{level} darajasiga {points} ball yetmayapti.",
+    nextLevelWithinError: "{level} darajasiga rasman {points} ball yetmayapti — bu o'lchov xatoligidan kam, ya'ni siz allaqachon o'sha darajada bo'lishingiz mumkin.",
+    topLevelReached: "Bu — eng yuqori daraja, undan yuqorisi yo'q.",
+  },
   reviewWork: {
     title: "Ishlarni tekshirish",
     subtitle: "Yozma ishlarini tekshirish sizga topshirilgan testlar. Insholarga ball qo'ying — hammasi tekshirilgach, natijalarni administrator e'lon qiladi.",

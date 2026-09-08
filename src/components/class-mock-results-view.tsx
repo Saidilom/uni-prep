@@ -16,6 +16,7 @@ import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
 import { certificatePercent, formatScore } from "@/lib/certificate-scale";
 import EssayCriteriaForm, { EssayCriteriaPayload } from "@/components/essay-criteria-form";
 import MockReliabilityPanel from "@/components/mock-reliability-panel";
+import DistractorReport from "@/components/distractor-report";
 import { ESSAY_MAX_POINTS } from "@/lib/essay-rubric";
 import { accuracyColor } from "@/lib/status-colors";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
@@ -247,6 +248,11 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
                 теста, а не ученика, и она объясняет, насколько вообще можно
                 опираться на разницу баллов в рейтинге ниже. */}
             <MockReliabilityPanel reliability={summary.reliability} />
+
+            {/* §R.7. Тоже свёрнуто: разбор нужен методисту при проверке
+                качества варианта, а не при проверке работ. Ученику не виден —
+                таблица раскрывает ключ, доступ закрыт в RLS (миграция 103). */}
+            <DistractorReport mockTestId={mockTestId} />
 
             <section>
                 {/* Раздел аналитический: для проверки работ он не нужен, а перед

@@ -3,6 +3,10 @@ import { createClient } from "@supabase/supabase-js";
 import { createRouteHandlerClient } from "@/lib/supabase/server";
 import { estimateRasch, Observation, raschThetaToT, measurementPrecision, itemPrecision, MOCK_SCALE_MAX } from "@/lib/rasch";
 import { computeSeparation, SeparationResult, RELIABILITY_HIGH_STAKES } from "@/lib/rasch-separation";
+import {
+    analyzeQuestion, parseSelection, correctOptionsFor, isClosedQuestion,
+    DistractorResponse, QuestionDistractorReport,
+} from "@/lib/distractor-analysis";
 import { estimateThetaWle, WLE_ESTIMATOR, WLE_VERSION } from "@/lib/rasch-wle";
 import { buildScoreTable, lookupScoreRow } from "@/lib/score-table";
 import { itemFitReport, personFitReport, FitObservation, FitReport } from "@/lib/rasch-fit";
@@ -73,11 +77,17 @@ export async function POST(req: NextRequest) {
 
     const { data: questions } = await admin
         .from("mock_questions")
-        .select("id, question_type, points, section_id, order, group_key")
+        // options/correct_answer/answer_key нужны разбору дистракторов (§R.7):
+        // без полного списка вариантов невыбранный вариант не обнаружить — в
+        // ответах его нет по определению.
+        .select("id, question_type, points, section_id, order, group_key, options, correct_answer, answer_key")
         .in("section_id", sectionIds);
     const allQuestions = (questions || []) as Array<{
         id: string; question_type: string | null; points: number | null;
         section_id: string; order: number | null;
+        options: Record<string, unknown> | null;
+        correct_answer: string | null;
+        answer_key: { values?: unknown } | null;
         // Testlet-метка: вопросы к одному тексту. Нужна модулю G не для
         // расчёта, а для интерпретации — зависимость внутри группы ожидаема.
         group_key: string | null;
@@ -157,7 +167,12 @@ export async function POST(req: NextRequest) {
     // Стало: две политики (§A.3). Сложности калибруются БЕЗ пропусков, балл
     // ученику считается с пропуском как с нулём — это политика оценивания, а
     // не свойство модели.
-    const answerByPersonQuestion = new Map<string, { correct: boolean; answered: boolean }>();
+    const answerByPersonQuestion = new Map<string, {
+        correct: boolean; answered: boolean;
+        // Что именно выбрано — нужно разбору дистракторов (§R.7). Разбирается
+        // здесь один раз, а не в каждом месте, где понадобится.
+        selected: string[];
+    }>();
     for (const a of answers) {
         const person = personIndex.get(a.result_id as string);
         if (person === undefined) continue;
@@ -169,7 +184,11 @@ export async function POST(req: NextRequest) {
         // SQL NULL встречаются у более старых строк.
         const raw = a.selected_answer;
         const answered = raw !== null && raw !== undefined && raw !== "" && raw !== "null" && raw !== "undefined";
-        answerByPersonQuestion.set(`${person}:${a.question_id}`, { correct: !!a.is_correct, answered });
+        answerByPersonQuestion.set(`${person}:${a.question_id}`, {
+            correct: !!a.is_correct,
+            answered,
+            selected: answered ? parseSelection(raw) : [],
+        });
     }
 
     // Разметка по каждой работе, в порядке предъявления заданий.
@@ -269,6 +288,8 @@ export async function POST(req: NextRequest) {
     // погрешностей, а «надёжность 0» читалось бы как измеренный результат.
     let personSeparation: SeparationResult | null = null;
     let itemSeparation: SeparationResult | null = null;
+    // §R.7. Пусто у теста без раздела Раша: средних θ по вариантам там нет.
+    let distractorReports: QuestionDistractorReport[] = [];
 
     if (hasObjectiveSection) {
         const estimated = estimateRasch(observations, resultIds.length, questionIds.length);
@@ -487,6 +508,67 @@ export async function POST(req: NextRequest) {
         itemSeparation = computeSeparation(itemMeasures.filter((m) => !m.extreme));
         const personSeparationAll = computeSeparation(personMeasures);
 
+        // ═══ Анализ дистракторов (§R.7) ═══
+        //
+        // Закрытым считается задание с двумя и более вариантами — признак из
+        // самих данных, а не список типов: у открытых заданий options пуст, и
+        // новый закрытый тип подхватится сам.
+        //
+        // Берутся ВСЕ закрытые задания варианта, включая исключённые из пула
+        // Раша: разбор по вариантам не участвует в оценке способности и на
+        // балл не влияет, а ошибку ключа полезно увидеть в любом задании.
+        distractorReports = allQuestions
+            .map((q) => {
+                const optionKeys = Object.keys(q.options ?? {});
+                if (!isClosedQuestion(optionKeys)) return null;
+                const responses: DistractorResponse[] = resultIds.map((_, p) => ({
+                    // Та же θ, что и в балле ученика. Для работ без раздела
+                    // Раша её нет — такой ответ считается в долю, но не в
+                    // среднюю.
+                    theta: personAbility[p] ?? null,
+                    selected: answerByPersonQuestion.get(`${p}:${q.id}`)?.selected ?? [],
+                }));
+                return analyzeQuestion(
+                    q.id,
+                    optionKeys,
+                    correctOptionsFor(q.correct_answer, q.answer_key),
+                    responses,
+                );
+            })
+            .filter((r): r is QuestionDistractorReport => r !== null);
+
+        // Пишем начисто: строка на пару «задание × вариант». Старые строки
+        // удаляются, иначе после правки задания остался бы вариант, которого
+        // в задании больше нет.
+        const { error: distractorClearError } = await admin
+            .from("mock_distractor_stats").delete().eq("mock_test_id", mockTestId);
+        if (distractorClearError) {
+            return NextResponse.json({ error: `Не удалось очистить разбор дистракторов: ${distractorClearError.message}` }, { status: 500 });
+        }
+        const distractorRows = distractorReports.flatMap((report) =>
+            report.options.map((option) => ({
+                mock_test_id: mockTestId,
+                question_id: report.questionId,
+                option_key: option.option,
+                is_correct: option.isCorrect,
+                choice_count: option.count,
+                choice_share: option.share,
+                mean_theta: option.meanTheta,
+                flags: option.flags,
+                respondents: report.respondents,
+                omitted: report.omitted,
+                correct_mean_theta: report.correctMeanTheta,
+                question_status: report.status,
+                computed_at: calibratedAt,
+            })));
+        if (distractorRows.length > 0) {
+            const { error: distractorInsertError } = await admin
+                .from("mock_distractor_stats").insert(distractorRows);
+            if (distractorInsertError) {
+                return NextResponse.json({ error: `Не удалось сохранить разбор дистракторов: ${distractorInsertError.message}` }, { status: 500 });
+            }
+        }
+
         // Сводка по варианту: без знаменателя число флагов не читается.
         const { error: summaryError } = await admin.from("mock_tests").update({
             q3_pairs_checked: q3?.pairs.filter((pair) => pair.excess !== null).length ?? null,
@@ -520,6 +602,15 @@ export async function POST(req: NextRequest) {
             item_extreme_count: itemMeasures.filter((m) => m.extreme).length,
             item_separation_status: itemSeparation.status,
             separation_at: calibratedAt,
+
+            // §R.7. Со знаменателем: «19 подозрений» читается только рядом с
+            // «из 130 проверенных».
+            distractor_questions_checked: distractorReports.length,
+            distractor_questions_flagged: distractorReports.filter((r) => r.flags.length > 0).length,
+            distractor_key_suspects: distractorReports.filter((r) => r.flags.includes("OUTPERFORMS_CORRECT")).length,
+            distractor_dead_options: distractorReports.reduce(
+                (sum, r) => sum + r.options.filter((o) => o.flags.includes("DEAD_DISTRACTOR")).length, 0),
+            distractor_at: calibratedAt,
         }).eq("id", mockTestId);
         if (summaryError) {
             return NextResponse.json({ error: `Не удалось сохранить сводку диагностики: ${summaryError.message}` }, { status: 500 });
@@ -713,6 +804,15 @@ export async function POST(req: NextRequest) {
         itemReliability: itemSeparation?.reliability ?? null,
         itemSeparation: itemSeparation?.separation ?? null,
         itemSeparationStatus: itemSeparation?.status ?? null,
+        // §R.7. Ни одно задание не удалено и не исключено (§222, §224) —
+        // счётчики говорят только о том, на что стоит посмотреть глазами.
+        distractorQuestionsChecked: distractorReports.length,
+        distractorQuestionsFlagged: distractorReports.filter((r) => r.flags.length > 0).length,
+        distractorKeySuspects: distractorReports.filter((r) => r.flags.includes("OUTPERFORMS_CORRECT")).length,
+        distractorDeadOptions: distractorReports.reduce(
+            (sum, r) => sum + r.options.filter((o) => o.flags.includes("DEAD_DISTRACTOR")).length, 0),
+        // Выборы, которых нет среди вариантов задания. Обязан быть 0.
+        distractorUnknownSelections: distractorReports.reduce((sum, r) => sum + r.unknownSelections, 0),
         highStakesThreshold: RELIABILITY_HIGH_STAKES,
         meetsHighStakes: personSeparation?.reliability !== null
             && personSeparation?.reliability !== undefined

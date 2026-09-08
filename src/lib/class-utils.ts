@@ -750,6 +750,113 @@ export const fetchClassMockResults = async (classId: string | null, mockTestId: 
     };
 };
 
+// ═══ Разбор дистракторов (§R.7) ═══
+//
+// Читается напрямую из mock_distractor_stats. RLS там пускает только админа и
+// учителя (миграция 103): таблица раскрывает правильный ответ и колонкой
+// is_correct, и через среднюю θ. У ученика выборка вернёт пусто, и блок в
+// отчёте просто не отрисуется — но полагаться на это как на защиту нельзя,
+// защита именно в RLS.
+
+export type DistractorOption = {
+    optionKey: string;
+    /** Текст варианта из mock_questions.options. */
+    label: string;
+    isCorrect: boolean;
+    count: number;
+    /** Доля от ответивших, 0…1. */
+    share: number;
+    meanTheta: number | null;
+    flags: string[];
+};
+
+export type DistractorQuestion = {
+    questionId: string;
+    text: string;
+    respondents: number;
+    omitted: number;
+    correctMeanTheta: number | null;
+    /** OK | TOO_FEW_RESPONSES | NO_CORRECT_RESPONSES. */
+    status: string;
+    /** Объединение флагов вариантов. */
+    flags: string[];
+    options: DistractorOption[];
+};
+
+export const fetchDistractorReport = async (mockTestId: string): Promise<DistractorQuestion[]> => {
+    // Постранично: строк здесь «закрытых заданий × вариантов» — на нашем
+    // большом варианте 130 × 4 ≈ 520, а PostgREST режет ответ по max_rows
+    // молча. Усечение показало бы часть заданий без флагов, которые у них есть.
+    const { data: stats } = await fetchAllRows<{
+        question_id: string; option_key: string; is_correct: boolean;
+        choice_count: number; choice_share: number; mean_theta: number | null;
+        flags: string[] | null; respondents: number; omitted: number;
+        correct_mean_theta: number | null; question_status: string;
+    }>((from, to) => supabase
+        .from("mock_distractor_stats")
+        .select("question_id, option_key, is_correct, choice_count, choice_share, mean_theta, flags, respondents, omitted, correct_mean_theta, question_status")
+        .eq("mock_test_id", mockTestId)
+        .order("question_id")
+        .order("option_key")
+        .range(from, to));
+
+    const rows = stats || [];
+    if (rows.length === 0) return [];
+
+    const questionIds = Array.from(new Set(rows.map((r) => r.question_id)));
+    const { data: questions } = await fetchAllRows<{
+        id: string; text: string | null; options: Record<string, unknown> | null;
+    }>((from, to) => supabase
+        .from("mock_questions")
+        .select("id, text, options")
+        .in("id", questionIds)
+        .order("id")
+        .range(from, to));
+    const questionById = new Map((questions || []).map((q) => [q.id, q]));
+
+    const byQuestion = new Map<string, DistractorQuestion>();
+    for (const row of rows) {
+        const question = questionById.get(row.question_id);
+        let entry = byQuestion.get(row.question_id);
+        if (!entry) {
+            entry = {
+                questionId: row.question_id,
+                text: question?.text ?? "—",
+                respondents: row.respondents,
+                omitted: row.omitted,
+                correctMeanTheta: num(row.correct_mean_theta),
+                status: row.question_status,
+                flags: [],
+                options: [],
+            };
+            byQuestion.set(row.question_id, entry);
+        }
+        const flags = row.flags ?? [];
+        entry.options.push({
+            optionKey: row.option_key,
+            label: String(question?.options?.[row.option_key] ?? ""),
+            isCorrect: row.is_correct,
+            count: row.choice_count,
+            share: Number(row.choice_share),
+            meanTheta: num(row.mean_theta),
+            flags,
+        });
+        flags.forEach((f) => { if (!entry!.flags.includes(f)) entry!.flags.push(f); });
+    }
+
+    // Помеченные сверху, среди них — с наибольшим отрывом дистрактора от
+    // верного варианта: это и есть очередь на проверку глазами.
+    const gap = (q: DistractorQuestion) => {
+        const suspect = q.options
+            .filter((o) => o.flags.includes("OUTPERFORMS_CORRECT") && o.meanTheta !== null)
+            .sort((a, b) => (b.meanTheta ?? 0) - (a.meanTheta ?? 0))[0];
+        if (!suspect || q.correctMeanTheta === null) return 0;
+        return (suspect.meanTheta ?? 0) - q.correctMeanTheta;
+    };
+    return Array.from(byQuestion.values()).sort((a, b) =>
+        (b.flags.length > 0 ? 1 : 0) - (a.flags.length > 0 ? 1 : 0) || gap(b) - gap(a));
+};
+
 export type StudentClassSummary = { id: string; name: string; teacherName: string };
 
 // A student's own read-only view of the classes they belong to — powers the

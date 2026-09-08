@@ -3,7 +3,7 @@ import { buildScoreTable, lookupScoreRow } from "./score-table";
 import { estimateThetaWle } from "./rasch-wle";
 import { REFERENCE_DEFAULT } from "./reference-population";
 import { raschThetaToT, MOCK_SCALE_MAX } from "./rasch";
-import { tScoreToCertificate } from "./certificate-scale";
+import { tScoreToCertificateExact, formatScore } from "./certificate-scale";
 import { gradeLevelFromScore } from "./mock-grade-level";
 
 // Реальные сложности бесплатного мока по математике, снятые с прода
@@ -42,12 +42,19 @@ describe("форма таблицы (§R.6)", () => {
         }
     });
 
-    it("все баллы внутри шкалы и с одной десятой", () => {
+    it("баллы внутри шкалы и НЕ округлены (§202–203)", () => {
+        // В строке лежит точное значение: из него дальше считаются средние и
+        // интервалы, и округлять его здесь значило бы округлить в середине
+        // цепочки. Одну десятую даёт только показ.
+        let anyExact = false;
         for (const row of table.rows) {
             expect(row.score!).toBeGreaterThanOrEqual(0);
             expect(row.score!).toBeLessThanOrEqual(MOCK_SCALE_MAX);
-            expect(row.score!).toBe(Math.round(row.score! * 10) / 10);
+            if (row.score! !== Math.round(row.score! * 10) / 10) anyExact = true;
+            // А показанное число — с одной десятой (§L.8).
+            expect(formatScore(row.score!)).toMatch(/^\d+,\d$/);
         }
+        expect(anyExact).toBe(true);
     });
 
     it("уровень в строке согласован с её баллом", () => {
@@ -69,10 +76,10 @@ describe("таблица не меняет ни модель, ни оценку 
         }
     });
 
-    it("балл из таблицы совпадает с баллом, посчитанным прежней цепочкой", () => {
+    it("балл из таблицы совпадает с прямой цепочкой θ → T → балл", () => {
         for (let raw = 0; raw <= 55; raw++) {
             const { mu, sigma } = REFERENCE_DEFAULT;
-            const expected = tScoreToCertificate(raschThetaToT(table.rows[raw].theta, mu, sigma), "math");
+            const expected = tScoreToCertificateExact(raschThetaToT(table.rows[raw].theta, mu, sigma), "math");
             expect(table.rows[raw].score).toBe(expected);
         }
     });
@@ -101,24 +108,26 @@ describe("θ зависит только от сырого балла (§B.6)", 
             })),
         ).theta;
     const scoreOf = (theta: number) =>
-        tScoreToCertificate(raschThetaToT(theta, REFERENCE_DEFAULT.mu, REFERENCE_DEFAULT.sigma), "math");
+        tScoreToCertificateExact(raschThetaToT(theta, REFERENCE_DEFAULT.mu, REFERENCE_DEFAULT.sigma), "math");
 
     it("10 самых ЛЁГКИХ и 10 самых ТРУДНЫХ дают одну и ту же θ", () => {
         const easiest = Array.from({ length: 10 }, (_, i) => i);
         const hardest = Array.from({ length: 10 }, (_, i) => 54 - i);
         expect(pickTheta(easiest)).toBeCloseTo(pickTheta(hardest), 12);
         expect(pickTheta(easiest)).toBeCloseTo(table.rows[10].theta, 12);
-        // А вот показанный балл обязан совпасть ТОЧНО — иначе двое с
-        // одинаковым числом верных увидели бы разные числа.
-        expect(scoreOf(pickTheta(hardest))).toBe(table.rows[10].score);
-        expect(scoreOf(pickTheta(easiest))).toBe(table.rows[10].score);
+        // ПОКАЗАННОЕ число обязано совпасть точно — иначе двое с одинаковым
+        // числом верных увидели бы разные баллы. Сами точные значения могут
+        // разойтись на последний бит (порядок сложения double), поэтому
+        // сравнивать надо то, что видит ученик.
+        expect(formatScore(scoreOf(pickTheta(hardest)))).toBe(formatScore(table.rows[10].score));
+        expect(formatScore(scoreOf(pickTheta(easiest)))).toBe(formatScore(table.rows[10].score));
     });
 
     it("произвольный разброс из 27 верных даёт ту же θ и тот же балл", () => {
         const scattered = [0, 3, 5, 7, 8, 11, 13, 14, 17, 19, 21, 23, 25, 26, 29, 31, 33, 35, 37, 39, 41, 43, 45, 47, 49, 51, 53];
         expect(scattered).toHaveLength(27);
         expect(pickTheta(scattered)).toBeCloseTo(table.rows[27].theta, 12);
-        expect(scoreOf(pickTheta(scattered))).toBe(table.rows[27].score);
+        expect(formatScore(scoreOf(pickTheta(scattered)))).toBe(formatScore(table.rows[27].score));
     });
 
     it("расхождение прямых прогонов не выходит за погрешность double", () => {

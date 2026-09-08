@@ -43,7 +43,7 @@
 import { estimateThetaWle, WLE_ESTIMATOR, WLE_VERSION, WleStatus } from "./rasch-wle";
 import { measurementPrecision, raschThetaToT, MeasurementStatus } from "./rasch";
 import { ReferencePopulation } from "./reference-population";
-import { tScoreToCertificateExact, roundScore } from "./certificate-scale";
+import { tScoreToCertificateExact } from "./certificate-scale";
 import { gradeLevelFromScore, GradeLevel } from "./mock-grade-level";
 
 export type ScoreTableRow = {
@@ -113,11 +113,10 @@ export function buildScoreTable(
         // определены уже здесь. У двухраздельного — нет, там нужен второй
         // раздел, и подставлять сюда половину было бы неверно.
         //
-        // Считаем ДВА значения одного балла (§202–203): точное — для полосы
-        // уровня, округлённое — для показа и записи. Порядок именно такой:
-        // сначала полоса по точному значению, потом округление. Наоборот
-        // округление могло бы перенести балл через порог, которого точное
-        // значение не достигало.
+        // Балл в строке — ТОЧНЫЙ, без округления (§202–203). Округляет только
+        // показ, и делает это formatScore на экране. Строка таблицы — это
+        // внутреннее значение, из которого дальше считаются средние и
+        // интервалы; округлив её здесь, мы округлили бы в середине цепочки.
         const exactScore = hasSecondSection ? null : tScoreToCertificateExact(sectionScore, subjectId);
 
         rows.push({
@@ -126,7 +125,7 @@ export function buildScoreTable(
             thetaSe: precision.thetaSe,
             information: precision.information,
             sectionScore,
-            score: exactScore === null ? null : roundScore(exactScore),
+            score: exactScore,
             level: exactScore === null ? null : gradeLevelFromScore(exactScore),
             measurementStatus: precision.status,
             wleStatus: wle.status,

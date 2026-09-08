@@ -8,7 +8,7 @@ import { classifyResponses, countStates, responseForModel, ResponseState } from 
 import { referencePopulationFor } from "@/lib/reference-population";
 import { essayPointsToScore75, combineSectionScores, isNativeCertSubject } from "@/lib/native-cert";
 import { writingPointsToScore } from "@/lib/english-cefr";
-import { certificateMaxForSubject, tScoreToCertificateExact, roundScore } from "@/lib/certificate-scale";
+import { certificateMaxForSubject, tScoreToCertificateExact } from "@/lib/certificate-scale";
 import { gradeLevelFromScore } from "@/lib/mock-grade-level";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { isInternalCall } from "@/lib/internal-auth";
@@ -427,21 +427,20 @@ export async function POST(req: NextRequest) {
     const updateResults = await Promise.all(
         resultIds.map((id, n) => {
             const t = tScores[n];
-            // Два значения одного балла (§202–203): точное — для полосы
-            // уровня, округлённое — для показа и для записи в базу.
+            // Балл НЕ округляется — ни для полосы уровня, ни для записи.
             //
-            // Порядок жёсткий и именно такой: полоса берётся по ТОЧНОМУ
-            // значению (§134 — полосы это интервалы, а не точки, к которым
-            // округляют), и только потом балл округляется до одной десятой.
-            // Наоборот нельзя: округление перенесло бы балл через порог,
-            // которого точное значение не достигало.
+            // §202–203: внутренние вычисления идут в полной точности, а
+            // округление стоит один раз и только на выводе. Хранить
+            // округлённое значило бы округлить В СЕРЕДИНЕ цепочки: этот балл
+            // потом усредняется по группе, филиалу и учителю, и в каждое
+            // среднее уходила бы уже срезанная точность.
             //
-            // Цена решения: у балла, лежащего в пределах 0,05 ниже порога,
-            // показанное число может выглядеть достигшим порога, а буква —
-            // нет. Это следствие того, что показ грубее расчёта, а не ошибка
-            // расчёта.
-            const exactCertificate = t === null ? null : tScoreToCertificateExact(t, subjectId);
-            const certificate = exactCertificate === null ? null : roundScore(exactCertificate);
+            // Показ по-прежнему с одной десятой (§L.8 — правило округления
+            // отчётного балла), но это делает formatScore на экране, а не
+            // расчёт. Различимость от этого не страдает: на реальном варианте
+            // математики различных баллов 49 из 56 и у точных, и у округлённых
+            // до 0,1 — округление показа не склеивает ни одной пары.
+            const certificate = t === null ? null : tScoreToCertificateExact(t, subjectId);
 
             // Погрешность есть только у Раш-раздела: у сочинения балл берётся
             // из таблицы документа, а не оценивается моделью, и своей ошибки у
@@ -464,10 +463,10 @@ export async function POST(req: NextRequest) {
                 rasch_score: hasObjectiveSection ? personAbility[n] : null,
                 level_score: certificate,
                 level_score_max: certificateMax,
-                // Буква — от ТОЧНОГО балла, а тот, в свою очередь, получен из
-                // раш-меры θ (raschThetaToT), а не из взвешенной суммы баллов
-                // за задания. Веса заданий в измерение не входят вовсе.
-                grade_level: exactCertificate === null ? null : gradeLevelFromScore(exactCertificate),
+                // Буква — от того же точного балла, а он получен из раш-меры θ
+                // (raschThetaToT), а не из взвешенной суммы баллов за задания.
+                // Веса заданий в измерение не входят вовсе.
+                grade_level: certificate === null ? null : gradeLevelFromScore(certificate),
                 theta_se: precision?.thetaSe ?? null,
                 score_se: scoreSe,
                 test_information: precision?.information ?? null,

@@ -150,6 +150,10 @@ export function scoreOnCertificateScale(score: number | null, max: number | null
 //
 // Работы без посчитанного балла в среднее не входят: их не с чем сравнивать,
 // а ноль вместо них занизил бы результат группы.
+//
+// Результат НЕ округляется (§202–203): это тоже внутреннее значение, его
+// показывает formatScore. Раньше здесь стоял roundScore, и среднее выходило
+// округлением от округлённых баллов — две потери точности вместо нуля.
 export function averageCertificateScore(
   results: Array<{ score: number | null; max: number | null }>,
 ): number | null {
@@ -157,5 +161,5 @@ export function averageCertificateScore(
     .map((r) => scoreOnCertificateScale(r.score, r.max))
     .filter((v): v is number => v !== null);
   if (normalized.length === 0) return null;
-  return roundScore(normalized.reduce((a, b) => a + b, 0) / normalized.length);
+  return normalized.reduce((a, b) => a + b, 0) / normalized.length;
 }

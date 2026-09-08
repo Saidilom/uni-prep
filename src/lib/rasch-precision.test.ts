@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
     testInformation,
+    itemInformation,
+    thetaConfidenceInterval,
     measurementPrecision,
     scoreConfidenceInterval,
     scoresAreDistinguishable,
@@ -192,5 +194,62 @@ describe("интервал накрывает истинную способно�
         // быть. Проверяем, что интервал не врёт в разы.
         expect(coverage).toBeGreaterThan(0.85);
         expect(coverage).toBeLessThanOrEqual(1);
+    });
+});
+
+// D.1 отдельной функцией: информация ОДНОГО задания. Раньше она жила только
+// внутри суммы, и проверить «максимум 0.25 ровно при θ = b» было нельзя.
+describe("itemInformation (D.1–D.2)", () => {
+    it("максимум ровно 0.25 и ровно при θ = b", () => {
+        for (const b of [-3, -1, 0, 1.5, 4]) {
+            expect(itemInformation(b, b)).toBeCloseTo(0.25, 12);
+            expect(itemInformation(b + 0.5, b)).toBeLessThan(0.25);
+            expect(itemInformation(b - 0.5, b)).toBeLessThan(0.25);
+        }
+    });
+
+    it("симметрична: одинаково далеко сверху и снизу — одинаково информативно", () => {
+        expect(itemInformation(1, 0)).toBeCloseTo(itemInformation(-1, 0), 12);
+    });
+
+    it("информация теста есть в точности сумма информаций заданий (D.3)", () => {
+        const bs = [-2, -0.5, 0, 0.7, 3];
+        const sum = bs.reduce((acc, b) => acc + itemInformation(0.3, b), 0);
+        expect(testInformation(0.3, bs)).toBeCloseTo(sum, 12);
+    });
+
+    it("нечисловые входы дают ноль, а не NaN", () => {
+        expect(itemInformation(Number.NaN, 0)).toBe(0);
+        expect(itemInformation(0, Number.NaN)).toBe(0);
+    });
+});
+
+// D.7 в логитах: первичная величина, из которой балльный интервал получается
+// линейным преобразованием.
+describe("thetaConfidenceInterval (D.7)", () => {
+    it("строит θ ± 1.96·SE и не зажимает — логит-шкала не имеет границ", () => {
+        const ci = thetaConfidenceInterval(0.5, 0.3)!;
+        expect(ci.low).toBeCloseTo(0.5 - 1.96 * 0.3, 12);
+        expect(ci.high).toBeCloseTo(0.5 + 1.96 * 0.3, 12);
+        // Отрицательная нижняя граница здесь нормальна, в отличие от баллов.
+        expect(thetaConfidenceInterval(-2, 1)!.low).toBeLessThan(0);
+    });
+
+    it("балльный интервал есть образ θ-интервала при T = 10θ + 50", () => {
+        // Проверяем именно эквивалентность двух путей: пересчитать концы
+        // θ-интервала или взять балл ± 10·SE. Преобразование линейное, поэтому
+        // результат обязан совпасть.
+        const theta = -0.4;
+        const thetaSe = 0.32;
+        const { mu, sigma } = REFERENCE_DEFAULT;
+        const viaTheta = thetaConfidenceInterval(theta, thetaSe)!;
+        const viaScore = scoreConfidenceInterval(raschThetaToT(theta, mu, sigma), thetaSe * 10)!;
+        expect(raschThetaToT(viaTheta.low, mu, sigma)).toBeCloseTo(viaScore.low, 10);
+        expect(raschThetaToT(viaTheta.high, mu, sigma)).toBeCloseTo(viaScore.high, 10);
+    });
+
+    it("без погрешности интервала не существует", () => {
+        expect(thetaConfidenceInterval(0, null)).toBeNull();
+        expect(thetaConfidenceInterval(Number.NaN, 0.3)).toBeNull();
     });
 });

@@ -10,6 +10,14 @@
 // даёт одинаковую букву независимо от того, кто ещё сдавал этот мок.
 export type GradeLevel = "A+" | "A" | "B+" | "B" | "C+" | "C" | "below_c";
 
+// Нижние границы полос, от верхней к нижней. ЕДИНСТВЕННЫЙ источник порогов:
+// и gradeLevelFromScore, и проверка пограничности ниже читают этот список.
+// Двумя списками их держать нельзя — разъедутся, и буква начнёт расходиться с
+// баллом у границы, то есть там, где цена ошибки максимальна.
+const LEVEL_FLOORS: Array<readonly [GradeLevel, number]> = [
+  ["A+", 70], ["A", 65], ["B+", 60], ["B", 55], ["C+", 50], ["C", 46],
+];
+
 // Полосы уровней — ПОЛУОТКРЫТЫЕ ИНТЕРВАЛЫ по точному T, без округления:
 //
 //   [0, 46) ниже C   [46, 50) C   [50, 55) C+   [55, 60) B
@@ -34,24 +42,11 @@ export type GradeLevel = "A+" | "A" | "B+" | "B" | "C+" | "C" | "below_c";
 // значению, потом округление для отображения — не наоборот.
 export function gradeLevelFromScore(score: number): GradeLevel {
   if (!Number.isFinite(score)) return "below_c";
-  if (score >= 70) return "A+";
-  if (score >= 65) return "A";
-  if (score >= 60) return "B+";
-  if (score >= 55) return "B";
-  if (score >= 50) return "C+";
-  if (score >= 46) return "C";
+  for (const [level, floor] of LEVEL_FLOORS) {
+    if (score >= floor) return level;
+  }
   return "below_c";
 }
-
-// "A+".."C" are already language-neutral letter badges, shown as-is
-// everywhere — only "below_c" needs an actual localized label, per the
-// BMBA-sourced spec this platform's grading matches ("Ниже C" / "C dan quyi").
-// Нижние границы полос, от верхней к нижней. Один источник и для
-// gradeLevelFromScore, и для проверки пограничности ниже — иначе пороги
-// разъедутся между двумя списками.
-const LEVEL_FLOORS: Array<readonly [GradeLevel, number]> = [
-  ["A+", 70], ["A", 65], ["B+", 60], ["B", 55], ["C+", 50], ["C", 46],
-];
 
 // Уровни, которые накрывает доверительный интервал балла (ТЗ L.5).
 //
@@ -83,6 +78,9 @@ export function levelIsBorderline(interval: { low: number; high: number } | null
   return levels !== null && levels.length > 1;
 }
 
+// "A+".."C" are already language-neutral letter badges, shown as-is
+// everywhere — only "below_c" needs an actual localized label, per the
+// BMBA-sourced spec this platform's grading matches ("Ниже C" / "C dan quyi").
 const BELOW_C_LABEL: Record<"ru" | "uz", string> = {
   ru: "Ниже C",
   uz: "C dan quyi",

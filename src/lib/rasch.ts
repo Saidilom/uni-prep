@@ -276,14 +276,30 @@ export const LOW_INFORMATION_SE = 1.0;
 // сумма арифметически положительна, но измерением не является.
 const ZERO_INFORMATION = 1e-9;
 
+// D.1: информация ОДНОГО задания.
+//
+//   I_i(θ) = P_i(1 − P_i)
+//
+// Максимум 0.25 и достигается ровно при θ = b_i (D.2) — задание информативнее
+// всего, когда его сложность совпадает со способностью. Отсюда же берётся
+// таргетирование варианта (D.9): пик информации теста должен стоять там, где
+// сидит популяция.
+export function itemInformation(theta: number, difficulty: number): number {
+    if (!Number.isFinite(theta) || !Number.isFinite(difficulty)) return 0;
+    const p = probability(theta, difficulty);
+    return p * (1 - p);
+}
+
+// D.3: информация ТЕСТА — сумма по заданиям.
+//
+//   I(θ) = Σ_i I_i(θ)
+//
+// Считается именно как сумма D.1, а не своей формулой: аддитивность — это
+// содержательное свойство информации (в отличие от SE, D.5), и код должен
+// показывать её, а не повторять выкладку.
 export function testInformation(theta: number, itemDifficulty: number[]): number {
-    if (!Number.isFinite(theta)) return 0;
     let info = 0;
-    for (const b of itemDifficulty) {
-        if (!Number.isFinite(b)) continue;
-        const p = probability(theta, b);
-        info += p * (1 - p);
-    }
+    for (const b of itemDifficulty) info += itemInformation(theta, b);
     return info;
 }
 
@@ -334,10 +350,34 @@ export function itemPrecision(difficulty: number, personAbility: number[]): Prec
     return measurementPrecision(difficulty, personAbility);
 }
 
-// Доверительный интервал балла (D.7): S ± z·SE, зажатый в границы шкалы.
+// D.7: доверительный интервал СПОСОБНОСТИ, в логитах.
 //
-// Зажатие делает интервал НЕсимметричным у краёв, и это правильно: балл 2,4 с
-// погрешностью ±9 не может уйти ниже нуля, и рисовать «−6,6» было бы ложью.
+//   θ ± z·SE(θ),   z = 1.96 для 95%
+//
+// Именно эта величина первична: шкала баллов получается из неё линейным
+// преобразованием, а не наоборот.
+export function thetaConfidenceInterval(
+    theta: number,
+    thetaSe: number | null,
+    z = 1.96,
+): { low: number; high: number } | null {
+    if (thetaSe === null || !Number.isFinite(thetaSe) || !Number.isFinite(theta)) return null;
+    const margin = z * thetaSe;
+    return { low: theta - margin, high: theta + margin };
+}
+
+// D.7, вторая половина: тот же интервал в баллах.
+//
+//   S ± A·z·SE(θ),   где A — множитель перевода (10 при σ = 1)
+//
+// Считается по концам, а не пересчётом каждой точки, и это точно: T = 50 +
+// 10·(θ−μ)/σ — преобразование ЛИНЕЙНОЕ и возрастающее, поэтому образ отрезка
+// есть отрезок между образами концов. Ошибку в баллах поэтому достаточно взять
+// как A·SE(θ) — это и лежит в Precision.scoreSe.
+//
+// Зажатие в границы шкалы делает интервал НЕсимметричным у краёв, и это
+// правильно: балл 2,4 с погрешностью ±9 не может уйти ниже нуля, и рисовать
+// «−6,6» было бы ложью.
 export function scoreConfidenceInterval(
     score: number,
     scoreSe: number | null,

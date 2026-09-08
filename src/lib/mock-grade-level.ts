@@ -1,10 +1,13 @@
-// Generic post-Mock level, shown for every subject/mock (free or paid) —
-// unlike src/lib/english-cefr.ts (which implements one specific government
-// document for the English National Certificate), this has no official
-// source: it's this platform's own A+..C scale, computed the same
-// cohort-relative way (Rasch ability standardized to the same 0-75 scale
-// via raschThetaToT — see src/lib/rasch.ts) so it stays comparable across
-// subjects and mocks despite differing question counts/difficulty.
+// Уровень A+..C после мока — для любого предмета, платного и бесплатного.
+// В отличие от src/lib/english-cefr.ts (там реализован один конкретный
+// государственный документ для английского), пороги здесь взяты из
+// Baholash_mezoni.pdf и ЗАДАНЫ, а не выведены: движок их применяет, но не
+// устанавливает (design/RASCH.md, ТЗ L.3).
+//
+// Считается от T-шкалы 0–75, которую даёт raschThetaToT. Уровень больше НЕ
+// относителен когорте: с этапа 1 T = 10·θ + 50 относительно эталонной
+// популяции (src/lib/reference-population.ts), поэтому одинаковая способность
+// даёт одинаковую букву независимо от того, кто ещё сдавал этот мок.
 export type GradeLevel = "A+" | "A" | "B+" | "B" | "C+" | "C" | "below_c";
 
 // Порог сравнивается с БЛИЖАЙШИМ целым T, а не с точным значением — решение
@@ -16,6 +19,14 @@ export type GradeLevel = "A+" | "A" | "B+" | "B" | "C+" | "C" | "below_c";
 // 86.67. Взамен ни один из 90 учеников, уже увидевших свой результат за
 // 2026-09-06, не понижается задним числом: без этого правила ученик с
 // T = 64,79 потерял бы «A» и получил «B+».
+//
+// РАСХОЖДЕНИЕ С ТЗ, ждёт решения владельца. Таблица §0.3 задаёт полосы с
+// точностью 0.1 («65 – 69.9 → A», «60 – 64.9 → B+»), то есть для T из
+// [64.5, 65.0) норма требует B+, а это правило даёт A. Сегодня не задевает
+// никого: после нулевого эталона T не превышает 57.9, и ни одна из 90 работ в
+// спорное окно не попала (проверено запросом из design/RASCH.md, часть VII).
+// Выстрелит, когда баллы поднимутся. Там же — про балл ровно 70.0, который
+// таблица ТЗ не покрывает ни одной строкой; здесь он даёт A+.
 export function gradeLevelFromScore(score: number): GradeLevel {
   const t = Math.round(score);
   if (t >= 70) return "A+";

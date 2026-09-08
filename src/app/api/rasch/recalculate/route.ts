@@ -5,6 +5,7 @@ import { estimateRasch, Observation, raschThetaToT, measurementPrecision, itemPr
 import { estimateThetaWle, WLE_ESTIMATOR, WLE_VERSION } from "@/lib/rasch-wle";
 import { buildScoreTable, lookupScoreRow } from "@/lib/score-table";
 import { itemFitReport, personFitReport, FitObservation, FitReport } from "@/lib/rasch-fit";
+import { modelResiduals, standardizedResiduals, q3Analysis, residualPca, Q3Analysis, PcaResult } from "@/lib/rasch-q3";
 import { classifyResponses, countStates, responseForModel, ResponseState } from "@/lib/response-status";
 import { referencePopulationFor } from "@/lib/reference-population";
 import { essayPointsToScore75, combineSectionScores, isNativeCertSubject } from "@/lib/native-cert";
@@ -71,11 +72,14 @@ export async function POST(req: NextRequest) {
 
     const { data: questions } = await admin
         .from("mock_questions")
-        .select("id, question_type, points, section_id, order")
+        .select("id, question_type, points, section_id, order, group_key")
         .in("section_id", sectionIds);
     const allQuestions = (questions || []) as Array<{
         id: string; question_type: string | null; points: number | null;
         section_id: string; order: number | null;
+        // Testlet-метка: вопросы к одному тексту. Нужна модулю G не для
+        // расчёта, а для интерпретации — зависимость внутри группы ожидаема.
+        group_key: string | null;
     }>;
     if (allQuestions.length === 0) {
         return NextResponse.json({ ok: true, itemCount: 0, personCount: 0 });
@@ -242,6 +246,9 @@ export async function POST(req: NextRequest) {
     // соответствие модели там проверять не на чем.
     let itemFitReports: FitReport[] = [];
     let personFitReports: FitReport[] = [];
+    // Модуль G. null у теста без раздела Раша: независимость проверять не на чем.
+    let q3: Q3Analysis | null = null;
+    let pca: PcaResult | null = null;
 
     if (hasObjectiveSection) {
         const estimated = estimateRasch(observations, resultIds.length, questionIds.length);
@@ -320,6 +327,8 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: `Не удалось сохранить таблицу баллов: ${lookupError.message}` }, { status: 500 });
         }
 
+
+
         const sampleSizeByItem = new Array(questionIds.length).fill(0);
         // Крайний балл задания: все ответили верно или все неверно. По §165 и
         // E.9 сложность такого задания не оценивается (b уходит в ±∞), и держать
@@ -360,6 +369,69 @@ export async function POST(req: NextRequest) {
         }
         itemFitReports = fitByItem.map((observations) => itemFitReport(observations));
         personFitReports = fitByPerson.map((observations) => personFitReport(observations));
+
+        // ═══ Локальная независимость и размерность (модуль G) ═══
+        //
+        // Считается по тем же ОЦЕНЁННЫМ θ и b, что дали балл — иначе базовый
+        // уровень −1/(L−1) неверен: он возникает именно из того, что θ
+        // оценивается по этим же ответам.
+        //
+        // Ничего не исключает и ничего не меняет в измерении (§222): балл,
+        // уровень и сложности от Q3 не зависят вовсе.
+        const groupKeysByIndex = objectiveQuestions.map((q) => q.group_key ?? null);
+        const residualRows = examResponses as Array<Array<0 | 1 | null>>;
+        q3 = q3Analysis(
+            modelResiduals(residualRows, personAbility, itemDifficultyByIndex),
+            { groupKeys: groupKeysByIndex },
+        );
+        pca = residualPca(standardizedResiduals(residualRows, personAbility, itemDifficultyByIndex));
+
+        // Помеченные пары Q3. Переписываем набор целиком: пара, переставшая
+        // быть зависимой после новых сдач, должна исчезнуть, а не остаться
+        // висеть флагом навсегда.
+        const { error: q3DeleteError } = await admin
+            .from("mock_q3_flags").delete().eq("mock_test_id", mockTestId);
+        if (q3DeleteError) {
+            return NextResponse.json({ error: `Не удалось обновить Q3-флаги: ${q3DeleteError.message}` }, { status: 500 });
+        }
+        const q3Rows = (q3?.flaggedPairs ?? []).map((pair) => {
+            // Порядок пары нормализован по id: одна пара — одна строка, как
+            // требует ограничение question_a < question_b.
+            const [a, b] = [questionIds[pair.itemA], questionIds[pair.itemB]].sort();
+            return {
+                mock_test_id: mockTestId,
+                question_a: a,
+                question_b: b,
+                q3: pair.q3,
+                q3_excess: pair.excess,
+                baseline: q3!.baseline,
+                threshold: q3!.threshold,
+                persons: pair.persons,
+                same_group: pair.sameGroup,
+                flags: pair.flags,
+                computed_at: calibratedAt,
+            };
+        });
+        if (q3Rows.length > 0) {
+            const { error: q3InsertError } = await admin.from("mock_q3_flags").insert(q3Rows);
+            if (q3InsertError) {
+                return NextResponse.json({ error: `Не удалось сохранить Q3-флаги: ${q3InsertError.message}` }, { status: 500 });
+            }
+        }
+
+        // Сводка по варианту: без знаменателя число флагов не читается.
+        const { error: summaryError } = await admin.from("mock_tests").update({
+            q3_pairs_checked: q3?.pairs.filter((pair) => pair.excess !== null).length ?? null,
+            q3_pairs_flagged: q3?.flaggedPairs.length ?? null,
+            q3_max_excess: q3?.maxExcess ?? null,
+            q3_mean_excess: q3?.meanExcess ?? null,
+            pca_eigenvalues: pca?.eigenvalues ?? null,
+            pca_flagged: pca?.flagged ?? null,
+            diagnostics_at: calibratedAt,
+        }).eq("id", mockTestId);
+        if (summaryError) {
+            return NextResponse.json({ error: `Не удалось сохранить сводку диагностики: ${summaryError.message}` }, { status: 500 });
+        }
 
         const calibrationRows = questionIds.map((id, i) => {
             const n = sampleSizeByItem[i];
@@ -549,6 +621,14 @@ export async function POST(req: NextRequest) {
         // §224 запрещает удалять автоматически.
         flaggedItems: itemFitReports.filter((r) => r.flags.length > 0).length,
         flaggedPersons: personFitReports.filter((r) => r.flags.length > 0).length,
+        // Модуль G. Много флагов — сигнал испорченной калибровки, а не
+        // «половина теста зависима»: см. шапку rasch-q3.ts.
+        q3PairsChecked: q3?.pairs.filter((pair) => pair.excess !== null).length ?? 0,
+        q3PairsFlagged: q3?.flaggedPairs.length ?? 0,
+        q3WithinGroup: q3 ? `${q3.flaggedWithinGroup}/${q3.withinGroupPairs}` : null,
+        q3MaxExcess: q3?.maxExcess ?? null,
+        pcaEigenvalues: pca?.eigenvalues ?? null,
+        pcaFlagged: pca?.flagged ?? null,
         calibrationObservations: observations.length,
         examObservations: resultIds.length * questionIds.length,
     });

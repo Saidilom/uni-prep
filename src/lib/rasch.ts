@@ -185,12 +185,12 @@ function recenter(b: number[], theta: number[]): void {
     for (let n = 0; n < theta.length; n++) theta[n] -= mean;
 }
 
-// Generic descriptive-stats + ability-to-scaled-score helpers — used to
-// standardize a cohort's Rasch person abilities (theta) into a fixed 0-75
-// scale (Z-score against that same mock's own test-takers, T = Z*10 + 50).
-// Subject-agnostic: src/lib/english-cefr.ts reuses these for the officially
-// mandated English scoring, and the generic per-mock grade level
-// (src/lib/mock-grade-level.ts) reuses them for every other subject.
+// Описательная статистика и перевод способности в шкалу 0–75.
+//
+// mean/stdev остались общими помощниками, но для БАЛЛА они больше не
+// используются: балл считается относительно эталонной популяции, а не
+// сдавших. Они по-прежнему нужны там, где нужна статистика самой когорты —
+// например в отчётах и в english-cefr.ts.
 export function mean(values: number[]): number {
     if (values.length === 0) return 0;
     return values.reduce((a, b) => a + b, 0) / values.length;
@@ -208,30 +208,24 @@ export function stdev(values: number[]): number {
 // что у Агентства знаний для национального сертификата.
 export const MOCK_SCALE_MAX = 75;
 
-// Разброс способностей, которым подменяется когортный, когда когорты нет.
-// Одна логита — типичная величина для реальной группы; но важнее не само
-// значение, а то, что оно фиксировано: балл одинокого сдавшего не должен
-// зависеть от разброса, которого не существует.
-export const REFERENCE_ABILITY_STDEV = 1;
-
-export function raschThetaToT(theta: number, cohortMean: number, cohortStdev: number): number {
-    // With fewer than ~2 meaningfully-different ability estimates, a
-    // population stdev is not a meaningful yardstick (and would divide by ~0).
-    //
-    // Раньше в этом случае возвращалась голая середина шкалы (50), а
-    // /api/rasch/recalculate заменял её на NULL — и балл не показывался вовсе.
-    // На практике это означало «балла нет ни у кого»: пересчёт запускается
-    // только новой сдачей, а пересдачи запрещены (§13), так что вырожденный мок
-    // оставался без балла навсегда.
-    //
-    // Отсчитываем не от когорты, а от самого банка вопросов. Это законно именно
-    // здесь: estimateRasch центрирует сложности через recenter(), поэтому theta
-    // уже абсолютна — theta = 0 значит «способность вровень со средним вопросом
-    // этого теста», а не «вровень с середняком группы».
-    const degenerate = !Number.isFinite(cohortStdev) || cohortStdev < 1e-6;
-    const center = degenerate ? 0 : cohortMean;
-    const spread = degenerate ? REFERENCE_ABILITY_STDEV : cohortStdev;
-    const z = (theta - center) / spread;
+// Z-стандартизация по методике Агентства (Baholash_mezoni.pdf, стр. 1–2):
+//
+//   Z = (θ − μ) / σ,   T = 50 + 10·Z
+//
+// μ и σ — параметры ЭТАЛОННОЙ популяции, а не сдавших этот тест. Раньше сюда
+// передавалась статистика когорты того же мока, и балл получался относительно
+// самих измеряемых: средний T всегда выходил ровно 50 независимо от того, как
+// решали. Откуда брать μ и σ — src/lib/reference-population.ts.
+//
+// Вырожденного случая здесь больше нет и быть не может: эталон — константа
+// конфигурации, у которой σ никогда не равна нулю. Прежняя молчаливая подмена
+// разброса нарушала §233 (NO SILENT FALLBACK) и вместе с ней ушла.
+export function raschThetaToT(theta: number, referenceMean: number, referenceStdev: number): number {
+    // σ ≤ 0 означает испорченную конфигурацию, а не данные. Молча подставлять
+    // что-то своё нельзя (§233) — но и падать посреди выставления баллов тоже:
+    // возвращаем NaN, а вызывающий обязан отличить его от балла (§215, §217).
+    if (!Number.isFinite(referenceStdev) || referenceStdev <= 0) return NaN;
+    const z = (theta - referenceMean) / referenceStdev;
     const t = z * 10 + 50;
     // Без округления. T — величина ПРОМЕЖУТОЧНАЯ: её ещё делят между разделами
     // и переводят в шкалу предмета, и округление на каждом из этих шагов

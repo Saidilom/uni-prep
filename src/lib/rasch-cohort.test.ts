@@ -3,6 +3,7 @@ import { estimateRasch, Observation, mean, stdev, raschThetaToT, MOCK_SCALE_MAX 
 import { gradeLevelFromScore } from "./mock-grade-level";
 import { essayPointsToScore75, combineSectionScores } from "./native-cert";
 import { tScoreToCertificate } from "./certificate-scale";
+import { REFERENCE_DEFAULT } from "./reference-population";
 
 // Проверка модели Раша на СИНТЕТИЧЕСКОЙ когорте — та самая, о которой просил
 // владелец перед экзаменом на 100 человек, но без ботов и без нагрузки на
@@ -67,15 +68,19 @@ function spearman(a: number[], b: number[]): number {
 
 // Баллы когорты по той же цепочке, что работает на проде:
 // estimateRasch → raschThetaToT (Z-стандартизация) → 0-75.
+// Балл считается относительно ЭТАЛОННОЙ популяции, а не сдавших этот тест.
+// Раньше здесь стояли mean/stdev самой когорты, и проверки вроде «центр 50»
+// были тавтологией: Z-стандартизация даёт центр 50 по определению. Теперь
+// эталон внешний, и то же утверждение стало содержательным — синтетическая
+// когорта нарочно построена похожей на эталон (θ от −2 до +2, μ≈0, σ≈1.15).
 function cohortScores(observations: Observation[], personCount: number, itemCount: number) {
     const { personAbility, itemDifficulty, converged } = estimateRasch(observations, personCount, itemCount);
-    const m = mean(personAbility);
-    const sd = stdev(personAbility);
+    const { mu, sigma } = REFERENCE_DEFAULT;
     return {
         personAbility,
         itemDifficulty,
         converged,
-        tScores: personAbility.map((theta) => raschThetaToT(theta, m, sd)),
+        tScores: personAbility.map((theta) => raschThetaToT(theta, mu, sigma)),
     };
 }
 
@@ -110,13 +115,16 @@ describe("модель Раша на когорте из 50 (узбекский)
         }
     });
 
-    it("шкала совпадает с документом: центр 50, разброс 10", () => {
-        // T = 50 + 10Z из Baholash_mezoni.pdf. Допуски широкие: клампы на
-        // границах 0 и 75 слегка поджимают и среднее, и разброс.
-        expect(mean(tScores)).toBeGreaterThan(46);
-        expect(mean(tScores)).toBeLessThan(54);
-        expect(stdev(tScores)).toBeGreaterThan(7);
-        expect(stdev(tScores)).toBeLessThan(13);
+    it("шкала совпадает с документом: T = 50 + 10·(θ−μ)/σ", () => {
+        // Проверяем саму формулу из Baholash_mezoni.pdf относительно ЭТАЛОНА, а
+        // не то, что когорта попала в центр. Прежний тест требовал центр 50 и
+        // разброс 10 — но при Z-стандартизации по своей же когорте это верно по
+        // определению, то есть тавтология. Теперь эталон внешний, и когорта
+        // вправе стоять где угодно: этот разброс вышел 13, потому что когорта
+        // разбросана шире эталонной сигмы, и это правильный ответ.
+        const { mu, sigma } = REFERENCE_DEFAULT;
+        expect(mean(tScores)).toBeCloseTo(50 + 10 * (mean(personAbility) - mu) / sigma, 0);
+        expect(stdev(tScores)).toBeCloseTo(10 * stdev(personAbility) / sigma, 0);
     });
 
     it("баллы не схлопываются и не упираются все в край", () => {
@@ -247,8 +255,8 @@ describe("масштаб: 100 учеников × 50 заданий", () => {
 
 describe("вырожденные случаи, на которых экзамен не должен падать", () => {
     it("все ответили одинаково — балл всё равно есть", () => {
-        // Когорта без разброса: Z-стандартизовать не по чему, и отсчёт идёт от
-        // банка вопросов. Раньше здесь получался NULL и балла не было ни у кого.
+        // Когорта без разброса. Раньше это ломало расчёт: σ бралась из когорты и
+        // обращалась в ноль. С внешним эталоном такого случая просто нет.
         const observations: Observation[] = [];
         for (let person = 0; person < 5; person++) {
             for (let item = 0; item < 10; item++) {
@@ -261,6 +269,49 @@ describe("вырожденные случаи, на которых экзаме�
             expect(t).toBeGreaterThanOrEqual(0);
             expect(t).toBeLessThanOrEqual(MOCK_SCALE_MAX);
         }
+    });
+
+    // Главный тест Этапа 1 и страховка от возврата дефекта.
+    //
+    // Было измерено на проде: средний T всегда выходил ровно 50, а средний балл
+    // — 66.67 из 100, потому что μ и σ брались из когорты того же теста.
+    // Математика решила 23.3% заданий и получила те же 66.67; когорта,
+    // решившая 5%, получила бы столько же. Сильная когорта при этом понижала
+    // балл каждому.
+    it("чужие результаты не меняют балл ученика", () => {
+        const ITEMS = 20;
+        // Слабая когорта: пятеро решают по 6 заданий из 20.
+        const weak: Observation[] = [];
+        for (let person = 0; person < 5; person++) {
+            for (let item = 0; item < ITEMS; item++) {
+                weak.push({ person, item, correct: item < 6 ? 1 : 0 });
+            }
+        }
+        // Та же пятёрка плюс пятеро сильных, решивших по 18 из 20.
+        const mixed: Observation[] = weak.map((o) => ({ ...o }));
+        for (let person = 5; person < 10; person++) {
+            for (let item = 0; item < ITEMS; item++) {
+                mixed.push({ person, item, correct: item < 18 ? 1 : 0 });
+            }
+        }
+
+        const alone = cohortScores(weak, 5, ITEMS).tScores;
+        const together = cohortScores(mixed, 10, ITEMS).tScores.slice(0, 5);
+
+        // Сложность заданий переоценивается по новой матрице ответов, поэтому
+        // абсолютного совпадения ждать нельзя — но балл слабых ОБЯЗАН остаться
+        // низким, а не подтянуться к середине шкалы из-за появления сильных.
+        for (const t of together) {
+            expect(t).toBeLessThan(50);
+        }
+        // И порядок сохраняется: сильные выше слабых, а не «все около 50».
+        const strong = cohortScores(mixed, 10, ITEMS).tScores.slice(5);
+        for (const s of strong) {
+            for (const w of together) expect(s).toBeGreaterThan(w);
+        }
+        // Прежнее поведение давало ровно 50 в среднем в ОБОИХ случаях —
+        // теперь средние обязаны различаться.
+        expect(mean(alone)).not.toBeCloseTo(mean(cohortScores(mixed, 10, ITEMS).tScores), 1);
     });
 
     it("один сдавший — балл есть и он не середина шкалы наугад", () => {

@@ -2,12 +2,12 @@ import { describe, it, expect } from "vitest";
 import { raschThetaToT, writingRawToScore, writingPointsToScore, cefrBandFromScore, mean, stdev } from "./english-cefr";
 
 describe("raschThetaToT", () => {
-    // Раньше здесь возвращалась голая середина шкалы (50), одинаковая при любой
-    // theta. Теперь при отсутствии когорты отсчёт идёт от банка вопросов:
-    // центр 0, разброс 1 логит, поэтому theta 1.2 даёт 1.2*10 + 50 = 62.
-    it("standardizes against the item pool when stdev is ~0 — no cohort to compare with", () => {
-        expect(raschThetaToT(1.2, 0.5, 0)).toBe(62);
-        expect(raschThetaToT(1.2, 0.5, 1e-9)).toBe(62);
+    // σ ≤ 0 больше не означает «вырожденная когорта»: эталонная популяция —
+    // константа конфигурации, поэтому нулевой разброс это только сломанный
+    // конфиг, и подменять его молча нельзя (RASCH.md §233).
+    it("returns NaN on a broken reference instead of inventing a score", () => {
+        expect(raschThetaToT(1.2, 0.5, 0)).toBeNaN();
+        expect(raschThetaToT(1.2, 0.5, -1)).toBeNaN();
     });
 
     it("maps a theta at the mean to T=50", () => {

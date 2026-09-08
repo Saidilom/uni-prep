@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createRouteHandlerClient } from "@/lib/supabase/server";
 import { estimateRasch, Observation } from "@/lib/rasch";
-import { raschThetaToT, writingPointsToScore, cefrBandFromScore, mean, stdev } from "@/lib/english-cefr";
+import { raschThetaToT, writingPointsToScore, cefrBandFromScore, mean } from "@/lib/english-cefr";
 import { roundScore } from "@/lib/certificate-scale";
+import { referencePopulationFor } from "@/lib/reference-population";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { isInternalCall } from "@/lib/internal-auth";
 
@@ -99,9 +100,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     if (observations.length === 0) return tByResult;
 
     const { personAbility } = estimateRasch(observations, resultIds.length, itemIds.length);
-    const m = mean(personAbility);
-    const sd = stdev(personAbility);
-    resultIds.forEach((id, n) => tByResult.set(id, raschThetaToT(personAbility[n], m, sd)));
+    // Эталонная популяция, а не когорта этого мока — та же правка, что в
+    // /api/rasch/recalculate: иначе секция измеряет людей относительно самих
+    // себя и средний T всегда выходит 50. Английского эталона пока нет, поэтому
+    // берётся значение по умолчанию (μ=0, σ=1); данных по английскому на проде
+    // ноль, так что переход ничего не переписал.
+    const reference = referencePopulationFor("english");
+    resultIds.forEach((id, n) => tByResult.set(id, raschThetaToT(personAbility[n], reference.mu, reference.sigma)));
     return tByResult;
   };
 

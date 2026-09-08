@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createRouteHandlerClient } from "@/lib/supabase/server";
-import { estimateRasch, Observation, mean, stdev, raschThetaToT, MOCK_SCALE_MAX } from "@/lib/rasch";
+import { estimateRasch, Observation, raschThetaToT, MOCK_SCALE_MAX } from "@/lib/rasch";
+import { referencePopulationFor } from "@/lib/reference-population";
 import { essayPointsToScore75, combineSectionScores, isNativeCertSubject } from "@/lib/native-cert";
 import { writingPointsToScore } from "@/lib/english-cefr";
 import { certificateMaxForSubject, tScoreToCertificate } from "@/lib/certificate-scale";
@@ -167,23 +168,20 @@ export async function POST(req: NextRequest) {
         }
     }
 
-    // Standardize this cohort's abilities onto the same 0-75 scale used for
-    // English's official CEFR scoring — Z-score against the people who took
-    // THIS mock, not a fixed/absolute scale.
+    // Z-стандартизация по ЭТАЛОННОЙ популяции, а не по сдавшим этот мок.
     //
-    // Балл проставляется всегда, в том числе на вырожденной когорте (меньше
-    // двух различающихся оценок способности). Там стандартизовать не по чему,
-    // и raschThetaToT отсчитывает от сложности самих вопросов вместо когорты —
-    // см. комментарий у него.
+    // Раньше μ и σ брались из когорты того же теста, и люди измерялись
+    // относительно самих себя: средний T выходил ровно 50 при любой подготовке,
+    // а средний балл — 66.67 из 100. Прогресс между месяцами измерить было
+    // нельзя, и сильная когорта понижала балл каждому.
     //
-    // Раньше в этом случае писался NULL. Замысел был честный (не показывать
-    // подставную середину шкалы), но на деле балла лишались все: пересчёт
-    // запускает только новая сдача, а пересдачи запрещены (§13), поэтому мок с
-    // одним сдавшим оставался без балла навсегда. Цена нынешнего решения в том,
-    // что когда тест сдадут ещё люди, балл пересчитается уже по когорте и может
-    // сдвинуться — решение владельца, зафиксировано в design/FIX.md.
-    const abilityMean = mean(personAbility);
-    const abilityStdev = stdev(personAbility);
+    // Формула та же, что в методике Агентства (стр. 1–2) — менялось только то,
+    // относительно кого считать. Подробности и слабые места эталона —
+    // src/lib/reference-population.ts и design/RASCH.md §268.
+    //
+    // Побочно исчезла ветка «вырожденная когорта»: у константы разброс не
+    // вырождается, подменять нечего (§233).
+    const reference = referencePopulationFor(subjectId);
 
     // Итоговый балл — среднее арифметическое разделов, как в методике:
     // «birinchi va ikkinchi bo'limlarning o'rtacha arifmetik qiymati umumiy
@@ -213,7 +211,7 @@ export async function POST(req: NextRequest) {
     // целым T внутри gradeLevelFromScore.
     const tScores = resultIds.map((_, n) => {
         const sections: number[] = [];
-        if (hasObjectiveSection) sections.push(raschThetaToT(personAbility[n], abilityMean, abilityStdev));
+        if (hasObjectiveSection) sections.push(raschThetaToT(personAbility[n], reference.mu, reference.sigma));
         if (hasEssaySection) sections.push(essayToScore75(essayEarnedByPerson[n], essayMaxPoints));
         return combineSectionScores(sections);
     });

@@ -210,6 +210,36 @@ describe("300 учеников на реальном моке по матема�
         console.log(`\nгрупп с одинаковым числом верных: ${checked}, самая большая — ${biggest} чел; внутри каждой балл совпал точно\n`);
     });
 
+    // Полный список всех 300 баллов. Печатается только по запросу:
+    //   DUMP_300=1 npx vitest run math-mock-300
+    // В обычном прогоне 75 строк вывода мешали бы читать остальные тесты, а
+    // числа детерминированы — тот же прогон даёт тот же список.
+    it.runIf(process.env.DUMP_300 === "1")("печатает баллы всех 300 учеников", () => {
+        const ranked = [...realistic].sort((a, b) => b.score - a.score);
+        const cell = (s: Student, i: number) =>
+            `${String(i + 1).padStart(3)}. ${`${s.correct}/55`.padStart(5)} ${formatScore(s.score).padStart(5)} ${gradeLevelDisplay(s.level, "ru").padEnd(7)}`;
+
+        const COLS = 4;
+        const rows = Math.ceil(ranked.length / COLS);
+        const out: string[] = [];
+        out.push(`\nВСЕ ${STUDENTS} УЧЕНИКОВ, по убыванию балла (место · верных · балл · уровень)\n`);
+        for (let r = 0; r < rows; r++) {
+            const line: string[] = [];
+            for (let c = 0; c < COLS; c++) {
+                const idx = c * rows + r;
+                if (idx < ranked.length) line.push(cell(ranked[idx], idx));
+            }
+            out.push(line.join(" │ "));
+        }
+        console.log(out.join("\n") + "\n");
+
+        // Список обязан быть полным и упорядоченным — иначе это не отчёт.
+        expect(ranked).toHaveLength(300);
+        for (let i = 1; i < ranked.length; i++) {
+            expect(ranked[i].score).toBeLessThanOrEqual(ranked[i - 1].score);
+        }
+    });
+
     it("буква у каждого из 300 согласована с показанным баллом", () => {
         for (const s of realistic) {
             const shown = Number(formatScore(s.score).replace(",", "."));

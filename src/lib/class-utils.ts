@@ -593,6 +593,31 @@ export type ClassMockResultsSummary = {
     topScore: number | null;
     lowScore: number | null;
     pendingReviewCount: number;
+    /**
+     * Надёжность измерения по этому варианту (§N.5). null — пересчёт после
+     * миграции 102 ещё не запускали, и показывать нечего.
+     *
+     * Это свойство ПАРЫ «вариант + когорта», а не только теста: тот же вариант
+     * на однородной группе даст надёжность ниже. Поэтому и лежит рядом с
+     * результатами группы, а не в карточке теста.
+     */
+    reliability: MockReliability | null;
+};
+
+export type MockReliability = {
+    personSeparation: number | null;
+    personReliability: number | null;
+    personStrata: number | null;
+    personMeasureCount: number | null;
+    personExtremeCount: number | null;
+    /** То же со всеми работами: видно, что дало исключение крайних баллов. */
+    personReliabilityWithExtremes: number | null;
+    personStatus: string | null;
+    itemSeparation: number | null;
+    itemReliability: number | null;
+    itemMeasureCount: number | null;
+    itemStatus: string | null;
+    computedAt: string | null;
 };
 
 // Все, кто сдавал этот тест, независимо от класса. Нужно для админских моков
@@ -611,10 +636,25 @@ export const fetchMockTakers = async (mockTestId: string): Promise<User[]> => {
 };
 
 // classId = null — режим «весь тест», для админского мока без класса.
+// numeric из Postgres приходит строкой; Number(null) даёт 0, и надёжность
+// «не посчитана» стала бы надёжностью «ноль».
+const num = (v: unknown): number | null =>
+    v === null || v === undefined ? null : Number(v);
+
 export const fetchClassMockResults = async (classId: string | null, mockTestId: string): Promise<ClassMockResultsSummary> => {
     const [members, { data: test }, { data: results }] = await Promise.all([
         classId ? fetchClassMembers(classId) : fetchMockTakers(mockTestId),
-        supabase.from("mock_tests").select("title, subject_id").eq("id", mockTestId).single(),
+        // Список колонок — ОДНИМ строковым литералом, без переносов и склейки.
+        // supabase-js разбирает литерал и строит из него тип результата; у
+        // склеенной строки тип вырождается в GenericStringError, и обращение к
+        // любому полю ниже становится ошибкой сборки.
+        //
+        // Что эта проверка даёт и чего НЕ даёт: она сверяет литерал с тем, как
+        // поля используются, то есть ловит расхождение между ними. Со схемой
+        // базы она не сверяется (каждое поле выводится как any), поэтому
+        // опечатка, повторённая и в select, и в использовании, пройдёт молча и
+        // вернётся null из PostgREST.
+        supabase.from("mock_tests").select("title, subject_id, person_separation, person_reliability, person_strata, person_measure_count, person_extreme_count, person_reliability_with_extremes, person_separation_status, item_separation, item_reliability, item_measure_count, item_separation_status, separation_at").eq("id", mockTestId).single(),
         supabase.from("mock_results").select("id, user_id, score, max_score, accuracy, correct_answers, total_questions, cefr_band, cefr_score, level_score, level_score_max, grade_level, completed_at").eq("mock_test_id", mockTestId),
     ]);
 
@@ -688,6 +728,25 @@ export const fetchClassMockResults = async (classId: string | null, mockTestId: 
         topScore: scores.length > 0 ? Math.max(...scores) : null,
         lowScore: scores.length > 0 ? Math.min(...scores) : null,
         pendingReviewCount: students.reduce((sum, s) => sum + s.pendingReviewCount, 0),
+        // Статус — единственный признак, что расчёт вообще был: у теста без
+        // раздела Раша он остаётся null, и блок надёжности просто не рисуется.
+        // Числа при этом не подменяются нулями (§217).
+        reliability: test?.separation_at
+            ? {
+                personSeparation: num(test.person_separation),
+                personReliability: num(test.person_reliability),
+                personStrata: num(test.person_strata),
+                personMeasureCount: num(test.person_measure_count),
+                personExtremeCount: num(test.person_extreme_count),
+                personReliabilityWithExtremes: num(test.person_reliability_with_extremes),
+                personStatus: (test.person_separation_status as string | null) ?? null,
+                itemSeparation: num(test.item_separation),
+                itemReliability: num(test.item_reliability),
+                itemMeasureCount: num(test.item_measure_count),
+                itemStatus: (test.item_separation_status as string | null) ?? null,
+                computedAt: (test.separation_at as string | null) ?? null,
+            }
+            : null,
     };
 };
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createRouteHandlerClient } from "@/lib/supabase/server";
 import { estimateRasch, Observation, raschThetaToT, measurementPrecision, itemPrecision, MOCK_SCALE_MAX } from "@/lib/rasch";
+import { computeSeparation, SeparationResult, RELIABILITY_HIGH_STAKES } from "@/lib/rasch-separation";
 import { estimateThetaWle, WLE_ESTIMATOR, WLE_VERSION } from "@/lib/rasch-wle";
 import { buildScoreTable, lookupScoreRow } from "@/lib/score-table";
 import { itemFitReport, personFitReport, FitObservation, FitReport } from "@/lib/rasch-fit";
@@ -232,6 +233,21 @@ export async function POST(req: NextRequest) {
     // Сложности нужны и ниже, при расчёте погрешности каждого балла, поэтому
     // живут снаружи блока, а не только внутри него.
     let itemDifficultyByIndex: number[] = new Array(questionIds.length).fill(0);
+
+    // ═══ Погрешность балла (ТЗ D.3, D.4, §215, §217) ═══
+    //
+    // Без неё одна десятая в балле обещает точность, которой нет: на этом же
+    // тесте SE вышла ±3,2–4,6 балла, и работы на 31,4 и 32,1 статистически
+    // неразличимы. Это и есть ответ на «почему баллы повторяются» — повторы не
+    // потеря информации, а её отсутствие сверх этого.
+    //
+    // Сложности берутся те, на которые ученик РЕАЛЬНО отвечал: при полных
+    // данных это все задания, но матрица бывает разреженной (E.11), и тогда
+    // суммировать по чужим заданиям означало бы завысить точность.
+    //
+    // Заполняется внутри блока ниже — сразу после калибровки, потому что
+    // separation (§N.5) считается по этим же погрешностям и до записи сводки.
+    const difficultiesByPerson: number[][] = Array.from({ length: resultIds.length }, () => []);
     let converged = true;
     let iterations = 0;
 
@@ -249,6 +265,10 @@ export async function POST(req: NextRequest) {
     // Модуль G. null у теста без раздела Раша: независимость проверять не на чем.
     let q3: Q3Analysis | null = null;
     let pca: PcaResult | null = null;
+    // §N.5. null у теста без раздела Раша: у одного сочинения нет ни мер, ни
+    // погрешностей, а «надёжность 0» читалось бы как измеренный результат.
+    let personSeparation: SeparationResult | null = null;
+    let itemSeparation: SeparationResult | null = null;
 
     if (hasObjectiveSection) {
         const estimated = estimateRasch(observations, resultIds.length, questionIds.length);
@@ -339,10 +359,16 @@ export async function POST(req: NextRequest) {
         // ответов бывает разреженной (E.11), и тогда суммировать надо только по
         // фактически отвечавшим.
         const abilitiesByItem: number[][] = Array.from({ length: questionIds.length }, () => []);
+        // Верных и увиденных по каждому ученику — из них определяется крайний
+        // балл для §N.5. Считаем в этом же проходе: искать их потом фильтром по
+        // observations на каждого ученика значило бы пройти матрицу P раз.
+        const correctByPerson = new Array(resultIds.length).fill(0);
         for (const obs of observations) {
             sampleSizeByItem[obs.item]++;
             correctByItem[obs.item] += obs.correct;
             abilitiesByItem[obs.item].push(personAbility[obs.person]);
+            difficultiesByPerson[obs.person].push(itemDifficultyByIndex[obs.item]);
+            correctByPerson[obs.person] += obs.correct;
         }
 
         // ═══ Fit-диагностика (модуль F) ═══
@@ -419,6 +445,48 @@ export async function POST(req: NextRequest) {
             }
         }
 
+        // ═══ Separation и reliability (§N.5) ═══
+        //
+        // Считается по тем же мерам и погрешностям, которые уходят в
+        // mock_results и mock_item_calibration, — отдельного прогона модели тут
+        // нет и быть не должно, иначе сводка описывала бы не те числа, что
+        // показаны ученику.
+        //
+        // Крайние меры (0 верных или все верные) в основной расчёт не входят.
+        // У них θ не существует — правдоподобие монотонно, максимума нет, — а
+        // показанное значение получено поправкой 0.3. Её SE не измерена, а
+        // назначена: на математике это 2.18 логиты против 0.38 у остальных, и в
+        // RMSE она входит квадратом, то есть одна такая работа весит как
+        // тридцать обычных. Реально она роняет person reliability с 0.736 до
+        // 0.495 — это разница между «тест грубоват» и «тест не работает».
+        //
+        // Но исключение не молчаливое (§233): рядом пишется, сколько мер
+        // отброшено, и person_reliability_with_extremes — то же число со всеми.
+        const personMeasures = personAbility.map((theta, p) => ({
+            measure: theta,
+            se: measurementPrecision(theta, difficultiesByPerson[p]).thetaSe,
+            // Крайним считается балл относительно тех заданий, до которых
+            // ученик дошёл, а не всего варианта (§A.4): не дошедший до
+            // половины теста — не то же самое, что не решивший ничего.
+            // Работа без единого наблюдения тоже крайняя: измерять там нечего.
+            extreme: difficultiesByPerson[p].length === 0
+                || correctByPerson[p] === 0
+                || correctByPerson[p] === difficultiesByPerson[p].length,
+        }));
+        const itemMeasures = estimated.itemDifficulty.map((b, i) => ({
+            measure: b,
+            se: itemPrecision(b, abilitiesByItem[i]).thetaSe,
+            // Та же логика для заданий: решённое всеми или никем не калибруется
+            // (§165, E.9), и его SE так же назначена, а не измерена.
+            extreme: sampleSizeByItem[i] === 0
+                || correctByItem[i] === 0
+                || correctByItem[i] === sampleSizeByItem[i],
+        }));
+
+        personSeparation = computeSeparation(personMeasures.filter((m) => !m.extreme));
+        itemSeparation = computeSeparation(itemMeasures.filter((m) => !m.extreme));
+        const personSeparationAll = computeSeparation(personMeasures);
+
         // Сводка по варианту: без знаменателя число флагов не читается.
         const { error: summaryError } = await admin.from("mock_tests").update({
             q3_pairs_checked: q3?.pairs.filter((pair) => pair.excess !== null).length ?? null,
@@ -428,6 +496,30 @@ export async function POST(req: NextRequest) {
             pca_eigenvalues: pca?.eigenvalues ?? null,
             pca_flagged: pca?.flagged ?? null,
             diagnostics_at: calibratedAt,
+
+            // §N.5. Пишутся и разложение (SD, RMSE, SD_true), и итог: по одному
+            // числу нельзя отличить однородную когорту от грубого измерения.
+            person_separation: personSeparation.separation,
+            person_reliability: personSeparation.reliability,
+            person_strata: personSeparation.strata,
+            person_sd_observed: personSeparation.sdObserved,
+            person_rmse: personSeparation.rmse,
+            person_sd_true: personSeparation.sdTrue,
+            person_measure_count: personSeparation.count,
+            person_extreme_count: personMeasures.filter((m) => m.extreme).length,
+            person_reliability_with_extremes: personSeparationAll.reliability,
+            person_separation_status: personSeparation.status,
+
+            item_separation: itemSeparation.separation,
+            item_reliability: itemSeparation.reliability,
+            item_strata: itemSeparation.strata,
+            item_sd_observed: itemSeparation.sdObserved,
+            item_rmse: itemSeparation.rmse,
+            item_sd_true: itemSeparation.sdTrue,
+            item_measure_count: itemSeparation.count,
+            item_extreme_count: itemMeasures.filter((m) => m.extreme).length,
+            item_separation_status: itemSeparation.status,
+            separation_at: calibratedAt,
         }).eq("id", mockTestId);
         if (summaryError) {
             return NextResponse.json({ error: `Не удалось сохранить сводку диагностики: ${summaryError.message}` }, { status: 500 });
@@ -512,23 +604,6 @@ export async function POST(req: NextRequest) {
     // Балл сертификата — по той же шкале 75, что и T (решение владельца
     // «макс 75 во всех предметах»). См. src/lib/certificate-scale.ts.
     const certificateMax = certificateMaxForSubject(subjectId);
-
-    // ═══ Погрешность балла (ТЗ D.3, D.4, §215, §217) ═══
-    //
-    // Без неё одна десятая в балле обещает точность, которой нет: на этом же
-    // тесте SE вышла ±3,2–4,6 балла, и работы на 31,4 и 32,1 статистически
-    // неразличимы. Это и есть ответ на «почему баллы повторяются» — повторы не
-    // потеря информации, а её отсутствие сверх этого.
-    //
-    // Сложности берутся те, на которые ученик РЕАЛЬНО отвечал: при полных
-    // данных это все задания, но матрица бывает разреженной (E.11), и тогда
-    // суммировать по чужим заданиям означало бы завысить точность.
-    const difficultiesByPerson: number[][] = Array.from({ length: resultIds.length }, () => []);
-    if (hasObjectiveSection) {
-        for (const obs of observations) {
-            difficultiesByPerson[obs.person].push(itemDifficultyByIndex[obs.item]);
-        }
-    }
 
     // Сколько разделов участвует в итоге. Итог — среднее арифметическое
     // разделов (Baholash_mezoni.pdf стр. 4), поэтому вклад Раш-раздела в
@@ -629,6 +704,19 @@ export async function POST(req: NextRequest) {
         q3MaxExcess: q3?.maxExcess ?? null,
         pcaEigenvalues: pca?.eigenvalues ?? null,
         pcaFlagged: pca?.flagged ?? null,
+        // §N.5. `meetsHighStakes` — ответ на «годится ли для высоких ставок»
+        // прямым флагом, а не оставленным читателю сравнением с 0.8.
+        personReliability: personSeparation?.reliability ?? null,
+        personSeparation: personSeparation?.separation ?? null,
+        personStrata: personSeparation?.strata ?? null,
+        personSeparationStatus: personSeparation?.status ?? null,
+        itemReliability: itemSeparation?.reliability ?? null,
+        itemSeparation: itemSeparation?.separation ?? null,
+        itemSeparationStatus: itemSeparation?.status ?? null,
+        highStakesThreshold: RELIABILITY_HIGH_STAKES,
+        meetsHighStakes: personSeparation?.reliability !== null
+            && personSeparation?.reliability !== undefined
+            && personSeparation.reliability >= RELIABILITY_HIGH_STAKES,
         calibrationObservations: observations.length,
         examObservations: resultIds.length * questionIds.length,
     });

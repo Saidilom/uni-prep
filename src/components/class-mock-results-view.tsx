@@ -15,6 +15,7 @@ import {
 import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
 import { certificatePercent, formatScore } from "@/lib/certificate-scale";
 import EssayCriteriaForm, { EssayCriteriaPayload } from "@/components/essay-criteria-form";
+import MockReliabilityPanel from "@/components/mock-reliability-panel";
 import { ESSAY_MAX_POINTS } from "@/lib/essay-rubric";
 import { accuracyColor } from "@/lib/status-colors";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
@@ -241,6 +242,11 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
                     </p>
                 </div>
             </section>
+
+            {/* §N.5. Свёрнуто и после плиток со средним: это характеристика
+                теста, а не ученика, и она объясняет, насколько вообще можно
+                опираться на разницу баллов в рейтинге ниже. */}
+            <MockReliabilityPanel reliability={summary.reliability} />
 
             <section>
                 {/* Раздел аналитический: для проверки работ он не нужен, а перед

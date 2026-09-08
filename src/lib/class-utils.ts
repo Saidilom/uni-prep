@@ -857,6 +857,60 @@ export const fetchDistractorReport = async (mockTestId: string): Promise<Distrac
         (b.flags.length > 0 ? 1 : 0) - (a.flags.length > 0 ? 1 : 0) || gap(b) - gap(a));
 };
 
+// ═══ Меры для психометрических графиков (§D.3, D.10–D.12) ═══
+//
+// Кривые — чистая функция от уже сохранённых мер, поэтому своей таблицы у них
+// нет и быть не должно: 161 точка на кривую, пересчитываемая из тех же b и θ,
+// была бы дублем, который однажды разойдётся с источником.
+//
+// Что видит учитель: сложности всех заданий варианта (политика из миграции
+// 104), но θ только своих учеников — mock_results ограничена его классами.
+// Для карты Райта это правильная картина: «где сидит МОЙ класс относительно
+// этого теста», а не когорта целиком.
+
+export type MockMeasures = {
+    /** Сложности заданий в логитах. Только откалиброванные. */
+    difficulties: number[];
+    /** Способности учеников в логитах. */
+    abilities: number[];
+    /** Когда посчитана калибровка. null — пересчёта ещё не было. */
+    calibratedAt: string | null;
+};
+
+export const fetchMockMeasures = async (mockTestId: string): Promise<MockMeasures> => {
+    const [{ data: calibration }, { data: results }] = await Promise.all([
+        fetchAllRows<{ difficulty: number | null; item_status: string | null; calibrated_at: string | null }>(
+            (from, to) => supabase
+                .from("mock_item_calibration")
+                .select("difficulty, item_status, calibrated_at")
+                .eq("mock_test_id", mockTestId)
+                .order("question_id")
+                .range(from, to)),
+        fetchAllRows<{ rasch_score: number | null }>(
+            (from, to) => supabase
+                .from("mock_results")
+                .select("rasch_score")
+                .eq("mock_test_id", mockTestId)
+                .order("id")
+                .range(from, to)),
+    ]);
+
+    const rows = calibration || [];
+    return {
+        // Задания без наблюдений не откалиброваны вовсе (§165, E.9): их b —
+        // это ноль по умолчанию, а не измеренная сложность, и на карте Райта
+        // он собрал бы ложный столбик ровно в центре оси.
+        difficulties: rows
+            .filter((r) => r.item_status !== "NO_OBSERVATIONS")
+            .map((r) => num(r.difficulty))
+            .filter((v): v is number => v !== null && Number.isFinite(v)),
+        abilities: (results || [])
+            .map((r) => num(r.rasch_score))
+            .filter((v): v is number => v !== null && Number.isFinite(v)),
+        calibratedAt: rows.find((r) => r.calibrated_at)?.calibrated_at ?? null,
+    };
+};
+
 export type StudentClassSummary = { id: string; name: string; teacherName: string };
 
 // A student's own read-only view of the classes they belong to — powers the

@@ -167,7 +167,13 @@ export function estimateRasch(
     return { itemDifficulty: b, personAbility: theta, iterations, converged };
 }
 
-function probability(theta: number, b: number): number {
+// Вероятность верного ответа по модели Раша: P(θ, b) = 1 / (1 + e^−(θ−b)).
+//
+// Экспортирована ради кривых ICC и TCC (§D.11, §D.12) — тело и поведение не
+// менялись. Своя копия этой формулы в модуле графиков означала бы, что кривая
+// однажды разойдётся с моделью, по которой считается балл, и расхождение
+// будет незаметным: обе версии дадут правдоподобные числа.
+export function probability(theta: number, b: number): number {
     const x = theta - b;
     // Numerically stable logistic (avoids overflow in exp() for large |x|).
     if (x >= 0) {

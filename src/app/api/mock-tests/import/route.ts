@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { attachQuestionFigures, summarizeFigures } from "@/lib/attach-question-figures";
-import { createPartFromUri, GoogleGenAI } from "@google/genai";
+import { createPartFromUri, createPartFromBase64, GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 import { createRouteHandlerClient, supabaseServer } from "@/lib/supabase/server";
 import { IMPORTED_MOCK_JSON_SCHEMA, ImportedMock, ImportedMockSchema } from "@/lib/mock-import-schema";
@@ -79,11 +79,33 @@ function parseGeminiJson(text: string): ImportedMock {
   return parsed.data;
 }
 
+// ═══ Как PDF попадает в модель ═══
+//
+// Двумя способами, и быстрый — первый.
+//
+// ВСТРОЕННЫЙ (inline). Файл едет прямо в теле запроса. Ровно один сетевой
+// вызов — тот, что и так нужен для распознавания.
+//
+// ЧЕРЕЗ FILES API. Отдельная загрузка, потом опрос готовности, потом удаление
+// в конце: три лишних обращения к Gemini и ожидание обработки. Именно так
+// делалось всегда, хотя реальные файлы — 82 КБ и 743 КБ, то есть на порядки
+// меньше того, ради чего Files API нужен.
+//
+// Порог с запасом: в запрос суммарно влезает около 20 МБ, base64 раздувает
+// данные на треть, поэтому берём 12 МБ сырых байт на всё вместе. Что не
+// влезло — идёт прежним путём, он никуда не убран.
+const INLINE_TOTAL_LIMIT_BYTES = 12 * 1024 * 1024;
+
 async function waitForGeminiFile(ai: GoogleGenAI, name: string) {
   const deadline = Date.now() + 60_000;
   let file = await ai.files.get({ name });
+  // Первые проверки — частые. Раньше стояли ровные 3 секунды, и файл,
+  // готовый через полсекунды, всё равно ждал полный интервал. Дальше пауза
+  // растёт, чтобы не долбить API на медленном файле.
+  let waitMs = 300;
   while (file.state === "PROCESSING" && Date.now() < deadline) {
-    await sleep(3_000);
+    await sleep(waitMs);
+    waitMs = Math.min(3_000, Math.round(waitMs * 1.8));
     file = await ai.files.get({ name });
   }
   if (file.state === "FAILED") throw new Error("Gemini не смог обработать загруженный PDF");
@@ -91,19 +113,30 @@ async function waitForGeminiFile(ai: GoogleGenAI, name: string) {
   return file;
 }
 
+/** Готовый к отправке файл: либо ссылка из Files API, либо байты для inline. */
+type PreparedFile =
+  | { kind: "uri"; filename: string; file: Awaited<ReturnType<typeof waitForGeminiFile>> }
+  | { kind: "inline"; filename: string; bytes: Buffer };
+
+const toPart = (prepared: PreparedFile) => {
+  if (prepared.kind === "inline") {
+    return createPartFromBase64(prepared.bytes.toString("base64"), "application/pdf");
+  }
+  const { file, filename } = prepared;
+  if (!file.uri || !file.mimeType) {
+    throw new Error(`Gemini не вернул URI загруженного файла (${filename})`);
+  }
+  return createPartFromUri(file.uri, file.mimeType);
+};
+
 async function extractDraftWithGemini(
   ai: GoogleGenAI,
-  testFiles: Array<{ file: Awaited<ReturnType<typeof waitForGeminiFile>>; filename: string }>,
-  answersFile: { file: Awaited<ReturnType<typeof waitForGeminiFile>>; filename: string } | undefined,
+  testFiles: PreparedFile[],
+  answersFile: PreparedFile | undefined,
   role: "admin" | "teacher",
 ) {
   const allFiles = [...testFiles, ...(answersFile ? [answersFile] : [])];
-  const fileParts = allFiles.map(({ file, filename }) => {
-    if (!file.uri || !file.mimeType) {
-      throw new Error(`Gemini не вернул URI загруженного файла (${filename})`);
-    }
-    return createPartFromUri(file.uri, file.mimeType);
-  });
+  const fileParts = allFiles.map(toPart);
   const testFilenames = testFiles.map((f) => f.filename);
   const answersFilename = answersFile?.filename;
   // Must fit inside maxDuration (300s, Vercel Hobby's hard ceiling) with
@@ -264,7 +297,7 @@ export async function POST(req: NextRequest) {
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   const geminiFileNames: string[] = [];
   try {
-    const uploadOne = async (bytes: Buffer, filename: string) => {
+    const uploadOne = async (bytes: Buffer, filename: string): Promise<PreparedFile> => {
       const uploaded = await ai.files.upload({
         file: new Blob([new Uint8Array(bytes)], { type: "application/pdf" }),
         config: { mimeType: "application/pdf", displayName: filename },
@@ -272,12 +305,25 @@ export async function POST(req: NextRequest) {
       const name = uploaded.name;
       if (!name) throw new Error(`Gemini не вернул имя загруженного файла (${filename})`);
       geminiFileNames.push(name);
-      return { file: await waitForGeminiFile(ai, name), filename };
+      return { kind: "uri", file: await waitForGeminiFile(ai, name), filename };
     };
 
+    // Влезает в запрос — отправляем встроенным и не трогаем Files API вовсе.
+    // Это убирает загрузку, опрос готовности и удаление: три обращения к
+    // Gemini на файл, каждое со своей задержкой, ради того же самого PDF.
+    // Заодно исчезают два способа провалиться — «не смог обработать файл» и
+    // «слишком долго подготавливал».
+    const totalBytes = testBytesList.reduce((sum, b) => sum + b.length, 0)
+      + (answersBytes?.length ?? 0);
+    const inlineFits = totalBytes <= INLINE_TOTAL_LIMIT_BYTES;
+    const prepareOne = (bytes: Buffer, filename: string): Promise<PreparedFile> =>
+      inlineFits
+        ? Promise.resolve({ kind: "inline", filename, bytes })
+        : uploadOne(bytes, filename);
+
     const [readyTestFiles, readyAnswersFile] = await Promise.all([
-      Promise.all(testBytesList.map((bytes, i) => uploadOne(bytes, testFiles[i].filename))),
-      answersBytes ? uploadOne(answersBytes, answersFile!.filename) : Promise.resolve(undefined),
+      Promise.all(testBytesList.map((bytes, i) => prepareOne(bytes, testFiles[i].filename))),
+      answersBytes ? prepareOne(answersBytes, answersFile!.filename) : Promise.resolve(undefined),
     ]);
 
     const { model: usedModel, response, draft } = await extractDraftWithGemini(ai, readyTestFiles, readyAnswersFile, role);

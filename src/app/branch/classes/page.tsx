@@ -1,11 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { UsersRound, GraduationCap, ChevronRight } from "lucide-react";
 import { fetchAdminClassesOverview, AdminClassSummary } from "@/lib/class-utils";
 import { accuracyColor } from "@/lib/status-colors";
 import { formatScore, certificatePercent, CERTIFICATE_MAX } from "@/lib/certificate-scale";
+import FilterChip from "@/components/filter-chip";
+import { CoreSubject } from "@/lib/mock-import-schema";
+import {
+    subjectTabs, filterBySubject, sortBySubject,
+    SUBJECT_ALL, SUBJECT_NONE, SubjectFilterValue,
+} from "@/lib/class-subject-filter";
 import { useTranslations } from "@/lib/i18n/locale-provider";
 
 // Переиспользуем тот же загрузчик, что и админский список групп: фильтровать
@@ -16,6 +22,25 @@ export default function BranchClassesPage() {
     const t = useTranslations("branchClasses");
     const [classes, setClasses] = useState<AdminClassSummary[]>([]);
     const [loading, setLoading] = useState(true);
+    const [subjectFilter, setSubjectFilter] = useState<SubjectFilterValue>(SUBJECT_ALL);
+    const tSubjects = useTranslations("mockTestStudio");
+    const subjectLabels: Record<CoreSubject, string> = useMemo(() => ({
+        math: tSubjects("subjectMath"),
+        physics: tSubjects("subjectPhysics"),
+        chemistry: tSubjects("subjectChemistry"),
+        biology: tSubjects("subjectBiology"),
+        history: tSubjects("subjectHistory"),
+        english: tSubjects("subjectEnglish"),
+        native: tSubjects("subjectNative"),
+    }), [tSubjects]);
+
+    const subjects = useMemo(() => subjectTabs(classes), [classes]);
+    // Порядок по предмету нужен и при «всех»: иначе группы одного предмета
+    // разбросаны по списку.
+    const visibleClasses = useMemo(
+        () => sortBySubject(filterBySubject(classes, subjectFilter)),
+        [classes, subjectFilter],
+    );
 
     useEffect(() => {
         (async () => {
@@ -32,6 +57,28 @@ export default function BranchClassesPage() {
                 <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">{t("subtitle")}</p>
             </section>
 
+            {/* Предметы. Одна вкладка — фильтровать нечего, и кнопки были бы
+                декорацией. */}
+            {!loading && subjects.length > 1 && (
+                <section className="flex flex-wrap items-center gap-2">
+                    <FilterChip
+                        label={t("allSubjects")}
+                        count={classes.length}
+                        active={subjectFilter === SUBJECT_ALL}
+                        onClick={() => setSubjectFilter(SUBJECT_ALL)}
+                    />
+                    {subjects.map((tab) => (
+                        <FilterChip
+                            key={tab.value}
+                            label={tab.value === SUBJECT_NONE ? t("noSubjectFilter") : subjectLabels[tab.value]}
+                            count={tab.count}
+                            active={subjectFilter === tab.value}
+                            onClick={() => setSubjectFilter(tab.value)}
+                        />
+                    ))}
+                </section>
+            )}
+
             <section>
                 {loading ? (
                     <div className="space-y-3">
@@ -45,7 +92,7 @@ export default function BranchClassesPage() {
                     </div>
                 ) : (
                     <div className="space-y-3">
-                        {classes.map((c) => (
+                        {visibleClasses.map((c) => (
                             <Link
                                 key={c.id}
                                 href={`/branch/classes/${c.id}`}

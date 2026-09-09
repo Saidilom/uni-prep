@@ -913,6 +913,8 @@ const uz: typeof ru = {
     noOylikYet: "Oylik topshirilmagan",
   },
   branchClasses: {
+    allSubjects: "Barcha fanlar",
+    noSubjectFilter: "Fansiz",
     title: "Filial guruhlari",
     subtitle: "Filialingizdagi barcha guruhlar va ularning o'rtacha natijasi.",
     noClassesYet: "Filialda hozircha guruhlar yo'q.",
@@ -971,6 +973,8 @@ const uz: typeof ru = {
     noPlacementResultsYet: "Hozircha hech kim kirish testini topshirmagan.",
   },
   adminClasses: {
+    allSubjects: "Barcha fanlar",
+    noSubjectFilter: "Fansiz",
     title: "Guruhlar",
     subtitle: "O'qituvchilar tomonidan yaratilgan barcha guruhlar, o'rtacha ball bilan. Tarkibni boshqarish — o'qituvchi tomonidan.",
     noClassesYet: "Hozircha guruhlar yo'q.",

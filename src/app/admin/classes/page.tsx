@@ -8,6 +8,11 @@ import { accuracyColor } from "@/lib/status-colors";
 import { formatScore, certificatePercent, CERTIFICATE_MAX } from "@/lib/certificate-scale";
 import { pluralizeRu } from "@/lib/pluralize-ru";
 import { CoreSubject } from "@/lib/mock-import-schema";
+import FilterChip from "@/components/filter-chip";
+import {
+    subjectTabs, filterBySubject, sortBySubject,
+    SUBJECT_ALL, SUBJECT_NONE, SubjectFilterValue,
+} from "@/lib/class-subject-filter";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 const FILTER_ALL = "__all__";
@@ -21,6 +26,7 @@ export default function AdminClassesPage() {
     // «показать все» и «показать бесхозные» это разные вопросы, и null не мог
     // бы значить оба сразу. Метки не uuid, поэтому с id не столкнутся.
     const [branchFilter, setBranchFilter] = useState<string>(FILTER_ALL);
+    const [subjectFilter, setSubjectFilter] = useState<SubjectFilterValue>(SUBJECT_ALL);
     const [loading, setLoading] = useState(true);
     const { locale } = useLocale();
     const t = useTranslations("adminClasses");
@@ -73,11 +79,23 @@ export default function AdminClassesPage() {
         return { withClasses, orphanCount };
     }, [branches, countByBranch]);
 
-    const visibleClasses = useMemo(() => {
+    // Отбор по филиалу — первым: вкладки предметов ниже считаются по УЖЕ
+    // отобранному филиалу, иначе они обещали бы группы, которых в этом
+    // филиале нет.
+    const byBranch = useMemo(() => {
         if (branchFilter === FILTER_ALL) return classes;
         if (branchFilter === FILTER_NONE) return classes.filter((c) => !c.branchId);
         return classes.filter((c) => c.branchId === branchFilter);
     }, [classes, branchFilter]);
+
+    const subjects = useMemo(() => subjectTabs(byBranch), [byBranch]);
+
+    // Порядок по предмету нужен именно когда выбраны «все»: иначе группы
+    // одного предмета разбросаны по списку — с этого и начался разговор.
+    const visibleClasses = useMemo(
+        () => sortBySubject(filterBySubject(byBranch, subjectFilter)),
+        [byBranch, subjectFilter],
+    );
 
     return (
         <div className="flex flex-col gap-10">
@@ -96,7 +114,7 @@ export default function AdminClassesPage() {
                         label={t("allBranches")}
                         count={classes.length}
                         active={branchFilter === FILTER_ALL}
-                        onClick={() => setBranchFilter(FILTER_ALL)}
+                        onClick={() => { setBranchFilter(FILTER_ALL); setSubjectFilter(SUBJECT_ALL); }}
                     />
                     {tabs.withClasses.map((b) => (
                         <FilterChip
@@ -104,7 +122,7 @@ export default function AdminClassesPage() {
                             label={b.name}
                             count={countByBranch.get(b.id) ?? 0}
                             active={branchFilter === b.id}
-                            onClick={() => setBranchFilter(b.id)}
+                            onClick={() => { setBranchFilter(b.id); setSubjectFilter(SUBJECT_ALL); }}
                         />
                     ))}
                     {tabs.orphanCount > 0 && (
@@ -112,9 +130,31 @@ export default function AdminClassesPage() {
                             label={t("noBranchFilter")}
                             count={tabs.orphanCount}
                             active={branchFilter === FILTER_NONE}
-                            onClick={() => setBranchFilter(FILTER_NONE)}
+                            onClick={() => { setBranchFilter(FILTER_NONE); setSubjectFilter(SUBJECT_ALL); }}
                         />
                     )}
+                </section>
+            )}
+
+            {/* Предметы. Считаются по выбранному филиалу, поэтому при смене
+                филиала набор вкладок меняется вместе с ним. */}
+            {!loading && subjects.length > 1 && (
+                <section className="flex flex-wrap items-center gap-2">
+                    <FilterChip
+                        label={t("allSubjects")}
+                        count={byBranch.length}
+                        active={subjectFilter === SUBJECT_ALL}
+                        onClick={() => setSubjectFilter(SUBJECT_ALL)}
+                    />
+                    {subjects.map((tab) => (
+                        <FilterChip
+                            key={tab.value}
+                            label={tab.value === SUBJECT_NONE ? t("noSubjectFilter") : subjectLabels[tab.value]}
+                            count={tab.count}
+                            active={subjectFilter === tab.value}
+                            onClick={() => setSubjectFilter(tab.value)}
+                        />
+                    ))}
                 </section>
             )}
 
@@ -178,26 +218,5 @@ export default function AdminClassesPage() {
                 )}
             </section>
         </div>
-    );
-}
-
-// Кнопка фильтра. Счётчик рядом с названием обязателен: без него не видно, что
-// филиал в списке есть, а групп в нём ноль.
-function FilterChip({ label, count, active, onClick }: {
-    label: string; count: number; active: boolean; onClick: () => void;
-}) {
-    return (
-        <button
-            type="button"
-            onClick={onClick}
-            className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition-colors ${
-                active
-                    ? "border-transparent bg-foreground text-background"
-                    : "border-border bg-card text-muted-foreground hover:bg-muted"
-            }`}
-        >
-            <span className="max-w-[14rem] truncate">{label}</span>
-            <span className={`tabular-nums ${active ? "opacity-70" : "opacity-60"}`}>{count}</span>
-        </button>
     );
 }

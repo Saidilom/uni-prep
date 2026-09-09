@@ -922,6 +922,8 @@ const ru = {
     noOylikYet: "Месячный не сдавали",
   },
   branchClasses: {
+    allSubjects: "Все предметы",
+    noSubjectFilter: "Без предмета",
     title: "Группы филиала",
     subtitle: "Все группы вашего филиала и средний результат каждой.",
     noClassesYet: "В филиале пока нет групп.",
@@ -980,6 +982,8 @@ const ru = {
     noPlacementResultsYet: "Пока никто не проходил вступительный тест.",
   },
   adminClasses: {
+    allSubjects: "Все предметы",
+    noSubjectFilter: "Без предмета",
     title: "Группы",
     subtitle: "Все группы, созданные учителями, со средним баллом. Управление составом — со стороны учителя.",
     noClassesYet: "Групп пока нет.",

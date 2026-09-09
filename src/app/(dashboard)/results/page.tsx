@@ -5,7 +5,7 @@ import { Trophy, Calendar, Clock } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { fetchUserMockResults, MockResultRow } from "@/lib/registan-utils";
 import { accuracyColor } from "@/lib/status-colors";
-import { averageCertificateScore, certificatePercent, formatScore, roundScore } from "@/lib/certificate-scale";
+import { averageCertificateScore, certificatePercent, formatScore, roundScore , errorIsShowable } from "@/lib/certificate-scale";
 import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
 import TeacherResultsExplorer from "@/components/teacher-results-explorer";
 import StudentScoreReport from "@/components/student-score-report";
@@ -144,7 +144,7 @@ export default function ResultsPage() {
                                                         Показывается только когда посчитана: у работ
                                                         до миграции 093 её нет, и выдумывать нельзя
                                                         (§233). */}
-                                                    {r.score_se != null && (
+                                                    {r.score_se != null && errorIsShowable(r.score_se) && (
                                                         <span
                                                             className="text-[11px] font-semibold tabular-nums text-muted-foreground"
                                                             title={t("scoreErrorHint")}

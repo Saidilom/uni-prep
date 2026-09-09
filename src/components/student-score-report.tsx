@@ -5,6 +5,7 @@ import {
     formatScore,
     formatScoreInterval,
     certificatePercent,
+    errorIsShowable,
 } from "@/lib/certificate-scale";
 import { scoreConfidenceInterval } from "@/lib/rasch";
 import {
@@ -52,7 +53,11 @@ export default function StudentScoreReport({
 
     if (score === null || !Number.isFinite(score)) return null;
 
-    const interval = scoreConfidenceInterval(score, scoreSe);
+    // §217: когда полуширина интервала накрывает всю шкалу, измерения нет —
+    // ни «±», ни интервала показывать нельзя, остаётся только статус. Иначе
+    // ученик, ответивший на одно задание из 55, видит «± 130,1» при шкале 75.
+    const showError = errorIsShowable(scoreSe);
+    const interval = showError ? scoreConfidenceInterval(score, scoreSe) : null;
     const gap = pointsToNextLevel(score);
     const gapWithinError = gap ? gapIsWithinError(gap.pointsNeeded, scoreSe) : false;
     // Уровни, которые накрывает интервал: если их больше одного, ученик у
@@ -81,7 +86,7 @@ export default function StudentScoreReport({
                             </span>
                         )}
                         {/* §D.7: ±SE рядом с баллом, а не в сноске. */}
-                        {scoreSe !== null && Number.isFinite(scoreSe) && (
+                        {showError && (
                             <span className="text-sm font-bold tabular-nums text-muted-foreground">
                                 ± {formatScore(scoreSe)}
                             </span>

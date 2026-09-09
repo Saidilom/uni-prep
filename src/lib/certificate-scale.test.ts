@@ -11,6 +11,7 @@ import {
     formatScoreWithError,
     formatScoreInterval,
     CERTIFICATE_MAX,
+    errorIsShowable,
 } from "./certificate-scale";
 import { MOCK_SUBJECTS } from "./mock-import-schema";
 import { gradeLevelFromScore } from "./mock-grade-level";
@@ -309,5 +310,39 @@ describe("цвет плитки считается от процента, а н�
     it("отсутствие балла не красится ни в один из уровней", () => {
         expect(band(Number.NaN)).toContain("muted");
         expect(accuracyColor(certificatePercent(null, CERTIFICATE_MAX))).toContain("muted");
+    });
+});
+
+describe("errorIsShowable — когда «±» перестаёт быть информацией", () => {
+    it("нормальная погрешность показывается", () => {
+        expect(errorIsShowable(3.2)).toBe(true);
+        expect(errorIsShowable(10)).toBe(true);
+    });
+
+    it("широкая, но осмысленная — тоже", () => {
+        // ±18 это интервал 0…36: верхнюю половину шкалы он исключает, значит
+        // что-то сообщает.
+        expect(errorIsShowable(18.4)).toBe(true);
+    });
+
+    it("погрешность шире всей шкалы не показывается", () => {
+        // Живой случай с прода: ученик ответил на одно задание из 55 и
+        // ошибся — SE вышла 130 баллов при шкале 75.
+        expect(errorIsShowable(130.08)).toBe(false);
+        expect(errorIsShowable(CERTIFICATE_MAX)).toBe(false);
+    });
+
+    it("граница — там, где полуширина накрывает шкалу целиком", () => {
+        const edge = CERTIFICATE_MAX / 1.96;
+        expect(errorIsShowable(edge - 0.01)).toBe(true);
+        expect(errorIsShowable(edge)).toBe(false);
+    });
+
+    it("отсутствие и нефизичные значения — не показываются", () => {
+        expect(errorIsShowable(null)).toBe(false);
+        expect(errorIsShowable(undefined)).toBe(false);
+        expect(errorIsShowable(Number.NaN)).toBe(false);
+        expect(errorIsShowable(0)).toBe(false);
+        expect(errorIsShowable(-1)).toBe(false);
     });
 });

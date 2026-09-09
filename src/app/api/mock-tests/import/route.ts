@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { attachQuestionFigures, summarizeFigures } from "@/lib/attach-question-figures";
 import { createPartFromUri, GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 import { createRouteHandlerClient, supabaseServer } from "@/lib/supabase/server";
@@ -280,6 +281,35 @@ export async function POST(req: NextRequest) {
     ]);
 
     const { model: usedModel, response, draft } = await extractDraftWithGemini(ai, readyTestFiles, readyAnswersFile, role);
+
+    // ═══ Рисунки заданий (§вырезка) ═══
+    //
+    // Режем СРАЗУ после распознавания, пока байты PDF ещё в памяти: иначе их
+    // пришлось бы качать из хранилища заново на каждый показ задания.
+    //
+    // Сбой вырезки не роняет импорт. Распознавание — самая дорогая часть, оно
+    // платное и идёт минуты; уронить его из-за кривой рамки у одного задания
+    // из полусотни нельзя. Задание без картинки просто останется с прежним
+    // поведением — разворотом исходной страницы.
+    const figureQuestions = draft.sections.flatMap((section) => section.questions);
+    const figureOutcomes = await attachQuestionFigures(
+        figureQuestions,
+        testBytesList.map((bytes) => ({ bytes: new Uint8Array(bytes) })),
+        async (path, png) => {
+            const { error: uploadError } = await supabaseServer.storage
+                .from("question-figures")
+                .upload(path, png, { contentType: "image/png", upsert: true });
+            if (uploadError) return { error: uploadError.message };
+            const { data } = supabaseServer.storage.from("question-figures").getPublicUrl(path);
+            return { url: data.publicUrl };
+        },
+        (_question, index) => `${importId}/${index}.png`,
+    );
+    figureOutcomes.forEach((outcome, index) => {
+        if (outcome.status === "ATTACHED") figureQuestions[index].imageUrl = outcome.url;
+    });
+    const figureSummary = summarizeFigures(figureOutcomes);
+    if (figureSummary) draft.warnings = [...draft.warnings, figureSummary];
 
     const sourcePdfPaths = testFiles.map((f) => f.path);
     const { data: signed, error: signedError } = await supabaseServer.storage

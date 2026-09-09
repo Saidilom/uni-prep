@@ -94,6 +94,7 @@ function emptyQuestion(order: number, reviewNote: string): ImportedQuestion {
     sourcePage: 1,
     sourceFileIndex: 0,
     needsSourceImage: false,
+    figureBox: null,
     requiresManualReview: false,
     confidence: 1,
     reviewNote,

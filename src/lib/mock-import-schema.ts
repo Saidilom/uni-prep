@@ -89,6 +89,30 @@ export const ImportedQuestionSchema = z.object({
   // this becoming yet another field the model can decide to omit.
   sourceFileIndex: z.number().int().min(0),
   needsSourceImage: z.boolean(),
+  // Рамка рисунка на странице, в долях от её размера (0..1, начало отсчёта —
+  // левый верхний угол). По ней рисунок ВЫРЕЗАЕТСЯ из PDF и прикрепляется к
+  // заданию отдельной картинкой.
+  //
+  // Раньше рисунка как такового не существовало: задание с needsSourceImage
+  // получало ссылку на ВЕСЬ исходный PDF, и ученику открывался просмотрщик
+  // файла целиком. На странице 9 математики так соседствуют четыре задания с
+  // рисунками — каждый видел все четыре, да ещё мог листать остальные листы.
+  //
+  // null у заданий без рисунка, а также когда модель не смогла назвать рамку:
+  // выдуманная рамка вырезала бы случайный кусок страницы, и это хуже, чем
+  // честное отсутствие картинки (§233).
+  figureBox: z
+    .object({
+      x: z.number().min(0).max(1),
+      y: z.number().min(0).max(1),
+      width: z.number().min(0).max(1),
+      height: z.number().min(0).max(1),
+    })
+    .nullable(),
+  // Ссылка на вырезанный рисунок. Модель её НЕ возвращает — подставляет
+  // сервер после вырезки (attach-question-figures.ts), поэтому поле
+  // необязательное: черновик от Gemini валиден и без него.
+  imageUrl: z.string().url().optional(),
   requiresManualReview: z.boolean(),
   confidence: z.number().min(0).max(1),
   reviewNote: z.string().nullable(),

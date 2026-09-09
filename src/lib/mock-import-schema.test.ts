@@ -31,6 +31,7 @@ const baseDraft: ImportedMock = {
       sourcePage: 1,
       sourceFileIndex: 0,
       needsSourceImage: false,
+    figureBox: null,
       requiresManualReview: false,
       confidence: 0.99,
       reviewNote: null,

@@ -525,7 +525,30 @@ export default function MockTestPage() {
                           <SafeMathText content={question.text} className="text-[15px] font-semibold sm:text-base" />
                           {question.points > 0 && <p className="mt-1 text-xs text-muted-foreground">{t("pointsSuffix").replace("{points}", String(question.points))}</p>}
 
-                          {question.content?.needsSourceImage && question.source_page && (() => {
+                          {/* Вырезанный рисунок задания.
+                              Раньше здесь при needsSourceImage открывался ВЕСЬ исходный
+                              PDF в iframe: ученик видел не свой рисунок, а страницу — а
+                              на стр. 9 математики их четыре, от заданий 40a, 40b, 41a и
+                              41b, — и мог листать остальные листы теста.
+                              Теперь показывается ровно рисунок этого задания. Разворот
+                              страницы ниже остался запасным путём: он рисуется только
+                              когда вырезки нет (старые тесты, не найденная моделью
+                              рамка). */}
+                          {question.image_url && (
+                            <div className="mt-4 overflow-hidden rounded-xl border border-border bg-white">
+                              {/* Обычный img, а не next/image: ссылка приходит из
+                                  хранилища, и заводить ради неё remotePatterns и
+                                  оптимизатор не за чем — картинка уже готового размера. */}
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={question.image_url}
+                                alt={t("sourceIframeTitle").replace("{number}", question.content?.number || "")}
+                                className="mx-auto max-h-[520px] w-auto max-w-full object-contain"
+                              />
+                            </div>
+                          )}
+
+                          {!question.image_url && question.content?.needsSourceImage && question.source_page && (() => {
                             const sourceUrl = `/api/mock-tests/${id}/source?page=${question.source_page}&file=${question.source_file_index ?? 0}`;
                             return (
                               <details className="mt-4 overflow-hidden rounded-xl border border-[hsl(var(--brand-blue))]/20 bg-[hsl(var(--brand-blue-soft))]/60" open>

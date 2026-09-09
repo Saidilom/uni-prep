@@ -1,5 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+    // mupdf — WASM-модуль с top-level await; вырезка рисунков заданий грузит
+    // его динамически в серверном роуте импорта. Бандлеру его отдавать нельзя:
+    // .wasm рядом с кодом он не разложит, и на сервере модуль просто не
+    // найдётся. serverExternalPackages оставляет его обычным require из
+    // node_modules.
+    serverExternalPackages: ["mupdf"],
     images: {
         remotePatterns: [
             {

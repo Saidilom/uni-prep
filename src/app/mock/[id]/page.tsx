@@ -239,6 +239,10 @@ export default function MockTestPage() {
 
   const questions = useMemo(() => sections.flatMap((section) => section.questions.map((question) => ({ ...question, sectionTitle: section.title }))), [sections]);
   const answeredCount = questions.filter((question) => isAnswered(answers[question.id])).length;
+  // Сколько осталось без ответа. Показывается, но ничего не запрещает:
+  // submit_mock считает пропуск нулём баллов и принимает работу — проверено
+  // подачей полностью пустых ответов, подсчёт по всем 55 заданиям прошёл.
+  const missingCount = Math.max(0, questions.length - answeredCount);
 
   const submit = useCallback(async () => {
     if (!id || submitting || result || isPreview) return;
@@ -478,11 +482,14 @@ export default function MockTestPage() {
           ) : (
             <>
               <div className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-bold tabular-nums ${timeLeft < 300 ? "border-red-200 bg-red-50 text-red-700" : "border-border"}`}><Clock size={16} /> {formatTime(timeLeft)}</div>
-              <button onClick={() => {
-                const missing = questions.length - answeredCount;
-                if (missing > 0 && !window.confirm(t("confirmMissingAnswers").replace("{missing}", String(missing)))) return;
-                submit();
-              }} disabled={submitting} className="hidden items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-50 sm:inline-flex">{submitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} {t("finish")}</button>
+              {/* Пропущенный вопрос — НЕ препятствие: он просто не даёт баллов.
+                  Раньше здесь стояло window.confirm «Не отвечено: N. Всё равно
+                  завершить?», и это единственное, что мешало сдать работу с
+                  пропусками: нажал «Отмена» — и завершить нельзя. Причём окно
+                  висело только на этой кнопке, а мобильная и боковая отправляли
+                  сразу, то есть поведение зависело от того, откуда нажали.
+                  Число неотвеченных теперь просто написано на кнопке. */}
+              <button onClick={() => submit()} disabled={submitting} className="hidden items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-50 sm:inline-flex">{submitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} {t("finish")}{missingCount > 0 && <span className="rounded-md bg-primary-foreground/20 px-1.5 py-0.5 text-[10px] font-bold tabular-nums">{t("missingBadge").replace("{count}", String(missingCount))}</span>}</button>
             </>
           )}
         </div>
@@ -606,13 +613,13 @@ export default function MockTestPage() {
           <div className="sticky top-24 rounded-2xl border border-border bg-background p-4 shadow-sm">
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{t("navigationLabel")}</p>
             <div className="mt-3 grid grid-cols-5 gap-2">{questions.map((question, index) => <a key={question.id} href={`#question-${question.id}`} className={`flex h-8 items-center justify-center rounded-lg text-xs font-bold ${isAnswered(answers[question.id]) ? "bg-emerald-600 text-white" : "bg-muted hover:bg-muted/70"}`}>{question.content?.number || index + 1}</a>)}</div>
-            {!isPreview && <button onClick={() => submit()} disabled={submitting} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground disabled:opacity-50">{submitting ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} {t("finish")}</button>}
+            {!isPreview && <button onClick={() => submit()} disabled={submitting} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground disabled:opacity-50">{submitting ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} {t("finish")}{missingCount > 0 && <span className="rounded-md bg-primary-foreground/20 px-1.5 py-0.5 text-[10px] font-bold tabular-nums">{t("missingBadge").replace("{count}", String(missingCount))}</span>}</button>}
             {error && <p className="mt-3 text-xs text-red-600">{error}</p>}
           </div>
         </aside>
       </div>
 
-      {!isPreview && <div className="sticky bottom-0 z-30 border-t border-border bg-background p-3 sm:hidden"><button onClick={() => submit()} disabled={submitting} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground">{submitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} {t("finishTest")}</button></div>}
+      {!isPreview && <div className="sticky bottom-0 z-30 border-t border-border bg-background p-3 sm:hidden"><button onClick={() => submit()} disabled={submitting} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground">{submitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} {t("finishTest")}{missingCount > 0 && <span className="rounded-md bg-primary-foreground/20 px-1.5 py-0.5 text-[10px] font-bold tabular-nums">{t("missingBadge").replace("{count}", String(missingCount))}</span>}</button></div>}
     </div>
   );
 }

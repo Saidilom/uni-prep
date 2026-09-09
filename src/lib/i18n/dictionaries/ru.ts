@@ -266,7 +266,7 @@ const ru = {
     previewBadge: "Предпросмотр",
     finish: "Завершить",
     finishTest: "Завершить тест",
-    confirmMissingAnswers: "Не отвечено: {missing}. Всё равно завершить?",
+    missingBadge: "без ответа: {count}",
     previewNotice: "Это предпросмотр теста — ответы не сохраняются и не отправляются",
     sectionLabel: "Раздел",
     pointsSuffix: "{points} балл.",
@@ -370,7 +370,7 @@ const ru = {
     checking: "Проверка…",
     finish: "Завершить",
     next: "Далее",
-    confirmUnanswered: "Не отвечено вопросов: {count}. Завершить тест?",
+    missingBadge: "без ответа: {count}",
   },
   teacherResults: {
     studentResults: "Результаты учеников",

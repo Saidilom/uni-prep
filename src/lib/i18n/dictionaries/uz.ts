@@ -268,7 +268,7 @@ const uz: typeof ru = {
     previewBadge: "Ko'rib chiqish",
     finish: "Yakunlash",
     finishTest: "Testni yakunlash",
-    confirmMissingAnswers: "Javob berilmagan: {missing}. Baribir yakunlansinmi?",
+    missingBadge: "javobsiz: {count}",
     previewNotice: "Bu testning ko'rib chiqish rejimi — javoblar saqlanmaydi va yuborilmaydi",
     sectionLabel: "Bo'lim",
     pointsSuffix: "{points} ball.",
@@ -372,7 +372,7 @@ const uz: typeof ru = {
     checking: "Tekshirilmoqda…",
     finish: "Yakunlash",
     next: "Keyingisi",
-    confirmUnanswered: "Javob berilmagan savollar: {count}. Testni yakunlaysizmi?",
+    missingBadge: "javobsiz: {count}",
   },
   teacherResults: {
     studentResults: "O'quvchilar natijalari",

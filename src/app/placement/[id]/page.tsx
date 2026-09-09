@@ -417,19 +417,20 @@ export default function PlacementTestPage() {
                     </button>
                     {isLast ? (
                         <button
-                            onClick={() => {
-                                if (unansweredCount > 0) {
-                                    const ok = window.confirm(
-                                        t("confirmUnanswered").replace("{count}", String(unansweredCount))
-                                    );
-                                    if (!ok) return;
-                                }
-                                handleSubmit();
-                            }}
+                            // Пропущенный вопрос не мешает завершить: он просто
+                            // не даёт баллов. Раньше здесь стояло window.confirm,
+                            // и нажатое «Отмена» не давало сдать работу вовсе.
+                            // Число неотвеченных теперь написано на кнопке.
+                            onClick={handleSubmit}
                             disabled={submitting}
                             className="inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:opacity-90 active:scale-[0.97] disabled:opacity-50"
                         >
                             {submitting ? t("checking") : t("finish")}
+                            {unansweredCount > 0 && (
+                                <span className="rounded-md bg-primary-foreground/20 px-1.5 py-0.5 text-[10px] font-bold tabular-nums">
+                                    {t("missingBadge").replace("{count}", String(unansweredCount))}
+                                </span>
+                            )}
                         </button>
                     ) : (
                         <button

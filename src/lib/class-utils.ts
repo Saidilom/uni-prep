@@ -1630,7 +1630,20 @@ export const findUserByIdentifier = async (raw: string): Promise<BranchAdminCand
 };
 
 /** Что осиротеет при удалении филиала — спрашивается ДО удаления. */
-export type BranchDeleteImpact = { classes: number; members: number; adminName: string | null };
+export type BranchDeleteImpact = {
+    classes: number;
+    members: number;
+    adminName: string | null;
+    /**
+     * Сколько групп ведёт САМ админ филиала.
+     *
+     * При удалении он становится учеником (решение владельца), и такие группы
+     * останутся за учеником: не пропадут, но вести их он больше не сможет —
+     * доступ учителя к своим группам стоит на is_teacher(). Ненулевое
+     * значение показывается в подтверждении отдельным предупреждением.
+     */
+    adminTaughtClasses: number;
+};
 
 export const fetchBranchDeleteImpact = async (branchId: string): Promise<BranchDeleteImpact> => {
     const { data, error } = await supabase.rpc("branch_delete_impact", { p_branch_id: branchId });
@@ -1640,6 +1653,7 @@ export const fetchBranchDeleteImpact = async (branchId: string): Promise<BranchD
         classes: Number(row?.classes ?? 0),
         members: Number(row?.members ?? 0),
         adminName: ((row?.admin_name as string | null) ?? null)?.trim() || null,
+        adminTaughtClasses: Number(row?.admin_taught_classes ?? 0),
     };
 };
 
@@ -1647,8 +1661,9 @@ export const fetchBranchDeleteImpact = async (branchId: string): Promise<BranchD
  * Удаление филиала.
  *
  * Группы и люди не пропадают — у них обнуляется филиал (обе связи объявлены
- * ON DELETE SET NULL). Админ филиала при этом переводится в учителя: иначе
- * остался бы branch_admin с пустым филиалом и видел бы только пустые страницы.
+ * ON DELETE SET NULL). Админ филиала при этом становится УЧЕНИКОМ (решение
+ * владельца): оставить ему branch_admin с пустым филиалом нельзя — он видел бы
+ * только пустые страницы, а роль учителя ему не полагается.
  */
 export const deleteBranch = async (branchId: string): Promise<BranchDeleteImpact> => {
     const { data, error } = await supabase.rpc("delete_branch", { p_branch_id: branchId });
@@ -1659,6 +1674,7 @@ export const deleteBranch = async (branchId: string): Promise<BranchDeleteImpact
         classes: Number(row.classes_orphaned ?? 0),
         members: Number(row.members_released ?? 0),
         adminName: null,
+        adminTaughtClasses: Number(row.admin_taught_classes ?? 0),
     };
 };
 

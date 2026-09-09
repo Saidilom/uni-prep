@@ -428,6 +428,13 @@ export default function AdminBranchesPage() {
                                                 {t("deleteImpactAdmin").replace("{name}", deleteImpact.adminName)}
                                             </li>
                                         )}
+                                        {/* Отдельное предупреждение: человек ведёт
+                                            группы, а ученик вести их не сможет. */}
+                                        {deleteImpact.adminTaughtClasses > 0 && (
+                                            <li className="font-bold text-red-600">
+                                                {t("deleteImpactAdminTeaches").replace("{count}", String(deleteImpact.adminTaughtClasses))}
+                                            </li>
+                                        )}
                                     </ul>
                                 ) : (
                                     <p className="mt-2 text-sm text-muted-foreground">{t("deleteImpactLoading")}</p>

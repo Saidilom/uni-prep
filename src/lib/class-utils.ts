@@ -1499,6 +1499,35 @@ export const fetchBranchOverview = async (): Promise<BranchOverview[]> => {
     }, TEACHER_CACHE_TTL);
 };
 
+// ═══ Разбор филиала по предметам ═══
+//
+// Считается целиком в SQL (get_branch_subject_breakdown, миграция 105) теми же
+// условиями, что и сводка в списке филиалов: расходиться этим двум числам
+// нельзя, иначе сумма по предметам не сойдётся с баллом филиала.
+
+export type BranchSubjectRow = {
+    /** Сырой subject_id из mock_tests: 'math', 'uzbek', 'native', … */
+    subjectId: string;
+    /** Средний по последнему комплекту «Ойлик тест». null — не сдавали. */
+    oylikAvg: number | null;
+    oylikAttempts: number;
+    /** Средний за всё время. */
+    overallAvg: number | null;
+    overallAttempts: number;
+};
+
+export const fetchBranchSubjectBreakdown = async (branchId: string): Promise<BranchSubjectRow[]> => {
+    const { data, error } = await supabase.rpc("get_branch_subject_breakdown", { p_branch_id: branchId });
+    if (error) throw error;
+    return ((data || []) as Array<Record<string, unknown>>).map((row) => ({
+        subjectId: row.subject_id as string,
+        oylikAvg: row.oylik_avg !== null && row.oylik_avg !== undefined ? Number(row.oylik_avg) : null,
+        oylikAttempts: Number(row.oylik_attempts ?? 0),
+        overallAvg: row.overall_avg !== null && row.overall_avg !== undefined ? Number(row.overall_avg) : null,
+        overallAttempts: Number(row.overall_attempts ?? 0),
+    }));
+};
+
 export const fetchBranches = async (): Promise<Branch[]> => {
     const { data } = await supabase.from("branches").select("id, name, created_at").order("name");
     return ((data || []) as Array<Record<string, unknown>>).map((row) => ({

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Building2, Plus, Users, GraduationCap, Pencil, Check, X } from "lucide-react";
+import Link from "next/link";
+import { Building2, Plus, Users, GraduationCap, Pencil, Check, X, ChevronRight } from "lucide-react";
 import { fetchBranchOverview, createBranch, renameBranch, fetchReviewerCandidates, BranchOverview, ReviewerCandidate } from "@/lib/class-utils";
 import { accuracyColor } from "@/lib/status-colors";
 import { formatScore, certificatePercent, CERTIFICATE_MAX } from "@/lib/certificate-scale";
@@ -173,7 +174,15 @@ export default function AdminBranchesPage() {
                                             </div>
                                         ) : (
                                             <div className="flex items-center gap-2">
-                                                <p className="truncate font-semibold text-foreground">{branch.branchName}</p>
+                                                {/* Ссылкой сделано имя, а не вся карточка: внутри
+                                                    живут кнопка переименования и поле ввода, и
+                                                    клик по ним уводил бы со страницы. */}
+                                                <Link
+                                                    href={`/admin/branches/${branch.branchId}`}
+                                                    className="truncate font-semibold text-foreground hover:underline"
+                                                >
+                                                    {branch.branchName}
+                                                </Link>
                                                 <button
                                                     onClick={() => { setEditingId(branch.branchId); setEditName(branch.branchName); }}
                                                     className="rounded-lg p-1 text-muted-foreground hover:bg-muted"
@@ -217,6 +226,13 @@ export default function AdminBranchesPage() {
                                             </span>
                                         )}
                                     </div>
+                                    <Link
+                                        href={`/admin/branches/${branch.branchId}`}
+                                        className="flex h-9 w-9 items-center justify-center self-center rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground"
+                                        aria-label={t("openBranch")}
+                                    >
+                                        <ChevronRight size={16} />
+                                    </Link>
                                 </div>
                             </div>
                         ))}

@@ -6,6 +6,14 @@ const nextConfig = {
     // найдётся. serverExternalPackages оставляет его обычным require из
     // node_modules.
     serverExternalPackages: ["mupdf"],
+    // Одного serverExternalPackages мало. Он говорит «не бандлить», но не
+    // говорит «положить рядом»: трассировщик Next видит только импорт mupdf.js
+    // и не догадывается про .wasm, который тот грузит уже во время работы. На
+    // сервере файла не оказывается, и вырезка падает у всех заданий сразу —
+    // ровно это и вышло на первом прогоне: «вырезано 0, сбой у 10».
+    outputFileTracingIncludes: {
+        "/api/mock-tests/import": ["./node_modules/mupdf/**"],
+    },
     images: {
         remotePatterns: [
             {

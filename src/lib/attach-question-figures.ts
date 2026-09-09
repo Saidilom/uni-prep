@@ -113,6 +113,18 @@ export function summarizeFigures(outcomes: readonly FigureOutcome[]): string | n
 
     const parts = [`Рисунков вырезано: ${attached}`];
     if (noBox > 0) parts.push(`не удалось определить рамку у ${noBox} — для них останется разворот страницы`);
-    if (failed > 0) parts.push(`сбой вырезки у ${failed}`);
+    if (failed > 0) {
+        // ПРИЧИНУ обязательно словами, а не только счётчиком. Первый же прогон
+        // на сервере дал «сбой вырезки у 10» — и по этой строке нельзя было
+        // понять ровным счётом ничего: ни что упало, ни где. Один и тот же
+        // текст ошибки у всех десяти означает общую поломку (не собрался
+        // рендерер, нет доступа к хранилищу), разный — беду с конкретными
+        // страницами. Это разные починки, и различать их надо сразу.
+        const reasons = Array.from(new Set(
+            outcomes.filter((o): o is Extract<FigureOutcome, { status: "FAILED" }> => o.status === "FAILED")
+                .map((o) => o.reason),
+        )).slice(0, 3);
+        parts.push(`сбой вырезки у ${failed} (${reasons.join(" | ")})`);
+    }
     return parts.join("; ") + ".";
 }

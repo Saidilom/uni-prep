@@ -113,11 +113,18 @@ export function levelIsBorderline(interval: { low: number; high: number } | null
 }
 
 // "A+".."C" are already language-neutral letter badges, shown as-is
-// everywhere — only "below_c" needs an actual localized label, per the
-// BMBA-sourced spec this platform's grading matches ("Ниже C" / "C dan quyi").
+// everywhere — only "below_c" needs an actual localized label ("Ниже C" /
+// "C dan past").
+//
+// Одна точка на всё: отсюда метка идёт и на экраны, и в выгрузку Excel
+// (buildResultsSheet зовёт gradeLevelDisplay). Своя копия строки в экспорте
+// однажды разошлась бы с показанной ученику.
+//
+// По-узбекски именно «past», а не «quyi»: «quyi» это «нижний» как положение
+// (quyi qism — нижняя часть), а про уровень ниже порога говорят «past».
 const BELOW_C_LABEL: Record<"ru" | "uz", string> = {
   ru: "Ниже C",
-  uz: "C dan quyi",
+  uz: "C dan past",
 };
 
 export function gradeLevelDisplay(level: GradeLevel, locale: "ru" | "uz"): string {

@@ -59,7 +59,7 @@ describe("gradeLevelDisplay", () => {
 
   it("localizes below_c", () => {
     expect(gradeLevelDisplay("below_c", "ru")).toBe("Ниже C");
-    expect(gradeLevelDisplay("below_c", "uz")).toBe("C dan quyi");
+    expect(gradeLevelDisplay("below_c", "uz")).toBe("C dan past");
   });
 });
 

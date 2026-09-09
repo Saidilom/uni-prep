@@ -23,7 +23,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 // serverless start + first Supabase connection can easily take longer than
 // a single 500ms retry. Retrying several times with backoff covers that
 // cold-start window instead of permanently giving up on one bad attempt.
-async function fetchProfileWithRetry(userId: string) {
+async function fetchProfileWithRetry(userId: string, forceFresh: boolean) {
     // getUserProfile is wrapped in pageCache (5 min TTL, survives client-side
     // navigation) — great for avoiding redundant fetches while browsing, but
     // wrong here: this runs on every auth-state-change event (a real sign-in,
@@ -35,7 +35,12 @@ async function fetchProfileWithRetry(userId: string) {
     // or they hard-refresh — confirmed as a real, confusing bug: promoting an
     // account to a new role and switching to it in the same browser session
     // still showed the old role.
-    pageCache.invalidate(`userProfile:${userId}`);
+    // ...но только при НАСТОЯЩЕМ входе. Возврат во вкладку тоже приходит
+    // событием SIGNED_IN (см. ниже), и сбрасывать кеш на каждое переключение
+    // вкладок значило бы ходить в сеть за профилем десятки раз за сессию.
+    // Каждый такой поход — окно, в котором ответ может прийти пустым, а
+    // пустой профиль до этой правки стирал пользователя и уводил на главную.
+    if (forceFresh) pageCache.invalidate(`userProfile:${userId}`);
     const delaysMs = [0, 600, 1500, 3000];
     let lastError: unknown;
     for (const delay of delaysMs) {
@@ -86,11 +91,30 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
             // /onboarding on every single reload, discarding whatever they were
             // doing (an in-progress exam, a form, scroll position). Only a real
             // SIGNED_IN event (actually logging in) should trigger that nag.
-            const isFreshSignIn = event === "SIGNED_IN";
+            // На возврате во вкладку Supabase присылает именно SIGNED_IN, а не
+            // только TOKEN_REFRESHED: в auth-js 2.111 внутри _recoverAndRefresh
+            // есть ветка восстановления пользователя, которая заканчивается
+            // _notifyAllSubscribers('SIGNED_IN', currentSession). То есть по
+            // одному имени события отличить настоящий вход от переключения
+            // вкладок НЕЛЬЗЯ.
+            //
+            // Отличаем по тому, кого мы уже знаем: если в сторе лежит тот же
+            // пользователь, это повторное событие той же сессии. Настоящий вход
+            // это либо пустой стор, либо смена пользователя.
+            //
+            // Из-за этого и «скидывало на главную». Событие считалось новым
+            // входом, и если перечитывание профиля возвращало пусто (сеть,
+            // гонка сразу после обновления токена), ветка ниже делала
+            // setUser(null). А дальше срабатывала защита раскладок — в
+            // admin/layout, branch/layout и на страницах учителя стоит
+            // router.push("/") на условие «пользователя нет». Отсюда и «у всех
+            // ролей».
+            const knownUser = useAuthStore.getState().user;
+            const isFreshSignIn = event === "SIGNED_IN" && knownUser?.id !== user?.id;
             if (user) {
                 let profile;
                 try {
-                    profile = await fetchProfileWithRetry(user.id);
+                    profile = await fetchProfileWithRetry(user.id, isFreshSignIn);
                 } catch {
                     // Infrastructure error fetching the profile even after
                     // several retries (network down, DB genuinely
@@ -111,7 +135,11 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
                     } else if (!profile.phone && currentPathname !== "/onboarding" && isFreshSignIn) {
                         router.replace(`/onboarding${redirectTarget ? `?redirectTo=${encodeURIComponent(redirectTarget)}` : ""}`);
                     }
-                } else if (isFreshSignIn) {
+                } else if (isFreshSignIn && !knownUser) {
+                    // Профиля нет и мы никого не знали до этого — только тогда
+                    // это действительно «аккаунт без профиля». Если знали,
+                    // пустой ответ означает сбой чтения, а не исчезнувший
+                    // аккаунт, и стирать пользователя нельзя.
                     setUser(null);
                     if (currentPathname !== "/onboarding") router.replace(`/onboarding${redirectTarget ? `?redirectTo=${encodeURIComponent(redirectTarget)}` : ""}`);
                 } else {

@@ -75,26 +75,36 @@ export async function middleware(request: NextRequest) {
   // something (auth pages / admin routes) — every other navigation used to
   // pay for this query and throw the result away.
   if (user && (isAuthPage || isAdminPage || isBranchPage)) {
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from("users")
       .select("role")
       .eq("id", user.id)
       .single();
 
-    if (isAuthPage && profile?.role) {
+    // Не удалось ПРОЧИТАТЬ роль — это не то же самое, что «роль не подходит».
+    // Раньше обе ситуации сходились в одну проверку `profile?.role !== "admin"`,
+    // и любой сбой чтения (сетевая икота, гонка сразу после обновления токена
+    // при возврате во вкладку) выбрасывал администратора на главную. Прав это
+    // не расширяет: страница всё равно рисуется под своей раскладкой, а она
+    // проверяет роль ещё раз на клиенте, и RLS в базе — третий раз.
+    if (profileError || !profile) {
+      return response;
+    }
+
+    if (isAuthPage && profile.role) {
       const redirectTo = request.nextUrl.searchParams.get("redirectTo");
       const target = sanitizeRedirectTarget(redirectTo ? decodeURIComponent(redirectTo) : null);
       return NextResponse.redirect(new URL(target, request.url));
     }
 
-    if (isAdminPage && profile?.role !== "admin") {
+    if (isAdminPage && profile.role !== "admin") {
       return NextResponse.redirect(new URL("/", request.url));
     }
 
     // Админ филиала работает в своём разделе — в /admin его не пускаем: там
     // RLS рассчитан на is_admin(), и он всё равно увидел бы пустые страницы
     // (миграция 072).
-    if (isBranchPage && profile?.role !== "branch_admin") {
+    if (isBranchPage && profile.role !== "branch_admin") {
       return NextResponse.redirect(new URL("/", request.url));
     }
   }

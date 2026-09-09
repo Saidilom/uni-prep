@@ -36,11 +36,24 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const pathname = usePathname();
     const t = useTranslations("adminLayout");
 
+    // Две РАЗНЫЕ ситуации, и раньше они сходились в один редирект на "/".
+    //
+    //   пользователя нет  — не авторизован: на логин, СОХРАНИВ страницу, чтобы
+    //                       после входа вернуться туда же;
+    //   роль не подходит  — авторизован, но не сюда: на главную.
+    //
+    // Склеенные вместе, они давали то самое «переключил вкладку — оказался на
+    // главной»: любой кратковременный провал пользователя уводил с рабочей
+    // страницы и терял место. Причина провала убрана в auth-provider, но и
+    // здесь «не знаю пользователя» не должно означать «выгнать на главную».
     useEffect(() => {
-        if (!isLoading && (!user || user.role !== "admin")) {
-            router.push("/");
+        if (isLoading) return;
+        if (!user) {
+            router.replace(`/login?redirectTo=${encodeURIComponent(pathname)}`);
+            return;
         }
-    }, [user, isLoading, router]);
+        if (user.role !== "admin") router.push("/");
+    }, [user, isLoading, router, pathname]);
 
     if (isLoading || !user || user.role !== "admin") {
         return (

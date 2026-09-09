@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Building2, Plus, Users, GraduationCap, Pencil, Check, X, ChevronRight, UserCheck } from "lucide-react";
-import { fetchBranchOverview, createBranch, renameBranch, fetchReviewerCandidates, fetchUserById, BranchOverview, ReviewerCandidate, BranchAdminCandidate } from "@/lib/class-utils";
+import { fetchBranchOverview, createBranch, renameBranch, fetchReviewerCandidates, findUserByIdentifier, BranchOverview, ReviewerCandidate, BranchAdminCandidate } from "@/lib/class-utils";
 import { accuracyColor } from "@/lib/status-colors";
 import { formatScore, certificatePercent, CERTIFICATE_MAX } from "@/lib/certificate-scale";
 import { useToast } from "@/hooks/useToast";
@@ -68,7 +68,7 @@ export default function AdminBranchesPage() {
         setLookupState("searching");
         const timer = setTimeout(async () => {
             try {
-                const found = await fetchUserById(id);
+                const found = await findUserByIdentifier(id);
                 if (!active) return;
                 setLookedUp(found);
                 setLookupState(found ? "idle" : "notFound");
@@ -175,6 +175,13 @@ export default function AdminBranchesPage() {
                                 <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1 font-bold text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400">
                                     <UserCheck size={12} /> {lookedUp.name}
                                 </span>
+                                {/* Короткий ID рядом с именем: по нему супер-админ
+                                    и сверяет, того ли нашли. */}
+                                {lookedUp.shortId && (
+                                    <span className="rounded-lg bg-muted px-2 py-1 font-mono font-semibold text-muted-foreground">
+                                        {lookedUp.shortId}
+                                    </span>
+                                )}
                                 <span className="rounded-lg bg-muted px-2 py-1 font-semibold text-muted-foreground">
                                     {lookedUp.role}
                                 </span>

@@ -1138,10 +1138,10 @@ const uz: typeof ru = {
   },
   adminBranches: {
     branchAdminNone: "Filial admini yo'q",
-    branchAdminIdLabel: "Filial admini bo'ladigan foydalanuvchi ID si",
-    branchAdminIdPlaceholder: "Foydalanuvchi ID sini joylashtiring (uuid)",
+    branchAdminIdLabel: "Filial admini kim bo'ladi",
+    branchAdminIdPlaceholder: "Ro'yxatdagi ID (STU-80356C), pochta yoki telefon",
     branchAdminSearching: "Foydalanuvchi qidirilmoqda…",
-    branchAdminNotFound: "Bunday ID li foydalanuvchi topilmadi — to'liq nusxalanganini tekshiring.",
+    branchAdminNotFound: "Hech kim topilmadi. «Foydalanuvchilar» bo'limidagi qisqa ID, pochta yoki telefon ham bo'ladi.",
     branchAdminAlreadyInBranch: "allaqachon filialda — boshqa filialga o'tkaziladi",
     avgOylikLabel: "Oylik",
     noOylikYet: "Yo'q",

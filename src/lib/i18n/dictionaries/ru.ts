@@ -1147,10 +1147,10 @@ const ru = {
   },
   adminBranches: {
     branchAdminNone: "Без админа филиала",
-    branchAdminIdLabel: "ID пользователя — админа филиала",
-    branchAdminIdPlaceholder: "Вставьте ID пользователя (uuid)",
+    branchAdminIdLabel: "Кто станет админом филиала",
+    branchAdminIdPlaceholder: "ID из списка (STU-80356C), почта или телефон",
     branchAdminSearching: "Ищем пользователя…",
-    branchAdminNotFound: "Пользователь с таким ID не найден — проверьте, что скопировали целиком.",
+    branchAdminNotFound: "Никого не нашли. Подойдёт короткий ID из раздела «Пользователи», почта или телефон.",
     branchAdminAlreadyInBranch: "уже состоит в филиале — будет переведён",
     avgOylikLabel: "Месячный",
     noOylikYet: "Нет",

@@ -1542,42 +1542,69 @@ export const fetchBranches = async (): Promise<Branch[]> => {
 // не видящий ничего. Обе записи делает одна RPC (миграция 082): либо обе, либо
 // ни одной.
 /**
- * Пользователь по ID — чтобы супер-админ мог назначить админом филиала кого
- * угодно, а не только того, кто попал в выпадающий список.
+ * Поиск человека, которого делают админом филиала.
  *
- * Список кандидатов (fetchReviewerCandidates) отдаёт ТОЛЬКО учителей и
- * админов, поэтому обычного зарегистрированного ученика в нём нет вовсе — а
- * именно его чаще всего и ставят админом нового филиала. Плюс тот запрос идёт
- * без пагинации, и на большой базе PostgREST молча обрежет ответ по max_rows.
+ * ═══ ПОЧЕМУ НЕ ТОЛЬКО uuid ═══
+ *
+ * В интерфейсе виден НЕ uuid, а короткий ID вида «STU-80356C» или «WWGIDJ» —
+ * колонка shortid, она есть у всех пользователей и показана в списке значком
+ * карточки. Именно её и копируют. Поиск по одному users.id не находил никого,
+ * и выглядело это как «аккаунт не существует».
+ *
+ * Поэтому принимается всё, чем человека реально называют: короткий ID, uuid,
+ * почта, телефон. Перебор идёт по очереди и останавливается на первом
+ * совпадении — так понятнее, чем один запрос с OR, где кавычки и собачка в
+ * почте ломают синтаксис фильтра.
+ *
+ * Роль НЕ фильтруется: админом филиала ставят и обычного ученика, и учителя.
+ * Именно фильтр `role = 'student'` в соседнем findStudentByShortId и делает
+ * его непригодным здесь.
  *
  * Читать любого пользователя супер-админу позволяет политика
- * users_admin_full_access; у всех остальных ролей выборка вернёт пусто.
+ * users_admin_full_access; у остальных ролей выборка вернёт пусто.
  */
 export type BranchAdminCandidate = {
     id: string;
     name: string;
     role: string;
-    /** Филиал, в котором человек уже состоит. Нужен, чтобы предупредить о переводе. */
+    /** Короткий ID, чтобы показать его рядом с именем — по нему и сверяют. */
+    shortId: string | null;
+    /** Филиал, в котором человек уже состоит: нужен, чтобы предупредить о переводе. */
     branchId: string | null;
 };
 
-export const fetchUserById = async (id: string): Promise<BranchAdminCandidate | null> => {
-    const { data, error } = await supabase
-        .from("users")
-        .select("id, name, surname, role, branch_id")
-        .eq("id", id)
-        // maybeSingle, а не single: «пользователя нет» — обычный ответ на
-        // опечатку в ID, а не ошибка, и падать на нём незачем.
-        .maybeSingle();
-    if (error) throw error;
-    if (!data) return null;
-    const row = data as Record<string, unknown>;
-    return {
-        id: row.id as string,
-        name: `${row.name ?? ""} ${row.surname ?? ""}`.trim() || (row.id as string),
-        role: row.role as string,
-        branchId: (row.branch_id as string | null) ?? null,
-    };
+const toBranchAdminCandidate = (row: Record<string, unknown>): BranchAdminCandidate => ({
+    id: row.id as string,
+    name: `${row.name ?? ""} ${row.surname ?? ""}`.trim() || (row.id as string),
+    role: row.role as string,
+    shortId: (row.shortid as string | null) ?? null,
+    branchId: (row.branch_id as string | null) ?? null,
+});
+
+export const findUserByIdentifier = async (raw: string): Promise<BranchAdminCandidate | null> => {
+    const value = raw.trim();
+    if (!value) return null;
+    const columns = "id, name, surname, role, shortid, branch_id";
+    // Короткий ID хранится в верхнем регистре — приводим, иначе «stu-80356c»
+    // не найдётся, хотя человек скопировал ровно то, что видел.
+    const attempts: Array<[string, string]> = [
+        ["shortid", value.toUpperCase()],
+        ["id", value],
+        ["email", value.toLowerCase()],
+        ["phone", value],
+    ];
+    for (const [column, needle] of attempts) {
+        const { data, error } = await supabase
+            .from("users")
+            .select(columns)
+            .eq(column, needle)
+            // maybeSingle, а не single: «не нашлось» — обычный ответ на
+            // очередную попытку, а не ошибка.
+            .maybeSingle();
+        if (error) continue;
+        if (data) return toBranchAdminCandidate(data as Record<string, unknown>);
+    }
+    return null;
 };
 
 export const createBranch = async (name: string, adminId: string | null): Promise<void> => {

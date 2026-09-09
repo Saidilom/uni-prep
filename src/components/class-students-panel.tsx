@@ -1,12 +1,13 @@
 "use client";
 
 import { ReactNode, useMemo, useState } from "react";
-import { ChevronDown, Circle } from "lucide-react";
+import { ChevronDown, Circle, Medal } from "lucide-react";
 import { ClassStudentOverview, StudentMockScore, ClassMockAssignment } from "@/lib/class-utils";
 import { accuracyColor } from "@/lib/status-colors";
-import { certificatePercent, formatScore } from "@/lib/certificate-scale";
+import { certificatePercent, formatScore, CERTIFICATE_MAX } from "@/lib/certificate-scale";
 import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
 import { pluralizeRu } from "@/lib/pluralize-ru";
+import { buildPodium, PodiumMedal } from "@/lib/podium";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 type Props = {
@@ -37,6 +38,15 @@ type Props = {
 // (в проде — четыре «Tarix fanidan namunaviy test topshiriqlari»), и средний
 // балл по всем сразу не отвечает на вопрос «а что было на втором мока».
 // Выбрали конкретный — у каждого ученика виден балл именно за него.
+// Золото, серебро, бронза. Место ниже третьего и отсутствие места выглядят
+// нейтрально: подиум — это три позиции, а не раскраска всего списка.
+function medalClass(medal: PodiumMedal | null): string {
+    if (medal === "gold") return "border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/50 dark:text-amber-300";
+    if (medal === "silver") return "border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300";
+    if (medal === "bronze") return "border-orange-300 bg-orange-100 text-orange-800 dark:border-orange-900/60 dark:bg-orange-950/50 dark:text-orange-300";
+    return "border-border bg-muted text-foreground";
+}
+
 export default function ClassStudentsPanel({ students, mockScores, assignments, labels, renderActions }: Props) {
     const { locale } = useLocale();
     const tCommon = useTranslations("classDetail");
@@ -76,6 +86,24 @@ export default function ClassStudentsPanel({ students, mockScores, assignments, 
     const scoreFor = (studentId: string) =>
         (mockScores.get(studentId) || []).find((row) => row.mockTestId === selectedMock) ?? null;
 
+    // ═══ Подиум ═══
+    //
+    // Место считается по тому баллу, который РЯДОМ И ПОКАЗАН: выбран
+    // конкретный мок — по баллу за него, выбраны все — по среднему. Иначе
+    // ученик видел бы «2 место» рядом с числом, которое этому месту не
+    // соответствует.
+    //
+    // Балл за невыданный результат местом не считается: он ещё не объявлен.
+    const orderedStudents = useMemo(() => {
+        const scoreOfStudent = (row: ClassStudentOverview): number | null => {
+            if (selectedMock === "all") return row.avgScore;
+            const own = (mockScores.get(row.student.id) || [])
+                .find((x) => x.mockTestId === selectedMock);
+            return own && own.revealed ? own.levelScore : null;
+        };
+        return buildPodium(students, scoreOfStudent);
+    }, [students, mockScores, selectedMock]);
+
     const renderScoreBadge = (score: StudentMockScore | null) => {
         if (!score) {
             return <span className="rounded-xl border border-border bg-muted px-3 py-1.5 text-xs font-semibold text-muted-foreground">{labels.notTakenThisMock}</span>;
@@ -114,7 +142,7 @@ export default function ClassStudentsPanel({ students, mockScores, assignments, 
             )}
 
             <div className="space-y-3">
-                {students.map((s) => {
+                {orderedStudents.map(({ item: s, place, medal }) => {
                     const scores = mockScores.get(s.student.id) || [];
                     const isOpen = expandedStudent === s.student.id;
                     const filtered = selectedMock !== "all";
@@ -122,8 +150,12 @@ export default function ClassStudentsPanel({ students, mockScores, assignments, 
                         <div key={s.student.id} className="rounded-2xl border border-border bg-card">
                             <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                                 <div className="flex min-w-0 items-center gap-3">
-                                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border bg-muted font-bold text-foreground">
-                                        {s.student.name[0]?.toUpperCase() || "?"}
+                                    {/* Место вместо первой буквы имени: буква
+                                        ничего не сообщала, а место — главное, за чем
+                                        сюда смотрят. У не сдававших место пусто, и
+                                        остаётся буква. */}
+                                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border font-bold ${medalClass(medal)}`}>
+                                        {medal ? <Medal size={16} /> : place !== null ? place : (s.student.name[0]?.toUpperCase() || "?")}
                                     </span>
                                     <div className="min-w-0">
                                         <p className="truncate text-sm font-semibold text-foreground">{s.student.name} {s.student.surname || ""}</p>
@@ -142,10 +174,13 @@ export default function ClassStudentsPanel({ students, mockScores, assignments, 
                                                     ? `${s.attemptCount} ${locale === "ru" ? pluralizeRu(s.attemptCount, ["попытка", "попытки", "попыток"]) : labels.attemptWord}`
                                                     : labels.neverTakenTests}
                                             </span>
-                                            {/* Средний по всем мокам — в процентах: разные тесты,
-                                                разный максимум (design/FIX.md). */}
-                                            <span className={`rounded-xl px-3 py-1.5 text-sm font-extrabold tabular-nums ${accuracyColor(s.avgScore)}`}>
-                                                {s.avgScore ?? "—"}
+                                            {/* Средний по всем мокам — БАЛЛ по шкале 75, не
+                                                процент: fetchClassStudentsOverview приводит
+                                                предметы к одной шкале до усреднения. Цвет —
+                                                через certificatePercent, потому что
+                                                accuracyColor сравнивает с порогами 80 и 50. */}
+                                            <span className={`rounded-xl px-3 py-1.5 text-sm font-extrabold tabular-nums ${accuracyColor(certificatePercent(s.avgScore, CERTIFICATE_MAX))}`}>
+                                                {s.avgScore !== null ? formatScore(s.avgScore) : "—"}
                                             </span>
                                             <button
                                                 onClick={() => setExpandedStudent(isOpen ? null : s.student.id)}

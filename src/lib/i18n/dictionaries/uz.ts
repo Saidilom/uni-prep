@@ -1227,6 +1227,7 @@ const uz: typeof ru = {
     mainSuperAdmin: "Bosh Super Admin",
     roleStudent: "O'quvchi",
     roleTeacher: "O'qituvchi",
+    branchAdminManagedInBranches: "Filial admini «Filiallar» bo'limida tayinlanadi — rol va filial u yerda bitta amal bilan beriladi.",
     roleBranchAdmin: "Filial admini",
     noBranchOption: "Filialsiz",
     roleAdmin: "Super Admin",

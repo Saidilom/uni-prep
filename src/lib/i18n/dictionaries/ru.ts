@@ -1236,6 +1236,7 @@ const ru = {
     mainSuperAdmin: "Главный Super Admin",
     roleStudent: "Ученик",
     roleTeacher: "Учитель",
+    branchAdminManagedInBranches: "Админ филиала назначается в разделе «Филиалы» — там роль и филиал выдаются одним действием.",
     roleBranchAdmin: "Админ филиала",
     noBranchOption: "Без филиала",
     roleAdmin: "Super Admin",

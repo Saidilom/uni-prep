@@ -9,8 +9,18 @@ import { useToast } from "@/hooks/useToast";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 type AdminUser = UserType & { registeredVia?: string; shortid?: string; branch_id?: string | null };
-type AssignableRole = "student" | "teacher" | "branch_admin" | "admin";
-type RoleFilter = "all" | AssignableRole;
+// branch_admin в этот список НЕ входит намеренно.
+//
+// Админа филиала назначают только в разделе «Филиалы» — там это одно
+// действие: выбрал человека, и он привязан к конкретному филиалу. Здесь же
+// роль и филиал ставились двумя независимыми списками, и между ними человек
+// успевал оказаться branch_admin без филиала — роль есть, а страницы пустые,
+// потому что вся RLS там завязана на current_branch_id().
+type AssignableRole = "student" | "teacher" | "admin";
+// Фильтр НЕ выводится из AssignableRole: смотреть на админов филиалов можно и
+// нужно, а назначать их здесь — нельзя. Склеенные в один тип, эти две разные
+// вещи ломались одна об другую.
+type RoleFilter = "all" | "student" | "teacher" | "branch_admin" | "admin";
 const ROLE_FILTERS: RoleFilter[] = ["all", "student", "teacher", "branch_admin", "admin"];
 const ROLE_FILTER_LABEL_KEYS: Partial<Record<RoleFilter, "roleStudent" | "roleTeacher" | "roleBranchAdmin" | "roleAdmin">> = {
     student: "roleStudent",
@@ -208,15 +218,26 @@ export default function AdminUsersPage() {
                                         >
                                             {t("mainSuperAdmin")}
                                         </span>
+                                    ) : u.role === "branch_admin" ? (
+                                        // Роль показана, но не меняется: её опции в
+                                        // списке больше нет, и select показал бы
+                                        // чужое значение. Менять — в «Филиалах».
+                                        <span
+                                            title={t("branchAdminManagedInBranches")}
+                                            className="rounded-xl border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-bold text-teal-700 dark:bg-teal-950/40"
+                                        >
+                                            {t("roleBranchAdmin")}
+                                        </span>
                                     ) : (
                                         <select
                                             value={u.role}
                                             onChange={(e) => setRole(u, e.target.value as AssignableRole)}
                                             className={`rounded-xl border px-3 py-2 text-xs font-semibold transition-all ${
+                                                // Ветки для branch_admin здесь нет: этот
+                                                // список для него не рисуется вовсе, у него
+                                                // выше стоит метка.
                                                 u.role === "admin"
                                                     ? "border-amber-200 bg-amber-50 text-amber-700 dark:bg-amber-950/40"
-                                                    : u.role === "branch_admin"
-                                                    ? "border-teal-200 bg-teal-50 text-teal-700 dark:bg-teal-950/40"
                                                     : u.role === "teacher"
                                                     ? "border-violet-200 bg-violet-50 text-violet-700 dark:bg-violet-950/40"
                                                     : "border-border bg-card text-muted-foreground"
@@ -224,7 +245,6 @@ export default function AdminUsersPage() {
                                         >
                                             <option value="student">{t("roleStudent")}</option>
                                             <option value="teacher">{t("roleTeacher")}</option>
-                                            <option value="branch_admin">{t("roleBranchAdmin")}</option>
                                             <option value="admin">{t("roleAdmin")}</option>
                                         </select>
                                     )}
@@ -243,10 +263,13 @@ export default function AdminUsersPage() {
                                             {deletingId === u.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
                                         </button>
                                     )}
-                                    {/* Филиал показываем только тем, кому он что-то
-                                        значит: администратору филиала — что он видит,
-                                        учителю — какой филиал унаследуют его группы. */}
-                                    {(u.role === "branch_admin" || u.role === "teacher") && branches.length > 0 && (
+                                    {/* Филиал — только учителю: от него зависит, какой
+                                        филиал унаследуют его группы.
+                                        Админу филиала здесь его НЕ меняют: филиал и
+                                        роль админа выдаются вместе, одним действием в
+                                        разделе «Филиалы». Порознь получалось состояние
+                                        «админ без филиала» — роль есть, страницы пустые. */}
+                                    {u.role === "teacher" && branches.length > 0 && (
                                         <select
                                             value={u.branch_id || ""}
                                             onChange={(e) => setBranch(u, e.target.value)}

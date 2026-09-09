@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Building2, Plus, Users, GraduationCap, Pencil, Check, X } from "lucide-react";
 import { fetchBranchOverview, createBranch, renameBranch, fetchReviewerCandidates, BranchOverview, ReviewerCandidate } from "@/lib/class-utils";
 import { accuracyColor } from "@/lib/status-colors";
-import { formatScore } from "@/lib/certificate-scale";
+import { formatScore, certificatePercent, CERTIFICATE_MAX } from "@/lib/certificate-scale";
 import { useToast } from "@/hooks/useToast";
 import { useTranslations } from "@/lib/i18n/locale-provider";
 
@@ -196,7 +196,7 @@ export default function AdminBranchesPage() {
                                     <div className="flex flex-col items-end gap-1">
                                         <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{t("avgScoreLabel")}</span>
                                         {branch.avgScore !== null ? (
-                                            <span className={`rounded-xl px-4 py-2 text-sm font-extrabold tabular-nums ${accuracyColor(branch.avgScore)}`}>
+                                            <span className={`rounded-xl px-4 py-2 text-sm font-extrabold tabular-nums ${accuracyColor(certificatePercent(branch.avgScore, CERTIFICATE_MAX))}`}>
                                                 {formatScore(branch.avgScore)}
                                             </span>
                                         ) : (
@@ -208,7 +208,7 @@ export default function AdminBranchesPage() {
                                     <div className="flex flex-col items-end gap-1">
                                         <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{t("avgOylikLabel")}</span>
                                         {branch.avgOylik !== null ? (
-                                            <span className={`rounded-xl px-4 py-2 text-sm font-extrabold tabular-nums ${accuracyColor(branch.avgOylik)}`}>
+                                            <span className={`rounded-xl px-4 py-2 text-sm font-extrabold tabular-nums ${accuracyColor(certificatePercent(branch.avgOylik, CERTIFICATE_MAX))}`}>
                                                 {formatScore(branch.avgOylik)}
                                             </span>
                                         ) : (

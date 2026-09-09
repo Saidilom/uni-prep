@@ -14,6 +14,7 @@ import {
 } from "./certificate-scale";
 import { MOCK_SUBJECTS } from "./mock-import-schema";
 import { gradeLevelFromScore } from "./mock-grade-level";
+import { accuracyColor } from "./status-colors";
 
 // Решение владельца от 2026-09-08: «макс 75 во всех предметах» — та же шкала,
 // что у модели Раша, и та, на которой заданы пороги уровней (ТЗ §0.3).
@@ -277,5 +278,36 @@ describe("tScoreToCertificateExact против tScoreToCertificate", () => {
         expect(formatScore(tScoreToCertificate(64.96, "math"))).toBe("65,0"); // показ округлён
         // Буква обязана следовать точному значению, а не показанному.
         expect(gradeLevelFromScore(tScoreToCertificate(64.96, "math"))).toBe("A");
+    });
+});
+
+describe("цвет плитки считается от процента, а не от балла", () => {
+    // Регрессия. accuracyColor сравнивает с порогами 80 и 50, то есть ждёт
+    // ПРОЦЕНТ, а на панель филиала приходит балл по шкале 75. Балл уходил в
+    // accuracyColor напрямую, и пороги применялись не к той шкале: идеальные
+    // 75 не могли стать зелёными вовсе, потому что 75 меньше 80.
+    const band = (score: number) => accuracyColor(certificatePercent(score, CERTIFICATE_MAX));
+
+    it("идеальный балл зелёный, а не янтарный", () => {
+        expect(band(CERTIFICATE_MAX)).toContain("emerald");
+        // Именно это и было сломано: без приведения к проценту тот же балл
+        // попадал в янтарную полосу.
+        expect(accuracyColor(CERTIFICATE_MAX)).toContain("amber");
+    });
+
+    it("границы полос стоят там, где ожидаются по проценту", () => {
+        expect(band(60)).toContain("emerald");   // 80%
+        expect(band(59.9)).toContain("amber");
+        expect(band(37.5)).toContain("amber");   // 50%
+        expect(band(37.4)).toContain("red");
+    });
+
+    it("реальное среднее филиала (30 из 75 = 40%) — красное", () => {
+        expect(band(30)).toContain("red");
+    });
+
+    it("отсутствие балла не красится ни в один из уровней", () => {
+        expect(band(Number.NaN)).toContain("muted");
+        expect(accuracyColor(certificatePercent(null, CERTIFICATE_MAX))).toContain("muted");
     });
 });

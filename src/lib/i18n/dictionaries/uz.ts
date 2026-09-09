@@ -901,7 +901,9 @@ const uz: typeof ru = {
     teachersLabel: "O'qituvchilar",
     studentsLabel: "O'quvchilar",
     avgScoreLabel: "O'rtacha ball",
+    avgOylikLabel: "Oylik ball",
     noResultsYet: "Natijalar yo'q",
+    noOylikYet: "Oylik topshirilmagan",
   },
   branchClasses: {
     title: "Filial guruhlari",

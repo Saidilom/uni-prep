@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Building2, Users, GraduationCap, Trophy } from "lucide-react";
+import { Building2, Users, GraduationCap, Trophy, CalendarRange } from "lucide-react";
 import { fetchBranchOverview, BranchOverview } from "@/lib/class-utils";
 import { accuracyColor } from "@/lib/status-colors";
-import { formatScore } from "@/lib/certificate-scale";
+import { formatScore, certificatePercent, CERTIFICATE_MAX } from "@/lib/certificate-scale";
 import { useTranslations } from "@/lib/i18n/locale-provider";
 
 // Сводка по СВОЕМУ филиалу. Фильтрацию делает не эта страница, а сам
@@ -57,7 +57,7 @@ export default function BranchOverviewPage() {
                 <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">{t("subtitle")}</p>
             </section>
 
-            <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
                 {cards.map((card, index) => (
                     <div key={index} className="rounded-2xl border border-border bg-card p-5">
                         <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-[hsl(var(--brand-blue-ink))]/10 text-[hsl(var(--brand-blue-ink))]">
@@ -67,20 +67,58 @@ export default function BranchOverviewPage() {
                         <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{card.value}</p>
                     </div>
                 ))}
-                <div className="rounded-2xl border border-border bg-card p-5">
-                    <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-[hsl(var(--brand-blue-ink))]/10 text-[hsl(var(--brand-blue-ink))]">
-                        <Trophy size={18} />
-                    </div>
-                    <p className="text-xs text-muted-foreground">{t("avgScoreLabel")}</p>
-                    {branch.avgScore !== null ? (
-                        <p className={`mt-1 inline-flex rounded-lg px-2 py-0.5 text-2xl font-semibold tabular-nums ${accuracyColor(branch.avgScore)}`}>
-                            {formatScore(branch.avgScore)}
-                        </p>
-                    ) : (
-                        <p className="mt-1 text-sm font-medium text-muted-foreground">{t("noResultsYet")}</p>
-                    )}
-                </div>
+                <ScoreCard
+                    icon={Trophy}
+                    label={t("avgScoreLabel")}
+                    score={branch.avgScore}
+                    emptyLabel={t("noResultsYet")}
+                />
+                {/* §12: месячный балл — по ПОСЛЕДНЕМУ опубликованному комплекту
+                    «Ойлик тест», а не за всё время. Так видно, как филиал сдал
+                    в этом месяце, а не усреднённую картину, в которой плохой
+                    месяц растворяется. Считает get_branch_overview, здесь
+                    только показ. */}
+                <ScoreCard
+                    icon={CalendarRange}
+                    label={t("avgOylikLabel")}
+                    score={branch.avgOylik}
+                    emptyLabel={t("noOylikYet")}
+                />
             </section>
+        </div>
+    );
+}
+
+// Плитка с баллом. Вынесена, потому что их теперь две и они обязаны красить
+// цифру одинаково.
+//
+// ═══ ПОЧЕМУ ЦВЕТ СЧИТАЕТСЯ ЧЕРЕЗ ПРОЦЕНТ ═══
+//
+// accuracyColor сравнивает с порогами 80 и 50, то есть ждёт ПРОЦЕНТ. Сюда же
+// приходит балл по шкале 75 (get_branch_overview приводит к ней все предметы).
+// Раньше балл уходил в accuracyColor напрямую, и пороги применялись не к той
+// шкале: реальное среднее филиала 24,6 всегда красное, а идеальные 75 не могли
+// стать зелёными вовсе — 75 меньше 80. Приведение к проценту делает то же
+// certificatePercent, что и в отчёте ученику.
+function ScoreCard({ icon: Icon, label, score, emptyLabel }: {
+    icon: typeof Trophy;
+    label: string;
+    score: number | null;
+    emptyLabel: string;
+}) {
+    return (
+        <div className="rounded-2xl border border-border bg-card p-5">
+            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-[hsl(var(--brand-blue-ink))]/10 text-[hsl(var(--brand-blue-ink))]">
+                <Icon size={18} />
+            </div>
+            <p className="text-xs text-muted-foreground">{label}</p>
+            {score !== null ? (
+                <p className={`mt-1 inline-flex rounded-lg px-2 py-0.5 text-2xl font-semibold tabular-nums ${accuracyColor(certificatePercent(score, CERTIFICATE_MAX))}`}>
+                    {formatScore(score)}
+                </p>
+            ) : (
+                <p className="mt-1 text-sm font-medium text-muted-foreground">{emptyLabel}</p>
+            )}
         </div>
     );
 }

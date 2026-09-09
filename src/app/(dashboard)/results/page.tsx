@@ -9,6 +9,7 @@ import { averageCertificateScore, certificatePercent, formatScore, roundScore , 
 import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
 import TeacherResultsExplorer from "@/components/teacher-results-explorer";
 import StudentScoreReport from "@/components/student-score-report";
+import StudentMistakeReview from "@/components/student-mistake-review";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 type ResultRow = MockResultRow;
@@ -173,6 +174,12 @@ export default function ResultsPage() {
                                             level={(r.grade_level as GradeLevel | null) ?? null}
                                             measurementStatus={r.measurement_status}
                                         />
+                                        {/* Разбор ошибок. По каким мокам он виден,
+                                            решает база (миграция 111): бесплатные и
+                                            назначенные учителем — да, «Ойлик» и
+                                            платные самокупленные — нет. Если строк
+                                            нет, блок не рисуется. */}
+                                        <StudentMistakeReview resultId={r.id} />
                                     </div>
                                 )}
                                 </div>

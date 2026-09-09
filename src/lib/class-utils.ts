@@ -1,6 +1,7 @@
 import supabase from "./supabase/client";
 import { User, Class, MockTest } from "./firestore-schema";
 import { pageCache } from "./page-cache";
+import { MockKind } from "./mistake-review-access";
 import { fetchAllRows } from "./supabase/fetch-all";
 import { formatCorrectAnswer, formatStudentAnswer } from "./answer-display";
 import { scoreOnCertificateScale, roundScore } from "./certificate-scale";
@@ -582,6 +583,9 @@ export type ClassMockResultsSummary = {
     // нельзя (документ по русскому — tests-pdf/русский/rustili_check.pdf — с
     // нашим списком не сверялся).
     subjectId: string | null;
+    /** Тип мока и признак «Ойлик»: по ним решается, показывать ли разбор ошибок. */
+    mockKind: MockKind | null;
+    isOylik: boolean;
     students: StudentMockResult[];
     completedCount: number;
     totalCount: number;
@@ -654,7 +658,7 @@ export const fetchClassMockResults = async (classId: string | null, mockTestId: 
         // базы она не сверяется (каждое поле выводится как any), поэтому
         // опечатка, повторённая и в select, и в использовании, пройдёт молча и
         // вернётся null из PostgREST.
-        supabase.from("mock_tests").select("title, subject_id, person_separation, person_reliability, person_strata, person_measure_count, person_extreme_count, person_reliability_with_extremes, person_separation_status, item_separation, item_reliability, item_measure_count, item_separation_status, separation_at").eq("id", mockTestId).single(),
+        supabase.from("mock_tests").select("title, subject_id, type, oylik_set_id, person_separation, person_reliability, person_strata, person_measure_count, person_extreme_count, person_reliability_with_extremes, person_separation_status, item_separation, item_reliability, item_measure_count, item_separation_status, separation_at").eq("id", mockTestId).single(),
         supabase.from("mock_results").select("id, user_id, score, max_score, accuracy, correct_answers, total_questions, cefr_band, cefr_score, level_score, level_score_max, grade_level, completed_at").eq("mock_test_id", mockTestId),
     ]);
 
@@ -716,6 +720,8 @@ export const fetchClassMockResults = async (classId: string | null, mockTestId: 
     return {
         mockTitle: test?.title || "—",
         subjectId: (test?.subject_id as string | null) ?? null,
+        mockKind: (test?.type as MockKind | null) ?? null,
+        isOylik: Boolean(test?.oylik_set_id),
         students,
         // Именно «сдали», а не «посчитан балл». Раньше сюда шло scores.length и
         // совпадало случайно — сырой балл был у всех, у кого есть результат.

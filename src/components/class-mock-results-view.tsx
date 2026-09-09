@@ -19,6 +19,7 @@ import MockReliabilityPanel from "@/components/mock-reliability-panel";
 import DistractorReport from "@/components/distractor-report";
 import PsychometricCharts from "@/components/psychometric-charts";
 import { ESSAY_MAX_POINTS } from "@/lib/essay-rubric";
+import { mistakeReviewAccess } from "@/lib/mistake-review-access";
 import { accuracyColor } from "@/lib/status-colors";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
@@ -209,6 +210,21 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref, re
     // сворачиваем, чтобы список учеников был виден сразу. Всё проверено —
     // экран читают как аналитику, и рейтинг раскрыт.
     const hasPendingWork = !readOnly && summary.pendingReviewCount > 0;
+    // По-вопросный разбор — только по разрешённым мокам (решение владельца):
+    // бесплатные и назначенные учителем да, «Ойлик» и платный самокупленный
+    // нет. Правило одно на весь проект — mistake-review-access.ts.
+    //
+    // Проверка эссе при этом остаётся доступной ВСЕГДА: у месячных тестов
+    // сочинения тоже кто-то должен оценить, и запрет на разбор ошибок этому
+    // мешать не должен.
+    const reviewAccess = mistakeReviewAccess({
+        type: summary.mockKind,
+        isOylik: summary.isOylik,
+        // Экран открыт из группы — значит мок ей и назначен. У админского мока
+        // без класса (classId = null) назначения нет, и решает тип.
+        assignedByTeacher: Boolean(classId),
+    });
+    const showMistakes = reviewAccess.allowed;
     const showRanking = rankingOpen ?? !hasPendingWork;
     const visibleStudents = onlyPendingStudents
         ? summary.students.filter((s) => s.pendingReviewCount > 0)
@@ -423,10 +439,26 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref, re
                                                     // Непроверенное — наверх. Проверяющий раскрыл ученика ради
                                                     // одного эссе среди полусотни решённых задач; искать его
                                                     // прокруткой пятьдесят раз подряд — то, на что и жаловались.
-                                                    const ordered = onlyPendingAnswers && pendingHere.length > 0
+                                                    // По запрещённому моку («Ойлик», платный
+                                                    // самокупленный) разбор не показывается — остаётся
+                                                    // только то, что надо проверить руками. Проверку
+                                                    // эссе запрет не отменяет: оценить сочинение в
+                                                    // месячном тесте всё равно кто-то должен.
+                                                    const ordered = !showMistakes
                                                         ? pendingHere
-                                                        : [...pendingHere, ...all.filter((x) => !needsReview(x.d.reviewStatus))];
+                                                        : onlyPendingAnswers && pendingHere.length > 0
+                                                            ? pendingHere
+                                                            : [...pendingHere, ...all.filter((x) => !needsReview(x.d.reviewStatus))];
                                                     return (<>
+                                                    {!showMistakes && (
+                                                        <p className="mb-2 rounded-lg bg-muted px-3 py-2 text-xs font-semibold leading-relaxed text-muted-foreground">
+                                                            {/* Блок рисуется только при запрете, поэтому ветки
+                                                                «разрешено» здесь нет. */}
+                                                            {t(!reviewAccess.allowed && reviewAccess.reason === "OYLIK"
+                                                                ? "mistakesHiddenOylik"
+                                                                : "mistakesHiddenOther")}
+                                                        </p>
+                                                    )}
                                                     {pendingHere.length > 0 && (
                                                         <button
                                                             onClick={() => setOnlyPendingAnswers(!onlyPendingAnswers)}

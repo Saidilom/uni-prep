@@ -375,7 +375,7 @@ const ru = {
   teacherResults: {
     studentResults: "Результаты учеников",
     topClassLabel: "Топ группа",
-    avgResultSuffix: "{score}% средний результат",
+    avgResultSuffix: "средний балл {score}",
     noCompletedTestsYet: "Пока нет пройденных тестов",
     topStudentLabel: "Топ ученик",
     myGroups: "Мои группы",
@@ -479,6 +479,8 @@ const ru = {
     noPlacementTestsAvailable: "Нет доступных «Вступительных тестов» для назначения — либо их ещё не создали в админ-панели, либо у ученика уже есть активные назначения на все.",
   },
   classMockResults: {
+    mistakesHiddenOylik: "По месячному тесту разбор ошибок не показывается. Ниже — только работы, которые нужно проверить.",
+    mistakesHiddenOther: "По этому тесту разбор ошибок не показывается. Ниже — только работы, которые нужно проверить.",
     onlyPendingStudents: "Только непроверенные",
     onlyPendingAnswers: "Только требующие проверки ({count})",
     showAllAnswers: "Показать все ответы ({count})",
@@ -549,6 +551,11 @@ const ru = {
     essayCriteriaIncomplete: "Оцените все 12 критериев",
   },
   studentReport: {
+    mistakesTitle: "Ошибки: {count} из {total} заданий",
+    mistakeQuestionNumber: "Задание {number}",
+    yourAnswerLabel: "Ваш ответ:",
+    notAnsweredLabel: "Вы не ответили на это задание",
+    noMistakes: "Ошибок нет — все задания решены верно.",
     scoreLabel: "Ваш балл",
     // §D.7: без интервала одна десятая в балле обещает точность, которой нет.
     intervalExplain: "Это измерение с погрешностью: с вероятностью 95% ваш настоящий уровень соответствует баллу от {range}. Разница меньше погрешности — не разница.",
@@ -994,7 +1001,7 @@ const ru = {
     classNotFound: "Группа не найдена.",
     backToClasses: "Все группы",
     studentWord: "ученик",
-    avgResultSuffix: "{score}% средний результат",
+    avgResultSuffix: "средний балл {score}",
     studentsSection: "Ученики",
     noStudentsInGroup: "В группе пока нет учеников.",
     attemptWord: "попытка",

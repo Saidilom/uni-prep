@@ -18,7 +18,7 @@ import {
 } from "@/lib/class-utils";
 import { Class, User } from "@/lib/firestore-schema";
 import { accuracyColor } from "@/lib/status-colors";
-import { formatScore, roundScore } from "@/lib/certificate-scale";
+import { formatScore, roundScore, certificatePercent, CERTIFICATE_MAX } from "@/lib/certificate-scale";
 import ClassStudentsPanel from "@/components/class-students-panel";
 import { pluralizeRu } from "@/lib/pluralize-ru";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
@@ -105,7 +105,7 @@ export default function ClassDetailView({ classId, basePath, backHref }: {
                     {avgScore !== null && (
                         <>
                             {" · "}
-                            <span className={`inline-flex items-center rounded-lg px-2 py-0.5 font-extrabold tabular-nums ${accuracyColor(avgScore)}`}>{t("avgResultSuffix").replace("{score}", formatScore(avgScore))}</span>
+                            <span className={`inline-flex items-center rounded-lg px-2 py-0.5 font-extrabold tabular-nums ${accuracyColor(certificatePercent(avgScore, CERTIFICATE_MAX))}`}>{t("avgResultSuffix").replace("{score}", formatScore(avgScore))}</span>
                         </>
                     )}
                 </p>

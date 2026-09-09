@@ -377,7 +377,7 @@ const uz: typeof ru = {
   teacherResults: {
     studentResults: "O'quvchilar natijalari",
     topClassLabel: "Eng yaxshi guruh",
-    avgResultSuffix: "{score}% o'rtacha natija",
+    avgResultSuffix: "o'rtacha ball {score}",
     noCompletedTestsYet: "Hozircha topshirilgan testlar yo'q",
     topStudentLabel: "Eng yaxshi o'quvchi",
     myGroups: "Mening guruhlarim",
@@ -481,6 +481,8 @@ const uz: typeof ru = {
     noPlacementTestsAvailable: "Tayinlash uchun mavjud «Kirish testlari» yo'q — ular hali admin panelda yaratilmagan yoki o'quvchida ularning barchasiga faol tayinlashlar mavjud.",
   },
   classMockResults: {
+    mistakesHiddenOylik: "Oylik test bo'yicha xatolar tahlili ko'rsatilmaydi. Pastda — faqat tekshirilishi kerak bo'lgan ishlar.",
+    mistakesHiddenOther: "Bu test bo'yicha xatolar tahlili ko'rsatilmaydi. Pastda — faqat tekshirilishi kerak bo'lgan ishlar.",
     onlyPendingStudents: "Faqat tekshirilmaganlar",
     onlyPendingAnswers: "Faqat tekshirish kerak bo'lganlar ({count})",
     showAllAnswers: "Barcha javoblarni ko'rsatish ({count})",
@@ -547,6 +549,11 @@ const uz: typeof ru = {
     essayCriteriaIncomplete: "Barcha 12 mezonni baholang",
   },
   studentReport: {
+    mistakesTitle: "Xatolar: {total} topshiriqdan {count} tasi",
+    mistakeQuestionNumber: "{number}-topshiriq",
+    yourAnswerLabel: "Sizning javobingiz:",
+    notAnsweredLabel: "Bu topshiriqqa javob bermagansiz",
+    noMistakes: "Xato yo'q — barcha topshiriqlar to'g'ri yechilgan.",
     scoreLabel: "Sizning ballingiz",
     intervalExplain: "Bu — xatolikka ega o'lchov: 95% ehtimol bilan haqiqiy darajangiz {range} ball oralig'iga to'g'ri keladi. Xatolikdan kichik farq — farq emas.",
     borderlineWarning: "Siz daraja chegarasidasiz: xatolikni hisobga olsak, bu {levels} bo'lishi mumkin.",
@@ -985,7 +992,7 @@ const uz: typeof ru = {
     classNotFound: "Guruh topilmadi.",
     backToClasses: "Barcha guruhlar",
     studentWord: "o'quvchi",
-    avgResultSuffix: "{score}% o'rtacha natija",
+    avgResultSuffix: "o'rtacha ball {score}",
     studentsSection: "O'quvchilar",
     noStudentsInGroup: "Bu guruhda hozircha o'quvchilar yo'q.",
     attemptWord: "urinish",

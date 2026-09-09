@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { UsersRound, GraduationCap } from "lucide-react";
+import Link from "next/link";
+import { UsersRound, GraduationCap, ChevronRight } from "lucide-react";
 import { fetchAdminClassesOverview, AdminClassSummary } from "@/lib/class-utils";
 import { accuracyColor } from "@/lib/status-colors";
+import { formatScore, certificatePercent, CERTIFICATE_MAX } from "@/lib/certificate-scale";
 import { useTranslations } from "@/lib/i18n/locale-provider";
 
 // Переиспользуем тот же загрузчик, что и админский список групп: фильтровать
@@ -44,7 +46,11 @@ export default function BranchClassesPage() {
                 ) : (
                     <div className="space-y-3">
                         {classes.map((c) => (
-                            <div key={c.id} className="flex flex-col justify-between gap-3 rounded-2xl border border-border bg-card p-5 sm:flex-row sm:items-center">
+                            <Link
+                                key={c.id}
+                                href={`/branch/classes/${c.id}`}
+                                className="flex flex-col justify-between gap-3 rounded-2xl border border-border bg-card p-5 transition-colors hover:bg-muted/40 sm:flex-row sm:items-center"
+                            >
                                 <div className="flex min-w-0 items-center gap-4">
                                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[hsl(var(--brand-blue-ink))]/10 text-[hsl(var(--brand-blue-ink))]">
                                         <GraduationCap size={18} />
@@ -56,10 +62,15 @@ export default function BranchClassesPage() {
                                         </p>
                                     </div>
                                 </div>
-                                <span className={`shrink-0 self-start rounded-xl px-3 py-1.5 text-sm font-extrabold tabular-nums sm:self-auto ${accuracyColor(c.avgScore)}`}>
-                                    {c.avgScore ?? "—"}
-                                </span>
-                            </div>
+                                <div className="flex shrink-0 items-center gap-2 self-start sm:self-auto">
+                                    {/* Цвет — от ПРОЦЕНТА: accuracyColor сравнивает с
+                                        порогами 80 и 50, а балл приходит по шкале 75. */}
+                                    <span className={`rounded-xl px-3 py-1.5 text-sm font-extrabold tabular-nums ${accuracyColor(certificatePercent(c.avgScore, CERTIFICATE_MAX))}`}>
+                                        {c.avgScore !== null ? formatScore(c.avgScore) : "—"}
+                                    </span>
+                                    <ChevronRight size={16} className="text-muted-foreground" />
+                                </div>
+                            </Link>
                         ))}
                     </div>
                 )}

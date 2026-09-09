@@ -25,7 +25,21 @@ import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 // classId = null — режим «весь тест»: участники берутся из самих результатов,
 // а не из состава класса. Так экран проверки работает и для админского мока,
 // который проходят ученики вне классов.
-export default function ClassMockResultsView({ classId, mockTestId, backHref }: { classId?: string | null; mockTestId: string; backHref: string }) {
+export default function ClassMockResultsView({ classId, mockTestId, backHref, readOnly = false }: {
+    classId?: string | null;
+    mockTestId: string;
+    backHref: string;
+    /**
+     * Экран без проверки работ: только просмотр результатов.
+     *
+     * Нужен админу филиала. Проверять эссе он не может и не должен —
+     * can_review_mock_response (миграция 099) пускает админа, назначенного
+     * проверяющего и автора теста, а филиал в этот список не входит. Показывать
+     * ему форму оценивания значило бы предлагать действие, которое всё равно
+     * отклонит сервер.
+     */
+    readOnly?: boolean;
+}) {
     const router = useRouter();
     const { locale } = useLocale();
     const t = useTranslations("classMockResults");
@@ -194,7 +208,7 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
     // Есть непроверенные работы — значит пришли проверять: рейтинг вопросов
     // сворачиваем, чтобы список учеников был виден сразу. Всё проверено —
     // экран читают как аналитику, и рейтинг раскрыт.
-    const hasPendingWork = summary.pendingReviewCount > 0;
+    const hasPendingWork = !readOnly && summary.pendingReviewCount > 0;
     const showRanking = rankingOpen ?? !hasPendingWork;
     const visibleStudents = onlyPendingStudents
         ? summary.students.filter((s) => s.pendingReviewCount > 0)
@@ -210,7 +224,7 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
                 <p className="mt-2 text-sm text-muted-foreground">{t("resultsSubtitle")}</p>
             </section>
 
-            {summary.pendingReviewCount > 0 && (
+            {!readOnly && summary.pendingReviewCount > 0 && (
                 <div className="flex items-center gap-3 rounded-2xl border border-violet-200 bg-violet-50 px-5 py-4 dark:border-violet-900/50 dark:bg-violet-950/25">
                     <Clock size={18} className="shrink-0 text-violet-700 dark:text-violet-300" />
                     <p className="text-sm font-semibold text-violet-800 dark:text-violet-200">
@@ -439,7 +453,7 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
                                                                 </span>
                                                             )}
                                                         </div>
-                                                        {d.reviewStatus === "pending" && usesCriteriaForm(d) && (
+                                                        {!readOnly && d.reviewStatus === "pending" && usesCriteriaForm(d) && (
                                                             <EssayCriteriaForm
                                                                 maxPoints={d.maxPoints}
                                                                 saving={reviewingId === d.id}
@@ -447,7 +461,7 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref }: 
                                                                 onSubmit={(payload) => reviewEssayByCriteria(resultId, d, payload)}
                                                             />
                                                         )}
-                                                        {d.reviewStatus === "pending" && !usesCriteriaForm(d) && (
+                                                        {!readOnly && d.reviewStatus === "pending" && !usesCriteriaForm(d) && (
                                                             <div className="mt-3 rounded-xl border border-violet-200 bg-violet-50 p-3 dark:bg-violet-950/25">
                                                                 {/* Одно поле «сколько баллов» — путь для заданий БЕЗ
                                                                     критериальной таблицы: английские Task 1 и Task 2

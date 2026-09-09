@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { XCircle, CheckCircle2, MessageSquare } from "lucide-react";
 import supabase from "@/lib/supabase/client";
 import { useTranslations } from "@/lib/i18n/locale-provider";
+import PanelSkeleton from "@/components/panel-skeleton";
 
 // Разбор ошибок для самого ученика.
 //
@@ -49,7 +50,9 @@ export default function StudentMistakeReview({ resultId }: { resultId: string })
         return () => { active = false; };
     }, [resultId]);
 
-    if (!rows || rows.length === 0) return null;
+    // Грузится — держим место заглушкой; ошибок нет — блока нет вовсе.
+    if (!rows) return <PanelSkeleton />;
+    if (rows.length === 0) return null;
 
     // Нумерация — из ИСХОДНОГО порядка: «задание 7» должно остаться седьмым в
     // тесте, иначе сверить с работой нечем.

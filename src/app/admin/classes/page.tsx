@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Users, User as UserIcon, GraduationCap, ChevronRight, Building2 } from "lucide-react";
-import { fetchAdminClassesOverview, fetchBranches, AdminClassSummary, Branch } from "@/lib/class-utils";
+import { fetchAdminClassesOverview, fetchBranches, AdminClassSummary, Branch, prefetchClassDetail} from "@/lib/class-utils";
 import { accuracyColor } from "@/lib/status-colors";
 import { formatScore, certificatePercent, CERTIFICATE_MAX } from "@/lib/certificate-scale";
 import { pluralizeRu } from "@/lib/pluralize-ru";
@@ -184,6 +184,8 @@ export default function AdminClassesPage() {
                             <Link
                                 key={c.id}
                                 href={`/admin/classes/${c.id}`}
+                                                onMouseEnter={() => prefetchClassDetail(c.id)}
+                                                onFocus={() => prefetchClassDetail(c.id)}
                                 className="flex flex-col justify-between gap-3 rounded-2xl border border-border bg-card p-5 transition-colors hover:bg-muted/40 sm:flex-row sm:items-center"
                             >
                                 <div className="flex min-w-0 items-center gap-4">

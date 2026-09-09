@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { UsersRound, GraduationCap, ChevronRight } from "lucide-react";
-import { fetchAdminClassesOverview, AdminClassSummary } from "@/lib/class-utils";
+import { fetchAdminClassesOverview, AdminClassSummary, prefetchClassDetail} from "@/lib/class-utils";
 import { accuracyColor } from "@/lib/status-colors";
 import { formatScore, certificatePercent, CERTIFICATE_MAX } from "@/lib/certificate-scale";
 import FilterChip from "@/components/filter-chip";
@@ -96,6 +96,8 @@ export default function BranchClassesPage() {
                             <Link
                                 key={c.id}
                                 href={`/branch/classes/${c.id}`}
+                                                onMouseEnter={() => prefetchClassDetail(c.id)}
+                                                onFocus={() => prefetchClassDetail(c.id)}
                                 className="flex flex-col justify-between gap-3 rounded-2xl border border-border bg-card p-5 transition-colors hover:bg-muted/40 sm:flex-row sm:items-center"
                             >
                                 <div className="flex min-w-0 items-center gap-4">

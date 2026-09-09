@@ -12,8 +12,7 @@ import {
     assignTeacherToBranch,
     fetchAdminClassesOverview,
     BranchTeacherCandidate,
-    AdminClassSummary,
-} from "@/lib/class-utils";
+    AdminClassSummary, prefetchClassDetail} from "@/lib/class-utils";
 import { useToast } from "@/hooks/useToast";
 import { accuracyColor } from "@/lib/status-colors";
 import { formatScore, certificatePercent, CERTIFICATE_MAX } from "@/lib/certificate-scale";
@@ -269,6 +268,8 @@ export default function BranchTeachersPage() {
                                         <li key={c.id}>
                                             <Link
                                                 href={`/branch/classes/${c.id}`}
+                                                onMouseEnter={() => prefetchClassDetail(c.id)}
+                                                onFocus={() => prefetchClassDetail(c.id)}
                                                 className="flex items-center justify-between gap-3 rounded-xl border border-border bg-background p-3 transition-colors hover:bg-muted/40"
                                             >
                                                 <div className="min-w-0">

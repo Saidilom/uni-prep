@@ -8,7 +8,7 @@ import { CORE_SUBJECTS, CoreSubject, coreSubjectMatches } from "@/lib/mock-impor
 import { accuracyColor } from "@/lib/status-colors";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { averageCertificateScore, formatScore } from "@/lib/certificate-scale";
-import { fetchClassMockResults } from "@/lib/class-utils";
+import { fetchClassMockResults, invalidateMockResultCaches } from "@/lib/class-utils";
 import { buildResultsSheet, exportFileName, RESULTS_COLUMN_WIDTHS } from "@/lib/results-export";
 import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
 import { useToast } from "@/hooks/useToast";
@@ -45,6 +45,10 @@ export default function AdminFreeMockResultsPage() {
     const exportResults = async (row: FreeMockRow) => {
         setExporting(row.id);
         try {
+            // Выгрузка — действие, где ждут ТЕКУЩИЕ числа: файл уходит наружу
+            // и живёт дальше сам по себе. Сбрасываем кеш, чтобы в него не
+            // попал экран минутной давности.
+            invalidateMockResultCaches(row.id);
             const summary = await fetchClassMockResults(null, row.id);
             if (summary.students.length === 0) {
                 toast.info(t("exportEmpty"));

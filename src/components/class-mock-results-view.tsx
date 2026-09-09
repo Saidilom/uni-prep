@@ -8,6 +8,7 @@ import {
     fetchClassMockResults,
     fetchMockAnswerDetails,
     fetchMockQuestionErrorStats,
+    invalidateMockResultCaches,
     ClassMockResultsSummary,
     MockAnswerDetail,
     QuestionErrorStat,
@@ -144,6 +145,9 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref, re
                     : body.error || t("reviewError");
                 throw new Error(message);
             }
+            // Сброс ДО перечитывания: иначе вернулись бы те же кешированные
+            // числа, и проверяющий не увидел бы результата своего действия.
+            invalidateMockResultCaches(mockTestId, resultId);
             const refreshed = await fetchMockAnswerDetails(resultId);
             setDetails((current) => ({ ...current, [resultId]: refreshed }));
             setSummary(await fetchClassMockResults(classId ?? null, mockTestId));
@@ -172,6 +176,9 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref, re
             });
             const body = await response.json();
             if (!response.ok) throw new Error(body.error || t("reviewError"));
+            // Сброс ДО перечитывания: иначе вернулись бы те же кешированные
+            // числа, и проверяющий не увидел бы результата своего действия.
+            invalidateMockResultCaches(mockTestId, resultId);
             const refreshed = await fetchMockAnswerDetails(resultId);
             setDetails((current) => ({ ...current, [resultId]: refreshed }));
             setSummary(await fetchClassMockResults(classId ?? null, mockTestId));

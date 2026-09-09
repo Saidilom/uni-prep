@@ -8,6 +8,7 @@ import {
     TifCurve, WrightMap,
 } from "@/lib/rasch-curves";
 import { useTranslations } from "@/lib/i18n/locale-provider";
+import PanelSkeleton from "@/components/panel-skeleton";
 
 // Психометрические графики. ТЗ §D.3 (TIF), §D.10 (карта Райта),
 // §D.11 (TCC), §D.12 (ICC).
@@ -127,6 +128,8 @@ export default function PsychometricCharts({ mockTestId }: PsychometricChartsPro
         };
     }, [measures]);
 
+    // Грузится — держим место заглушкой; мер нет — графиков нет вовсе.
+    if (!measures) return <PanelSkeleton />;
     if (!model) return null;
     const { range, tif, tcc, wright, iccs } = model;
 

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ChevronDown, KeyRound, CircleOff, AlertTriangle } from "lucide-react";
 import { fetchDistractorReport, DistractorQuestion } from "@/lib/class-utils";
 import { useTranslations } from "@/lib/i18n/locale-provider";
+import PanelSkeleton from "@/components/panel-skeleton";
 
 // Разбор закрытых заданий по вариантам. ТЗ §R.7.
 //
@@ -59,7 +60,9 @@ export default function DistractorReport({ mockTestId }: DistractorReportProps) 
         return () => { active = false; };
     }, [mockTestId]);
 
-    if (!questions || questions.length === 0) return null;
+    // Грузится — держим место заглушкой; данных нет — панели нет вовсе.
+    if (!questions) return <PanelSkeleton />;
+    if (questions.length === 0) return null;
 
     const flagged = questions.filter((q) => q.flags.length > 0);
     const keySuspects = questions.filter((q) => q.flags.includes("OUTPERFORMS_CORRECT")).length;

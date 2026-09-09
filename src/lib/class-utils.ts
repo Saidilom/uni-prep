@@ -645,7 +645,54 @@ export const fetchMockTakers = async (mockTestId: string): Promise<User[]> => {
 const num = (v: unknown): number | null =>
     v === null || v === undefined ? null : Number(v);
 
-export const fetchClassMockResults = async (classId: string | null, mockTestId: string): Promise<ClassMockResultsSummary> => {
+/**
+ * Прогрев кеша экрана группы — до того, как по ней щёлкнут.
+ *
+ * Экран группы делает шесть выборок, и все они кешированы. Если запустить их
+ * на наведение курсора, к моменту перехода данные уже лежат в кеше, и страница
+ * открывается без ожидания. Без прогрева пользователь видит скелетон каждый
+ * раз, даже открывая ту же группу второй раз за минуту.
+ *
+ * Ошибки глотаются намеренно: это спекулятивная работа. Не получилось —
+ * страница сама всё запросит обычным путём и покажет свой скелетон; ронять
+ * список из-за неудачного прогрева было бы хуже, чем не прогревать вовсе.
+ *
+ * Повторные наведения бесплатны: pageCache склеивает одновременные запросы по
+ * ключу и отдаёт уже готовое значение из кеша.
+ */
+export const prefetchClassDetail = (classId: string): void => {
+    void Promise.allSettled([
+        fetchClassById(classId),
+        fetchClassMembers(classId),
+        fetchClassStudentsOverview(classId),
+        fetchClassMockAssignments(classId),
+        fetchClassStudentMockAssignments(classId),
+        fetchClassStudentMockScores(classId),
+    ]);
+};
+
+/**
+ * Сброс кеша экрана результатов мока.
+ *
+ * Обязателен после ЛЮБОЙ записи оценки: проверил эссе — и рейтинг, счётчик
+ * непроверенных, разбор по вопросам и статистика ошибок устарели все сразу.
+ * Без этого экран показывал бы прежние числа до истечения TTL, то есть
+ * проверяющий не увидел бы результата собственного действия.
+ *
+ * Ключ классa не знаем — сбрасываем по префиксу: один и тот же мок бывает
+ * открыт и в режиме группы, и в режиме «весь тест» (classId = null).
+ */
+export const invalidateMockResultCaches = (mockTestId: string, resultId?: string): void => {
+    pageCache.invalidatePrefix("classMockResults:");
+    pageCache.invalidatePrefix("mockQuestionErrorStats:");
+    if (resultId) pageCache.invalidate(`mockAnswerDetails:${resultId}`);
+    // Разбор дистракторов и меры графиков считаются из тех же ответов.
+    pageCache.invalidate(`distractorReport:${mockTestId}`);
+    pageCache.invalidate(`mockMeasures:${mockTestId}`);
+};
+
+export const fetchClassMockResults = async (classId: string | null, mockTestId: string): Promise<ClassMockResultsSummary> =>
+    pageCache.fetch(`classMockResults:${classId ?? "all"}:${mockTestId}`, async () => {
     const [members, { data: test }, { data: results }] = await Promise.all([
         classId ? fetchClassMembers(classId) : fetchMockTakers(mockTestId),
         // Список колонок — ОДНИМ строковым литералом, без переносов и склейки.
@@ -754,7 +801,7 @@ export const fetchClassMockResults = async (classId: string | null, mockTestId: 
             }
             : null,
     };
-};
+}, TEACHER_CACHE_TTL);
 
 // ═══ Разбор дистракторов (§R.7) ═══
 //
@@ -789,7 +836,8 @@ export type DistractorQuestion = {
     options: DistractorOption[];
 };
 
-export const fetchDistractorReport = async (mockTestId: string): Promise<DistractorQuestion[]> => {
+export const fetchDistractorReport = async (mockTestId: string): Promise<DistractorQuestion[]> =>
+    pageCache.fetch(`distractorReport:${mockTestId}`, async () => {
     // Постранично: строк здесь «закрытых заданий × вариантов» — на нашем
     // большом варианте 130 × 4 ≈ 520, а PostgREST режет ответ по max_rows
     // молча. Усечение показало бы часть заданий без флагов, которые у них есть.
@@ -861,7 +909,7 @@ export const fetchDistractorReport = async (mockTestId: string): Promise<Distrac
     };
     return Array.from(byQuestion.values()).sort((a, b) =>
         (b.flags.length > 0 ? 1 : 0) - (a.flags.length > 0 ? 1 : 0) || gap(b) - gap(a));
-};
+    }, TEACHER_CACHE_TTL);
 
 // ═══ Меры для психометрических графиков (§D.3, D.10–D.12) ═══
 //
@@ -883,7 +931,8 @@ export type MockMeasures = {
     calibratedAt: string | null;
 };
 
-export const fetchMockMeasures = async (mockTestId: string): Promise<MockMeasures> => {
+export const fetchMockMeasures = async (mockTestId: string): Promise<MockMeasures> =>
+    pageCache.fetch(`mockMeasures:${mockTestId}`, async () => {
     const [{ data: calibration }, { data: results }] = await Promise.all([
         fetchAllRows<{ difficulty: number | null; item_status: string | null; calibrated_at: string | null }>(
             (from, to) => supabase
@@ -915,7 +964,7 @@ export const fetchMockMeasures = async (mockTestId: string): Promise<MockMeasure
             .filter((v): v is number => v !== null && Number.isFinite(v)),
         calibratedAt: rows.find((r) => r.calibrated_at)?.calibrated_at ?? null,
     };
-};
+    }, TEACHER_CACHE_TTL);
 
 export type StudentClassSummary = { id: string; name: string; teacherName: string };
 
@@ -1042,7 +1091,8 @@ export type QuestionErrorStat = {
 // the class's students got each question wrong, ranked worst-first. Powers
 // the "hardest question" ranking on the class-mock results page (#24) — a
 // natural extension of the per-student breakdown already shown there.
-export const fetchMockQuestionErrorStats = async (classId: string | null, mockTestId: string): Promise<QuestionErrorStat[]> => {
+export const fetchMockQuestionErrorStats = async (classId: string | null, mockTestId: string): Promise<QuestionErrorStat[]> =>
+    pageCache.fetch(`mockQuestionErrorStats:${classId ?? "all"}:${mockTestId}`, async () => {
     // classId = null — считаем по всем сдававшим (админский мок без класса).
     let query = supabase.from("mock_results").select("id").eq("mock_test_id", mockTestId);
     if (classId) {
@@ -1085,7 +1135,7 @@ export const fetchMockQuestionErrorStats = async (classId: string | null, mockTe
             wrongRate: total > 0 ? Math.round((wrong / total) * 100) : 0,
         }))
         .sort((a, b) => b.wrongRate - a.wrongRate);
-};
+}, TEACHER_CACHE_TTL);
 
 export type MockAnswerDetail = {
     id: string;
@@ -1099,7 +1149,8 @@ export type MockAnswerDetail = {
     reviewFeedback?: string | null;
 };
 
-export const fetchMockAnswerDetails = async (resultId: string): Promise<MockAnswerDetail[]> => {
+export const fetchMockAnswerDetails = async (resultId: string): Promise<MockAnswerDetail[]> =>
+    pageCache.fetch(`mockAnswerDetails:${resultId}`, async () => {
     const { data } = await supabase
         .from("mock_answer_details")
         .select("id, question_id, question_text, selected_answer, correct_answer, is_correct, points_earned, max_points, review_status, review_feedback")
@@ -1125,7 +1176,7 @@ export const fetchMockAnswerDetails = async (resultId: string): Promise<MockAnsw
         reviewStatus: d.review_status as MockAnswerDetail["reviewStatus"],
         reviewFeedback: d.review_feedback as string | null,
     }));
-};
+}, TEACHER_CACHE_TTL);
 
 // --- Teacher-facing results drill-down: classes -> students -> attempts ---
 
@@ -1544,7 +1595,8 @@ export type BranchSubjectRow = {
     overallAttempts: number;
 };
 
-export const fetchBranchSubjectBreakdown = async (branchId: string): Promise<BranchSubjectRow[]> => {
+export const fetchBranchSubjectBreakdown = async (branchId: string): Promise<BranchSubjectRow[]> =>
+    pageCache.fetch(`branchSubjectBreakdown:${branchId}`, async () => {
     const { data, error } = await supabase.rpc("get_branch_subject_breakdown", { p_branch_id: branchId });
     if (error) throw error;
     return ((data || []) as Array<Record<string, unknown>>).map((row) => ({
@@ -1554,7 +1606,7 @@ export const fetchBranchSubjectBreakdown = async (branchId: string): Promise<Bra
         overallAvg: row.overall_avg !== null && row.overall_avg !== undefined ? Number(row.overall_avg) : null,
         overallAttempts: Number(row.overall_attempts ?? 0),
     }));
-};
+    }, TEACHER_CACHE_TTL);
 
 export const fetchBranches = async (): Promise<Branch[]> => {
     const { data } = await supabase.from("branches").select("id, name, created_at").order("name");

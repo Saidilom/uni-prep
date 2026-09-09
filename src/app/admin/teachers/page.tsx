@@ -6,7 +6,7 @@ import { Search, Mail, Phone, Users, Trophy, ChevronDown, ChevronRight } from "l
 import supabase from "@/lib/supabase/client";
 import { User as UserType } from "@/lib/firestore-schema";
 import { pluralizeRu } from "@/lib/pluralize-ru";
-import { fetchAdminTeachersOverview, fetchAdminClassesOverview, AdminClassSummary } from "@/lib/class-utils";
+import { fetchAdminTeachersOverview, fetchAdminClassesOverview, AdminClassSummary, prefetchClassDetail} from "@/lib/class-utils";
 import { accuracyColor } from "@/lib/status-colors";
 import { formatScore, certificatePercent, CERTIFICATE_MAX } from "@/lib/certificate-scale";
 import { CoreSubject } from "@/lib/mock-import-schema";
@@ -162,6 +162,8 @@ export default function AdminTeachersPage() {
                                         <li key={c.id}>
                                             <Link
                                                 href={`/admin/classes/${c.id}`}
+                                                onMouseEnter={() => prefetchClassDetail(c.id)}
+                                                onFocus={() => prefetchClassDetail(c.id)}
                                                 className="flex items-center justify-between gap-3 rounded-xl border border-border bg-background p-3 transition-colors hover:bg-muted/40"
                                             >
                                                 <div className="min-w-0">

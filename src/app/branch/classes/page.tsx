@@ -57,9 +57,9 @@ export default function BranchClassesPage() {
                 <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">{t("subtitle")}</p>
             </section>
 
-            {/* Предметы. Одна вкладка — фильтровать нечего, и кнопки были бы
-                декорацией. */}
-            {!loading && subjects.length > 1 && (
+            {/* Предметы. Показываются ВСЕ, включая те, где групп нет: по набору
+                из двух вкладок не видно, что предметов вообще семь. */}
+            {!loading && (
                 <section className="flex flex-wrap items-center gap-2">
                     <FilterChip
                         label={t("allSubjects")}

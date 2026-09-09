@@ -30,41 +30,48 @@ describe("classSubject — к какому предмету относится �
 });
 
 describe("subjectTabs — какие вкладки показывать", () => {
-    it("только те предметы, у которых есть группы", () => {
+    it("показываются ВСЕ предметы, даже пустые", () => {
+        // Решение владельца: по набору «Математика 2 · Без предмета 5» не
+        // видно, что предметов вообще семь.
         const tabs = subjectTabs([cls("math"), cls("math"), cls("english")]);
-        expect(tabs).toEqual([
-            { value: "math", count: 2 },
-            { value: "english", count: 1 },
-        ]);
+        expect(tabs).toHaveLength(CORE_SUBJECTS.length);
+        expect(tabs.find((t) => t.value === "math")!.count).toBe(2);
+        expect(tabs.find((t) => t.value === "english")!.count).toBe(1);
+        expect(tabs.find((t) => t.value === "biology")!.count).toBe(0);
     });
 
     it("порядок как в CORE_SUBJECTS, а не по алфавиту", () => {
         // По алфавиту «Биология» встала бы перед «Математикой», и это читалось
         // бы как случайность.
         const tabs = subjectTabs([cls("english"), cls("biology"), cls("math")]);
-        expect(tabs.map((t) => t.value)).toEqual(["math", "biology", "english"]);
+        expect(tabs.map((t) => t.value)).toEqual([...CORE_SUBJECTS]);
     });
 
     it("'uzbek' и 'native' складываются в одну вкладку", () => {
         const tabs = subjectTabs([cls("uzbek"), cls("native"), cls("russian")]);
-        expect(tabs).toEqual([{ value: "native", count: 3 }]);
+        expect(tabs.find((t) => t.value === "native")!.count).toBe(3);
+        // Своей вкладки у 'uzbek' и 'russian' нет.
+        expect(tabs.filter((t) => t.count > 0)).toHaveLength(1);
     });
 
     it("«без предмета» всегда последняя вкладка", () => {
         const tabs = subjectTabs([cls(null), cls("math"), cls("geography")]);
-        expect(tabs.map((t) => t.value)).toEqual(["math", SUBJECT_NONE]);
+        expect(tabs[tabs.length - 1].value).toBe(SUBJECT_NONE);
         // geography не входит в CORE_SUBJECTS, поэтому попадает к «без предмета».
         expect(tabs.find((t) => t.value === SUBJECT_NONE)!.count).toBe(2);
     });
 
-    it("пустых вкладок не бывает", () => {
+    it("«без предмета» не показывается, когда таких групп нет", () => {
+        // Это не предмет, а остаток: вкладка «Без предмета 0» сообщала бы о
+        // несуществующей категории.
         const tabs = subjectTabs([cls("math")]);
-        expect(tabs.every((t) => t.count > 0)).toBe(true);
-        expect(tabs).toHaveLength(1);
+        expect(tabs.some((t) => t.value === SUBJECT_NONE)).toBe(false);
     });
 
-    it("пустой список групп — пустые вкладки", () => {
-        expect(subjectTabs([])).toEqual([]);
+    it("пустой список групп — все предметы с нулями", () => {
+        const tabs = subjectTabs([]);
+        expect(tabs).toHaveLength(CORE_SUBJECTS.length);
+        expect(tabs.every((t) => t.count === 0)).toBe(true);
     });
 });
 

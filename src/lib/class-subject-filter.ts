@@ -41,10 +41,16 @@ export function classSubject(subjectId: string | null): CoreSubject | null {
 export type SubjectTab = { value: CoreSubject | typeof SUBJECT_NONE; count: number };
 
 /**
- * Вкладки предметов, у которых есть хотя бы одна группа.
+ * Вкладки ВСЕХ предметов, включая те, где групп ещё нет.
  *
- * Пустые не показываются: вкладка со счётчиком «0» ничего не сообщает, а
- * нажатие на неё выглядит как поломка.
+ * Решение владельца: показывать весь список. Сначала пустые вкладки
+ * скрывались, и выходило «Математика 2 · Без предмета 5» — по такому набору
+ * не видно, что предметов вообще семь, и непонятно, куда делись остальные.
+ * Ноль на вкладке при этом сам себе объяснение: групп по этому предмету нет.
+ *
+ * «Без предмета» — исключение, она показывается только когда такие группы
+ * есть: это не предмет, а остаток, и вкладка «Без предмета 0» сообщала бы о
+ * несуществующей категории.
  */
 export function subjectTabs(classes: readonly SubjectBearing[]): SubjectTab[] {
     const counts = new Map<CoreSubject | typeof SUBJECT_NONE, number>();
@@ -53,9 +59,10 @@ export function subjectTabs(classes: readonly SubjectBearing[]): SubjectTab[] {
         counts.set(key, (counts.get(key) ?? 0) + 1);
     }
     // Порядок берётся из CORE_SUBJECTS, «без предмета» — всегда последним.
-    const tabs: SubjectTab[] = CORE_SUBJECTS
-        .filter((core) => (counts.get(core) ?? 0) > 0)
-        .map((core) => ({ value: core, count: counts.get(core)! }));
+    const tabs: SubjectTab[] = CORE_SUBJECTS.map((core) => ({
+        value: core,
+        count: counts.get(core) ?? 0,
+    }));
     const none = counts.get(SUBJECT_NONE) ?? 0;
     if (none > 0) tabs.push({ value: SUBJECT_NONE, count: none });
     return tabs;

@@ -1478,6 +1478,17 @@ export type BranchOverview = {
     // §12: то же самое, но только по тестам последнего опубликованного
     // комплекта «Ойлик тест» — «как филиал сдал в этом месяце».
     avgOylik: number | null;
+    /** Админ филиала. null — филиал без админа, его никто не ведёт. */
+    admin: BranchAdminInfo | null;
+};
+
+export type BranchAdminInfo = {
+    id: string;
+    name: string;
+    /** Короткий ID — тот самый, что показан в «Пользователях» и вводится при назначении. */
+    shortId: string | null;
+    /** Логин, по которому человек заходит. */
+    login: string | null;
 };
 
 // Считается целиком в SQL (get_branch_overview, миграция 072), а не сборкой в
@@ -1495,6 +1506,17 @@ export const fetchBranchOverview = async (): Promise<BranchOverview[]> => {
             studentCount: (row.student_count as number) ?? 0,
             avgScore: row.avg_score !== null && row.avg_score !== undefined ? Number(row.avg_score) : null,
             avgOylik: row.avg_oylik !== null && row.avg_oylik !== undefined ? Number(row.avg_oylik) : null,
+            // Админ есть только если у филиала он назначен: у нового филиала
+            // без админа все три поля пусты, и показывать «—» вместо имени
+            // честнее, чем пустую строку.
+            admin: row.admin_id
+                ? {
+                    id: row.admin_id as string,
+                    name: (row.admin_name as string | null)?.trim() || (row.admin_id as string),
+                    shortId: (row.admin_short_id as string | null) ?? null,
+                    login: (row.admin_login as string | null) ?? null,
+                }
+                : null,
         }));
     }, TEACHER_CACHE_TTL);
 };
@@ -1605,6 +1627,39 @@ export const findUserByIdentifier = async (raw: string): Promise<BranchAdminCand
         if (data) return toBranchAdminCandidate(data as Record<string, unknown>);
     }
     return null;
+};
+
+/** Что осиротеет при удалении филиала — спрашивается ДО удаления. */
+export type BranchDeleteImpact = { classes: number; members: number; adminName: string | null };
+
+export const fetchBranchDeleteImpact = async (branchId: string): Promise<BranchDeleteImpact> => {
+    const { data, error } = await supabase.rpc("branch_delete_impact", { p_branch_id: branchId });
+    if (error) throw error;
+    const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | undefined;
+    return {
+        classes: Number(row?.classes ?? 0),
+        members: Number(row?.members ?? 0),
+        adminName: ((row?.admin_name as string | null) ?? null)?.trim() || null,
+    };
+};
+
+/**
+ * Удаление филиала.
+ *
+ * Группы и люди не пропадают — у них обнуляется филиал (обе связи объявлены
+ * ON DELETE SET NULL). Админ филиала при этом переводится в учителя: иначе
+ * остался бы branch_admin с пустым филиалом и видел бы только пустые страницы.
+ */
+export const deleteBranch = async (branchId: string): Promise<BranchDeleteImpact> => {
+    const { data, error } = await supabase.rpc("delete_branch", { p_branch_id: branchId });
+    if (error) throw error;
+    pageCache.invalidate("branchOverview");
+    const row = (data ?? {}) as Record<string, unknown>;
+    return {
+        classes: Number(row.classes_orphaned ?? 0),
+        members: Number(row.members_released ?? 0),
+        adminName: null,
+    };
 };
 
 export const createBranch = async (name: string, adminId: string | null): Promise<void> => {

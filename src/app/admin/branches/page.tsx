@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Building2, Plus, Users, GraduationCap, Pencil, Check, X, ChevronRight, UserCheck } from "lucide-react";
-import { fetchBranchOverview, createBranch, renameBranch, fetchReviewerCandidates, findUserByIdentifier, BranchOverview, ReviewerCandidate, BranchAdminCandidate } from "@/lib/class-utils";
+import { Building2, Plus, Users, GraduationCap, Pencil, Check, X, ChevronRight, UserCheck, Trash2, IdCard, Mail, AlertTriangle } from "lucide-react";
+import { fetchBranchOverview, createBranch, renameBranch, fetchReviewerCandidates, findUserByIdentifier, fetchBranchDeleteImpact, deleteBranch, BranchOverview, ReviewerCandidate, BranchAdminCandidate, BranchDeleteImpact } from "@/lib/class-utils";
 import { accuracyColor } from "@/lib/status-colors";
 import { formatScore, certificatePercent, CERTIFICATE_MAX } from "@/lib/certificate-scale";
 import { useToast } from "@/hooks/useToast";
@@ -36,6 +36,12 @@ export default function AdminBranchesPage() {
     const [adminIdInput, setAdminIdInput] = useState("");
     const [lookedUp, setLookedUp] = useState<BranchAdminCandidate | null>(null);
     const [lookupState, setLookupState] = useState<"idle" | "searching" | "notFound">("idle");
+    // Удаление в два шага: сначала показываем, что осиротеет, и только потом
+    // удаляем. Филиал уносит с собой роль своего админа, и узнавать об этом
+    // постфактум — плохо.
+    const [deleteTarget, setDeleteTarget] = useState<BranchOverview | null>(null);
+    const [deleteImpact, setDeleteImpact] = useState<BranchDeleteImpact | null>(null);
+    const [deleting, setDeleting] = useState(false);
 
     const load = async () => {
         setLoading(true);
@@ -86,6 +92,38 @@ export default function AdminBranchesPage() {
     // Введён ID, но за ним никого нет — создавать нельзя: филиал остался бы
     // без админа, а супер-админ думал бы, что назначил.
     const adminIdBroken = adminIdInput.trim().length > 0 && !lookedUp;
+
+    const askDelete = async (branch: BranchOverview) => {
+        setDeleteTarget(branch);
+        setDeleteImpact(null);
+        try {
+            setDeleteImpact(await fetchBranchDeleteImpact(branch.branchId));
+        } catch {
+            // Не смогли посчитать последствия — удалять вслепую нельзя.
+            setDeleteTarget(null);
+            toast.error(t("branchDeleteFailed"));
+        }
+    };
+
+    const confirmDelete = async () => {
+        if (!deleteTarget) return;
+        setDeleting(true);
+        try {
+            const result = await deleteBranch(deleteTarget.branchId);
+            setDeleteTarget(null);
+            setDeleteImpact(null);
+            toast.success(
+                t("branchDeletedToast")
+                    .replace("{classes}", String(result.classes))
+                    .replace("{members}", String(result.members)),
+            );
+            await load();
+        } catch (error) {
+            toast.error(t("branchDeleteFailed"), { description: error instanceof Error ? error.message : String(error) });
+        } finally {
+            setDeleting(false);
+        }
+    };
 
     const handleCreate = async () => {
         if (newName.trim().length < 1) return;
@@ -283,7 +321,35 @@ export default function AdminBranchesPage() {
                                                 </button>
                                             </div>
                                         )}
-                                        <div className="mt-0.5 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                                        {/* Кто ведёт филиал: имя, короткий ID и логин.
+                                            Короткий ID здесь не украшение — именно он
+                                            показан в «Пользователях» и именно его
+                                            вводят при назначении, так что сверять
+                                            удобно по нему. */}
+                                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                                            {branch.admin ? (
+                                                <>
+                                                    <span className="inline-flex items-center gap-1.5 rounded-lg bg-[hsl(var(--brand-olive-soft))] px-2 py-0.5 font-bold text-[hsl(var(--brand-olive-ink))]">
+                                                        <UserCheck size={11} /> {branch.admin.name}
+                                                    </span>
+                                                    {branch.admin.shortId && (
+                                                        <span className="inline-flex items-center gap-1 rounded-lg bg-muted px-2 py-0.5 font-mono font-semibold text-muted-foreground">
+                                                            <IdCard size={11} /> {branch.admin.shortId}
+                                                        </span>
+                                                    )}
+                                                    {branch.admin.login && (
+                                                        <span className="inline-flex items-center gap-1 text-muted-foreground">
+                                                            <Mail size={11} /> {branch.admin.login}
+                                                        </span>
+                                                    )}
+                                                </>
+                                            ) : (
+                                                <span className="rounded-lg bg-amber-50 px-2 py-0.5 font-semibold text-amber-800 dark:bg-amber-950/30 dark:text-amber-400">
+                                                    {t("branchWithoutAdmin")}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                                             <span className="flex items-center gap-1"><GraduationCap size={12} /> {t("classesCount").replace("{count}", String(branch.classCount))}</span>
                                             <span className="flex items-center gap-1"><Users size={12} /> {t("teachersCount").replace("{count}", String(branch.teacherCount))}</span>
                                             <span className="flex items-center gap-1"><Users size={12} /> {t("studentsCount").replace("{count}", String(branch.studentCount))}</span>
@@ -317,6 +383,13 @@ export default function AdminBranchesPage() {
                                             </span>
                                         )}
                                     </div>
+                                    <button
+                                        onClick={() => askDelete(branch)}
+                                        className="flex h-9 w-9 items-center justify-center self-center rounded-xl text-muted-foreground hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
+                                        aria-label={t("deleteBranch")}
+                                    >
+                                        <Trash2 size={15} />
+                                    </button>
                                     <Link
                                         href={`/admin/branches/${branch.branchId}`}
                                         className="flex h-9 w-9 items-center justify-center self-center rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -330,6 +403,56 @@ export default function AdminBranchesPage() {
                     </div>
                 )}
             </section>
+
+            {/* Подтверждение удаления. Не «вы уверены?», а перечень того, что
+                произойдёт: сколько групп и людей потеряют филиал и кто лишится
+                роли админа. Числа берутся из базы, а не из того, что показано
+                на карточке. */}
+            {deleteTarget && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+                    <div className="w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-xl">
+                        <div className="flex items-start gap-3">
+                            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-600 dark:bg-red-950/40">
+                                <AlertTriangle size={18} />
+                            </span>
+                            <div className="min-w-0">
+                                <p className="font-bold text-foreground">
+                                    {t("deleteBranchTitle").replace("{name}", deleteTarget.branchName)}
+                                </p>
+                                {deleteImpact ? (
+                                    <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
+                                        <li>{t("deleteImpactClasses").replace("{count}", String(deleteImpact.classes))}</li>
+                                        <li>{t("deleteImpactMembers").replace("{count}", String(deleteImpact.members))}</li>
+                                        {deleteImpact.adminName && (
+                                            <li className="font-semibold text-amber-700 dark:text-amber-400">
+                                                {t("deleteImpactAdmin").replace("{name}", deleteImpact.adminName)}
+                                            </li>
+                                        )}
+                                    </ul>
+                                ) : (
+                                    <p className="mt-2 text-sm text-muted-foreground">{t("deleteImpactLoading")}</p>
+                                )}
+                                <p className="mt-2 text-xs text-muted-foreground">{t("deleteBranchIrreversible")}</p>
+                            </div>
+                        </div>
+                        <div className="mt-4 flex justify-end gap-2">
+                            <button
+                                onClick={() => { setDeleteTarget(null); setDeleteImpact(null); }}
+                                className="rounded-xl border border-border px-4 py-2 text-sm font-semibold text-foreground"
+                            >
+                                {t("cancel")}
+                            </button>
+                            <button
+                                onClick={confirmDelete}
+                                disabled={deleting || !deleteImpact}
+                                className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                            >
+                                {deleting ? t("saving") : t("deleteBranchConfirm")}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Search, Mail, Phone, Users, Trophy } from "lucide-react";
+import { Search, Mail, Phone, Users, Trophy, ChevronDown, ChevronRight } from "lucide-react";
 import supabase from "@/lib/supabase/client";
 import { User as UserType } from "@/lib/firestore-schema";
 import { pluralizeRu } from "@/lib/pluralize-ru";
-import { fetchAdminTeachersOverview } from "@/lib/class-utils";
+import { fetchAdminTeachersOverview, fetchAdminClassesOverview, AdminClassSummary } from "@/lib/class-utils";
 import { accuracyColor } from "@/lib/status-colors";
-import { formatScore } from "@/lib/certificate-scale";
+import { formatScore, certificatePercent, CERTIFICATE_MAX } from "@/lib/certificate-scale";
+import { CoreSubject } from "@/lib/mock-import-schema";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
 type TeacherRow = UserType & { shortid?: string; classCount: number; avgScore: number | null; attemptCount: number };
@@ -17,8 +18,24 @@ export default function AdminTeachersPage() {
     const [teachers, setTeachers] = useState<TeacherRow[]>([]);
     const [search, setSearch] = useState("");
     const [loading, setLoading] = useState(true);
+    // Группы учителей. Один загрузчик на всю платформу — тот же, что у раздела
+    // «Группы», — вместо запроса на каждого учителя.
+    const [classes, setClasses] = useState<AdminClassSummary[]>([]);
+    // Раскрыт ровно один учитель: десять развёрнутых списков превращают
+    // страницу в простыню.
+    const [openTeacherId, setOpenTeacherId] = useState<string | null>(null);
     const { locale } = useLocale();
     const t = useTranslations("adminTeachers");
+    const tSubjects = useTranslations("mockTestStudio");
+    const subjectLabels: Record<CoreSubject, string> = useMemo(() => ({
+        math: tSubjects("subjectMath"),
+        physics: tSubjects("subjectPhysics"),
+        chemistry: tSubjects("subjectChemistry"),
+        biology: tSubjects("subjectBiology"),
+        history: tSubjects("subjectHistory"),
+        english: tSubjects("subjectEnglish"),
+        native: tSubjects("subjectNative"),
+    }), [tSubjects]);
 
     const load = async () => {
         setLoading(true);
@@ -36,6 +53,7 @@ export default function AdminTeachersPage() {
             });
         }
         setTeachers(teacherRows);
+        setClasses(await fetchAdminClassesOverview().catch(() => [] as AdminClassSummary[]));
         setLoading(false);
     };
 
@@ -83,8 +101,12 @@ export default function AdminTeachersPage() {
                     </div>
                 ) : (
                     <div className="space-y-3">
-                        {filtered.map((teacher) => (
-                            <div key={teacher.id} className="flex flex-col justify-between gap-4 rounded-2xl border border-border bg-card p-5 transition-all hover:bg-muted/40 sm:flex-row sm:items-center">
+                        {filtered.map((teacher) => {
+                        const own = classes.filter((c) => c.teacherId === teacher.id);
+                        const expanded = openTeacherId === teacher.id;
+                        return (
+                            <div key={teacher.id} className="rounded-2xl border border-border bg-card">
+                              <div className="flex flex-col justify-between gap-4 p-5 sm:flex-row sm:items-center">
                                 <div className="flex items-center gap-4 min-w-0">
                                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[hsl(var(--brand-blue-ink))]/10 font-bold text-[hsl(var(--brand-blue-ink))]">
                                         {teacher.name?.[0]?.toUpperCase() || "?"}
@@ -98,16 +120,28 @@ export default function AdminTeachersPage() {
                                     </div>
                                 </div>
                                 <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:self-auto">
-                                    <span className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-muted px-3 py-2 text-xs font-semibold text-muted-foreground">
+                                    {/* Число групп стало кнопкой: по нему и раскрывается,
+                                        какие это группы. Отдельная ссылка «показать»
+                                        рядом с тем же числом была бы лишней. */}
+                                    <button
+                                        onClick={() => setOpenTeacherId(expanded ? null : teacher.id)}
+                                        disabled={own.length === 0}
+                                        className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-muted px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors enabled:hover:bg-muted/60 disabled:opacity-60"
+                                    >
                                         <Users size={13} /> {teacher.classCount} {locale === "ru" ? pluralizeRu(teacher.classCount, ["группа", "группы", "групп"]) : t("groupWord")}
-                                    </span>
-                                    {/* Средний скор учеников этого учителя по всем их мокам.
-                                        В процентах: агрегат складывает разные тесты с разным
-                                        максимумом (design/FIX.md, «Правило отображения баллов»). */}
+                                        {own.length > 0 && (
+                                            <ChevronDown size={13} className={`transition-transform ${expanded ? "rotate-180" : ""}`} />
+                                        )}
+                                    </button>
+                                    {/* Средний БАЛЛ учеников этого учителя по шкале 75 —
+                                        не процент: fetchAdminTeachersOverview приводит все
+                                        предметы к одной шкале до усреднения. Поэтому и цвет
+                                        считается через certificatePercent: accuracyColor
+                                        сравнивает с порогами 80 и 50, то есть ждёт процент. */}
                                     <span className="inline-flex flex-col items-center rounded-xl border border-border px-3 py-1.5">
                                         <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">{t("avgScoreLabel")}</span>
                                         {teacher.avgScore !== null ? (
-                                            <span className={`mt-0.5 rounded-lg px-2 py-0.5 text-xs font-extrabold tabular-nums ${accuracyColor(teacher.avgScore)}`}>
+                                            <span className={`mt-0.5 rounded-lg px-2 py-0.5 text-xs font-extrabold tabular-nums ${accuracyColor(certificatePercent(teacher.avgScore, CERTIFICATE_MAX))}`}>
                                                 {formatScore(teacher.avgScore)}
                                             </span>
                                         ) : (
@@ -117,8 +151,44 @@ export default function AdminTeachersPage() {
                                         )}
                                     </span>
                                 </div>
+                              </div>
+
+                              {/* Группы этого учителя. Каждая ведёт на тот же экран
+                                  группы, что и раздел «Группы», — с составом,
+                                  результатами по каждому моку и разбором по вопросам. */}
+                              {expanded && own.length > 0 && (
+                                <ul className="space-y-2 border-t border-border px-5 py-4">
+                                    {own.map((c) => (
+                                        <li key={c.id}>
+                                            <Link
+                                                href={`/admin/classes/${c.id}`}
+                                                className="flex items-center justify-between gap-3 rounded-xl border border-border bg-background p-3 transition-colors hover:bg-muted/40"
+                                            >
+                                                <div className="min-w-0">
+                                                    <p className="truncate text-sm font-semibold text-foreground">{c.name}</p>
+                                                    <p className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                                        <span>{t("studentsInClass").replace("{count}", String(c.memberCount))}</span>
+                                                        {c.subjectId && (
+                                                            <span className="rounded-lg bg-muted px-2 py-0.5 font-semibold">
+                                                                {subjectLabels[c.subjectId as CoreSubject] ?? c.subjectId}
+                                                            </span>
+                                                        )}
+                                                    </p>
+                                                </div>
+                                                <div className="flex shrink-0 items-center gap-2">
+                                                    <span className={`rounded-lg px-2.5 py-1 text-xs font-extrabold tabular-nums ${accuracyColor(certificatePercent(c.avgScore, CERTIFICATE_MAX))}`}>
+                                                        {c.avgScore !== null ? formatScore(c.avgScore) : "—"}
+                                                    </span>
+                                                    <ChevronRight size={15} className="text-muted-foreground" />
+                                                </div>
+                                            </Link>
+                                        </li>
+                                    ))}
+                                </ul>
+                              )}
                             </div>
-                        ))}
+                        );
+                        })}
                     </div>
                 )}
             </section>

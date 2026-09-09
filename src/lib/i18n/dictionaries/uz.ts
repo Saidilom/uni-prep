@@ -1208,6 +1208,7 @@ const uz: typeof ru = {
     notPublishedYet: "Natijalar chop etilmagan",
   },
   adminTeachers: {
+    studentsInClass: "O'quvchilar: {count}",
     title: "O'qituvchilar",
     subtitlePrefix: "Barcha «O'qituvchi» rolidagi foydalanuvchilar. Rolni belgilash mumkin bo'lgan sahifa:",
     usersLinkLabel: "Foydalanuvchilar",

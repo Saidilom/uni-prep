@@ -1217,6 +1217,7 @@ const ru = {
     notPublishedYet: "Результаты не опубликованы",
   },
   adminTeachers: {
+    studentsInClass: "Учеников: {count}",
     title: "Учителя",
     subtitlePrefix: "Все пользователи с ролью «Учитель». Назначить роль можно на странице",
     usersLinkLabel: "Пользователи",

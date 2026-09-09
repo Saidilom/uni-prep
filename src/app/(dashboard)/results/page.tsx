@@ -84,7 +84,13 @@ export default function ResultsPage() {
                             // десятка работ должен оставаться сканируемым, а
                             // подробности нужны по одной работе за раз.
                             const open = openReportId === r.id;
-                            const canOpen = !pending && r.level_score != null;
+                            // Раскрывается всё, что уже опубликовано. Балл в это
+                            // условие НЕ входит: ошибки от него не зависят, а
+                            // level_score ставит пересчёт Раша, а не сдача — сразу
+                            // после отправки он пуст, и работа была бы нераскрываемой
+                            // именно тогда, когда разбор нужен больше всего. Если
+                            // балла нет, блок с баллом внутри просто не рисуется.
+                            const canOpen = !pending;
                             return (
                                 <div key={r.id} className="rounded-2xl border border-border bg-card transition-all hover:bg-muted/40">
                                 <div

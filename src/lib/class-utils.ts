@@ -1541,6 +1541,45 @@ export const fetchBranches = async (): Promise<Branch[]> => {
 // и про второй забывали — на проде уже есть админ филиала без филиала, то есть
 // не видящий ничего. Обе записи делает одна RPC (миграция 082): либо обе, либо
 // ни одной.
+/**
+ * Пользователь по ID — чтобы супер-админ мог назначить админом филиала кого
+ * угодно, а не только того, кто попал в выпадающий список.
+ *
+ * Список кандидатов (fetchReviewerCandidates) отдаёт ТОЛЬКО учителей и
+ * админов, поэтому обычного зарегистрированного ученика в нём нет вовсе — а
+ * именно его чаще всего и ставят админом нового филиала. Плюс тот запрос идёт
+ * без пагинации, и на большой базе PostgREST молча обрежет ответ по max_rows.
+ *
+ * Читать любого пользователя супер-админу позволяет политика
+ * users_admin_full_access; у всех остальных ролей выборка вернёт пусто.
+ */
+export type BranchAdminCandidate = {
+    id: string;
+    name: string;
+    role: string;
+    /** Филиал, в котором человек уже состоит. Нужен, чтобы предупредить о переводе. */
+    branchId: string | null;
+};
+
+export const fetchUserById = async (id: string): Promise<BranchAdminCandidate | null> => {
+    const { data, error } = await supabase
+        .from("users")
+        .select("id, name, surname, role, branch_id")
+        .eq("id", id)
+        // maybeSingle, а не single: «пользователя нет» — обычный ответ на
+        // опечатку в ID, а не ошибка, и падать на нём незачем.
+        .maybeSingle();
+    if (error) throw error;
+    if (!data) return null;
+    const row = data as Record<string, unknown>;
+    return {
+        id: row.id as string,
+        name: `${row.name ?? ""} ${row.surname ?? ""}`.trim() || (row.id as string),
+        role: row.role as string,
+        branchId: (row.branch_id as string | null) ?? null,
+    };
+};
+
 export const createBranch = async (name: string, adminId: string | null): Promise<void> => {
     const { error } = await supabase.rpc("create_branch_with_admin", { p_name: name, p_admin_id: adminId });
     if (error) throw error;

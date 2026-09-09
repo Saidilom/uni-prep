@@ -1147,6 +1147,11 @@ const ru = {
   },
   adminBranches: {
     branchAdminNone: "Без админа филиала",
+    branchAdminIdLabel: "ID пользователя — админа филиала",
+    branchAdminIdPlaceholder: "Вставьте ID пользователя (uuid)",
+    branchAdminSearching: "Ищем пользователя…",
+    branchAdminNotFound: "Пользователь с таким ID не найден — проверьте, что скопировали целиком.",
+    branchAdminAlreadyInBranch: "уже состоит в филиале — будет переведён",
     avgOylikLabel: "Месячный",
     noOylikYet: "Нет",
     openBranch: "Открыть филиал",

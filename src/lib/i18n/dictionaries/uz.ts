@@ -1138,6 +1138,11 @@ const uz: typeof ru = {
   },
   adminBranches: {
     branchAdminNone: "Filial admini yo'q",
+    branchAdminIdLabel: "Filial admini bo'ladigan foydalanuvchi ID si",
+    branchAdminIdPlaceholder: "Foydalanuvchi ID sini joylashtiring (uuid)",
+    branchAdminSearching: "Foydalanuvchi qidirilmoqda…",
+    branchAdminNotFound: "Bunday ID li foydalanuvchi topilmadi — to'liq nusxalanganini tekshiring.",
+    branchAdminAlreadyInBranch: "allaqachon filialda — boshqa filialga o'tkaziladi",
     avgOylikLabel: "Oylik",
     noOylikYet: "Yo'q",
     openBranch: "Filialni ochish",

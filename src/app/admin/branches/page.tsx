@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Building2, Plus, Users, GraduationCap, Pencil, Check, X, ChevronRight } from "lucide-react";
-import { fetchBranchOverview, createBranch, renameBranch, fetchReviewerCandidates, BranchOverview, ReviewerCandidate } from "@/lib/class-utils";
+import { Building2, Plus, Users, GraduationCap, Pencil, Check, X, ChevronRight, UserCheck } from "lucide-react";
+import { fetchBranchOverview, createBranch, renameBranch, fetchReviewerCandidates, fetchUserById, BranchOverview, ReviewerCandidate, BranchAdminCandidate } from "@/lib/class-utils";
 import { accuracyColor } from "@/lib/status-colors";
 import { formatScore, certificatePercent, CERTIFICATE_MAX } from "@/lib/certificate-scale";
 import { useToast } from "@/hooks/useToast";
@@ -30,6 +30,12 @@ export default function AdminBranchesPage() {
     // про второй забывали — на проде уже есть админ филиала без филиала.
     const [candidates, setCandidates] = useState<ReviewerCandidate[]>([]);
     const [newAdminId, setNewAdminId] = useState("");
+    // Ввод админа по ID — основной путь. Выпадающий список отдаёт только
+    // учителей и админов, а админом нового филиала чаще ставят обычного
+    // зарегистрированного человека, которого в том списке нет вовсе.
+    const [adminIdInput, setAdminIdInput] = useState("");
+    const [lookedUp, setLookedUp] = useState<BranchAdminCandidate | null>(null);
+    const [lookupState, setLookupState] = useState<"idle" | "searching" | "notFound">("idle");
 
     const load = async () => {
         setLoading(true);
@@ -52,13 +58,44 @@ export default function AdminBranchesPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    // Кого именно назначаем — показываем ДО создания. Иначе супер-админ
+    // вставляет ID и узнаёт, кому отдал филиал, только постфактум, а роль к
+    // этому моменту уже сменена.
+    useEffect(() => {
+        const id = adminIdInput.trim();
+        if (!id) { setLookedUp(null); setLookupState("idle"); return; }
+        let active = true;
+        setLookupState("searching");
+        const timer = setTimeout(async () => {
+            try {
+                const found = await fetchUserById(id);
+                if (!active) return;
+                setLookedUp(found);
+                setLookupState(found ? "idle" : "notFound");
+            } catch {
+                if (!active) return;
+                setLookedUp(null);
+                setLookupState("notFound");
+            }
+        }, 300);
+        return () => { active = false; clearTimeout(timer); };
+    }, [adminIdInput]);
+
+    // ID главнее выбора из списка: если введён — назначаем его.
+    const effectiveAdminId = adminIdInput.trim() ? (lookedUp?.id ?? null) : (newAdminId || null);
+    // Введён ID, но за ним никого нет — создавать нельзя: филиал остался бы
+    // без админа, а супер-админ думал бы, что назначил.
+    const adminIdBroken = adminIdInput.trim().length > 0 && !lookedUp;
+
     const handleCreate = async () => {
         if (newName.trim().length < 1) return;
         setSaving(true);
         try {
-            await createBranch(newName.trim(), newAdminId || null);
+            await createBranch(newName.trim(), effectiveAdminId);
             setNewName("");
             setNewAdminId("");
+            setAdminIdInput("");
+            setLookedUp(null);
             setCreating(false);
             toast.success(t("branchCreatedToast"));
             await load();
@@ -102,41 +139,88 @@ export default function AdminBranchesPage() {
             </section>
 
             {creating && (
-                <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 sm:flex-row sm:items-center">
+                <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4">
                     <input
                         autoFocus
                         value={newName}
                         onChange={(e) => setNewName(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+                        onKeyDown={(e) => e.key === "Enter" && !adminIdBroken && handleCreate()}
                         placeholder={t("branchNamePlaceholder")}
-                        className="flex-1 rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15"
+                        className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15"
                     />
-                    {/* Админ выбирается здесь же: филиал без админа никто не
-                        ведёт, и учителей в него назначить некому. */}
-                    <select
-                        value={newAdminId}
-                        onChange={(e) => setNewAdminId(e.target.value)}
-                        className="rounded-xl border border-border bg-background px-4 py-2.5 text-sm font-semibold text-foreground sm:min-w-[220px]"
-                    >
-                        <option value="">{t("branchAdminNone")}</option>
-                        {candidates.map((c) => (
-                            <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                    </select>
-                    <button
-                        onClick={handleCreate}
-                        disabled={saving || newName.trim().length < 1}
-                        className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50"
-                    >
-                        {saving ? t("saving") : t("create")}
-                    </button>
-                    <button
-                        onClick={() => { setCreating(false); setNewName(""); }}
-                        className="rounded-xl p-2.5 text-muted-foreground hover:bg-muted"
-                        aria-label={t("cancel")}
-                    >
-                        <X size={16} />
-                    </button>
+
+                    {/* Админ филиала. Основной путь — ID: филиал без админа
+                        никто не ведёт, а в списке ниже только учителя и
+                        админы, обычного человека там нет. */}
+                    <div>
+                        <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                            {t("branchAdminIdLabel")}
+                        </label>
+                        <input
+                            value={adminIdInput}
+                            onChange={(e) => setAdminIdInput(e.target.value)}
+                            placeholder={t("branchAdminIdPlaceholder")}
+                            spellCheck={false}
+                            className="mt-1 w-full rounded-xl border border-border bg-background px-4 py-2.5 font-mono text-sm text-foreground placeholder:font-sans placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15"
+                        />
+                        {/* Кого назначаем — видно ДО создания, а не после. */}
+                        {lookupState === "searching" && (
+                            <p className="mt-1.5 text-xs text-muted-foreground">{t("branchAdminSearching")}</p>
+                        )}
+                        {lookupState === "notFound" && (
+                            <p className="mt-1.5 text-xs font-semibold text-red-600">{t("branchAdminNotFound")}</p>
+                        )}
+                        {lookedUp && (
+                            <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
+                                <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1 font-bold text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400">
+                                    <UserCheck size={12} /> {lookedUp.name}
+                                </span>
+                                <span className="rounded-lg bg-muted px-2 py-1 font-semibold text-muted-foreground">
+                                    {lookedUp.role}
+                                </span>
+                                {/* Человек уже где-то состоит — его ПЕРЕВЕДУТ,
+                                    и сказать об этом надо заранее. */}
+                                {lookedUp.branchId && (
+                                    <span className="rounded-lg bg-amber-50 px-2 py-1 font-semibold text-amber-800 dark:bg-amber-950/30 dark:text-amber-400">
+                                        {t("branchAdminAlreadyInBranch")}
+                                    </span>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Запасной путь — выбрать из учителей и админов. Гаснет,
+                        когда введён ID: два источника одного значения сбивают
+                        с толку, а спорить о том, кто главнее, не о чем. */}
+                    {!adminIdInput.trim() && (
+                        <select
+                            value={newAdminId}
+                            onChange={(e) => setNewAdminId(e.target.value)}
+                            className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm font-semibold text-foreground"
+                        >
+                            <option value="">{t("branchAdminNone")}</option>
+                            {candidates.map((c) => (
+                                <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                        </select>
+                    )}
+
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={handleCreate}
+                            disabled={saving || newName.trim().length < 1 || adminIdBroken}
+                            className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+                        >
+                            {saving ? t("saving") : t("create")}
+                        </button>
+                        <button
+                            onClick={() => { setCreating(false); setNewName(""); setAdminIdInput(""); setLookedUp(null); }}
+                            className="rounded-xl p-2.5 text-muted-foreground hover:bg-muted"
+                            aria-label={t("cancel")}
+                        >
+                            <X size={16} />
+                        </button>
+                    </div>
                 </div>
             )}
 

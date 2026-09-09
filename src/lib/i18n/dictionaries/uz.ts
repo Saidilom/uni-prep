@@ -914,6 +914,7 @@ const uz: typeof ru = {
     studentsCount: "O'quvchilar: {count}",
   },
   branchTeachers: {
+    studentsInClass: "O'quvchilar: {count}",
     promoteTitle: "O'qituvchi qo'shish",
     promoteHint: "Odamni ismi yoki ID si bo'yicha toping. Tayyor o'qituvchini filialingizga qo'shasiz, o'quvchini esa darhol o'qituvchi qila olasiz. U yaratgan guruhlar filialingiz o'rtacha balliga hisoblanadi.",
     searchPlaceholder: "Ism, familiya yoki ID",

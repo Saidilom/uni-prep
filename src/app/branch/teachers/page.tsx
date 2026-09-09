@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { GraduationCap, Mail, Phone, Users, Search, UserPlus, Loader2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { GraduationCap, Mail, Phone, Users, Search, UserPlus, Loader2, ChevronDown, ChevronRight } from "lucide-react";
 import supabase from "@/lib/supabase/client";
 import { User as UserType } from "@/lib/firestore-schema";
 import {
@@ -9,11 +10,14 @@ import {
     searchBranchTeacherCandidates,
     promoteStudentToTeacherInBranch,
     assignTeacherToBranch,
+    fetchAdminClassesOverview,
     BranchTeacherCandidate,
+    AdminClassSummary,
 } from "@/lib/class-utils";
 import { useToast } from "@/hooks/useToast";
 import { accuracyColor } from "@/lib/status-colors";
-import { formatScore } from "@/lib/certificate-scale";
+import { formatScore, certificatePercent, CERTIFICATE_MAX } from "@/lib/certificate-scale";
+import { CoreSubject } from "@/lib/mock-import-schema";
 import { useTranslations } from "@/lib/i18n/locale-provider";
 
 type TeacherRow = UserType & { classCount: number; avgScore: number | null };
@@ -23,6 +27,16 @@ type TeacherRow = UserType & { classCount: number; avgScore: number | null };
 // филиалов просто не приходят.
 export default function BranchTeachersPage() {
     const t = useTranslations("branchTeachers");
+    const tSubjects = useTranslations("mockTestStudio");
+    const subjectLabels: Record<CoreSubject, string> = useMemo(() => ({
+        math: tSubjects("subjectMath"),
+        physics: tSubjects("subjectPhysics"),
+        chemistry: tSubjects("subjectChemistry"),
+        biology: tSubjects("subjectBiology"),
+        history: tSubjects("subjectHistory"),
+        english: tSubjects("subjectEnglish"),
+        native: tSubjects("subjectNative"),
+    }), [tSubjects]);
     const toast = useToast();
     const [teachers, setTeachers] = useState<TeacherRow[]>([]);
     const [loading, setLoading] = useState(true);
@@ -32,10 +46,21 @@ export default function BranchTeachersPage() {
     const [searched, setSearched] = useState(false);
     const [searching, setSearching] = useState(false);
     const [promoting, setPromoting] = useState<string | null>(null);
+    // Группы учителей. Берутся тем же загрузчиком, что и раздел групп: политика
+    // classes_branch_admin_read (миграция 072) отдаёт только свой филиал,
+    // поэтому фильтровать здесь нечего и незачем.
+    const [classes, setClasses] = useState<AdminClassSummary[]>([]);
+    // Раскрыт ровно один учитель: разом развёрнутые списки у десяти учителей
+    // превращают страницу в простыню, а сравнивать их построчно всё равно
+    // неудобно.
+    const [openTeacherId, setOpenTeacherId] = useState<string | null>(null);
 
     const load = async () => {
             setLoading(true);
-            const { data } = await supabase.from("users").select("*").eq("role", "teacher");
+            const [{ data }, classRows] = await Promise.all([
+                supabase.from("users").select("*").eq("role", "teacher"),
+                fetchAdminClassesOverview().catch(() => [] as AdminClassSummary[]),
+            ]);
             const rows = (data || []) as TeacherRow[];
             if (rows.length > 0) {
                 const overview = await fetchAdminTeachersOverview().catch(() => new Map());
@@ -46,6 +71,7 @@ export default function BranchTeachersPage() {
                 });
             }
             setTeachers(rows);
+            setClasses(classRows);
             setLoading(false);
     };
 
@@ -190,8 +216,12 @@ export default function BranchTeachersPage() {
                     </div>
                 ) : (
                     <div className="space-y-3">
-                        {teachers.map((teacher) => (
-                            <div key={teacher.id} className="flex flex-col justify-between gap-4 rounded-2xl border border-border bg-card p-5 sm:flex-row sm:items-center">
+                        {teachers.map((teacher) => {
+                        const own = classes.filter((c) => c.teacherId === teacher.id);
+                        const expanded = openTeacherId === teacher.id;
+                        return (
+                            <div key={teacher.id} className="rounded-2xl border border-border bg-card">
+                              <div className="flex flex-col justify-between gap-4 p-5 sm:flex-row sm:items-center">
                                 <div className="flex min-w-0 items-center gap-4">
                                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[hsl(var(--brand-blue-ink))]/10 font-bold text-[hsl(var(--brand-blue-ink))]">
                                         {teacher.name?.[0]?.toUpperCase() || "?"}
@@ -205,17 +235,67 @@ export default function BranchTeachersPage() {
                                     </div>
                                 </div>
                                 <div className="flex shrink-0 items-center gap-2 self-start sm:self-auto">
-                                    <span className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-muted px-3 py-2 text-xs font-semibold text-muted-foreground">
+                                    {/* Число групп стало кнопкой: по нему и раскрывается,
+                                        какие именно это группы. Отдельная ссылка «показать»
+                                        рядом с тем же числом была бы лишней. */}
+                                    <button
+                                        onClick={() => setOpenTeacherId(expanded ? null : teacher.id)}
+                                        disabled={own.length === 0}
+                                        className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-muted px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors enabled:hover:bg-muted/60 disabled:opacity-60"
+                                    >
                                         <Users size={13} /> {t("classesCount").replace("{count}", String(teacher.classCount))}
-                                    </span>
+                                        {own.length > 0 && (
+                                            <ChevronDown size={13} className={`transition-transform ${expanded ? "rotate-180" : ""}`} />
+                                        )}
+                                    </button>
                                     {teacher.avgScore !== null && (
-                                        <span className={`rounded-xl px-3 py-2 text-xs font-extrabold tabular-nums ${accuracyColor(teacher.avgScore)}`}>
+                                        // Цвет — от ПРОЦЕНТА: accuracyColor сравнивает с
+                                        // порогами 80 и 50, а балл приходит по шкале 75.
+                                        <span className={`rounded-xl px-3 py-2 text-xs font-extrabold tabular-nums ${accuracyColor(certificatePercent(teacher.avgScore, CERTIFICATE_MAX))}`}>
                                             {formatScore(teacher.avgScore)}
                                         </span>
                                     )}
                                 </div>
+                              </div>
+
+                              {/* Группы этого учителя. Каждая ведёт на тот же экран
+                                  группы, что и раздел «Группы», — с составом,
+                                  результатами по каждому моку и разбором по вопросам.
+                                  Доступ даёт RLS (миграции 072 и 106), отдельного
+                                  режима для филиала не нужно. */}
+                              {expanded && own.length > 0 && (
+                                <ul className="space-y-2 border-t border-border px-5 py-4">
+                                    {own.map((c) => (
+                                        <li key={c.id}>
+                                            <Link
+                                                href={`/branch/classes/${c.id}`}
+                                                className="flex items-center justify-between gap-3 rounded-xl border border-border bg-background p-3 transition-colors hover:bg-muted/40"
+                                            >
+                                                <div className="min-w-0">
+                                                    <p className="truncate text-sm font-semibold text-foreground">{c.name}</p>
+                                                    <p className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                                        <span>{t("studentsInClass").replace("{count}", String(c.memberCount))}</span>
+                                                        {c.subjectId && (
+                                                            <span className="rounded-lg bg-muted px-2 py-0.5 font-semibold">
+                                                                {subjectLabels[c.subjectId as CoreSubject] ?? c.subjectId}
+                                                            </span>
+                                                        )}
+                                                    </p>
+                                                </div>
+                                                <div className="flex shrink-0 items-center gap-2">
+                                                    <span className={`rounded-lg px-2.5 py-1 text-xs font-extrabold tabular-nums ${accuracyColor(certificatePercent(c.avgScore, CERTIFICATE_MAX))}`}>
+                                                        {c.avgScore !== null ? formatScore(c.avgScore) : "—"}
+                                                    </span>
+                                                    <ChevronRight size={15} className="text-muted-foreground" />
+                                                </div>
+                                            </Link>
+                                        </li>
+                                    ))}
+                                </ul>
+                              )}
                             </div>
-                        ))}
+                        );
+                        })}
                     </div>
                 )}
             </section>

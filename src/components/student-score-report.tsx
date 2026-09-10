@@ -6,6 +6,7 @@ import {
     formatScoreInterval,
     certificatePercent,
     errorIsShowable,
+    DEFAULT_CERTIFICATE_MAX,
 } from "@/lib/certificate-scale";
 import { scoreConfidenceInterval } from "@/lib/rasch";
 import {
@@ -56,13 +57,17 @@ export default function StudentScoreReport({
     // §217: когда полуширина интервала накрывает всю шкалу, измерения нет —
     // ни «±», ни интервала показывать нельзя, остаётся только статус. Иначе
     // ученик, ответивший на одно задание из 55, видит «± 130,1» при шкале 75.
-    const showError = errorIsShowable(scoreSe);
+    const showError = errorIsShowable(scoreSe, 1.96, scoreMax ?? DEFAULT_CERTIFICATE_MAX);
     const interval = showError ? scoreConfidenceInterval(score, scoreSe) : null;
-    const gap = pointsToNextLevel(score);
+    // Шкала показа этой работы. level_score_max приходит из строки результата,
+    // поэтому старые работы (75) и новые (100) считаются каждая по своей —
+    // ученик видит уровень от того же числа, что и балл.
+    const scale = scoreMax ?? DEFAULT_CERTIFICATE_MAX;
+    const gap = pointsToNextLevel(score, { max: scale });
     const gapWithinError = gap ? gapIsWithinError(gap.pointsNeeded, scoreSe) : false;
     // Уровни, которые накрывает интервал: если их больше одного, ученик у
     // границы, и объявлять его уровень как точно измеренный нельзя (§L.5).
-    const coveredLevels = levelsWithinInterval(interval);
+    const coveredLevels = levelsWithinInterval(interval, { max: scale });
     const borderline = (coveredLevels?.length ?? 0) > 1;
     // §217: измерения могло не быть вовсе — тогда балл показывать как
     // надёжный нельзя, и об этом надо сказать, а не промолчать.

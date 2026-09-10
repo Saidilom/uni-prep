@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { estimateRasch, Observation, raschThetaToT, mean, stdev, MOCK_SCALE_MAX } from "./rasch";
+import { estimateRasch, Observation, raschThetaToT, mean, stdev } from "./rasch";
 import { REFERENCE_DEFAULT } from "./reference-population";
-import { tScoreToCertificate, formatScore } from "./certificate-scale";
+import { tScoreToCertificate, formatScore, certificateMaxForSubject } from "./certificate-scale";
 import { gradeLevelFromScore, gradeLevelDisplay, GradeLevel } from "./mock-grade-level";
 
 // 300 УЧЕНИКОВ НА РЕАЛЬНОМ БЕСПЛАТНОМ МОКЕ ПО МАТЕМАТИКЕ.
@@ -173,11 +173,12 @@ describe("300 учеников на реальном моке по матема�
         expect(levels.size).toBeGreaterThanOrEqual(6);
     });
 
-    it("все 600 баллов внутри шкалы 0–75", () => {
+    it("все 600 баллов внутри шкалы математики 0–100", () => {
+        const mathMax = certificateMaxForSubject("math");
         for (const s of [...realistic, ...fullRange]) {
             expect(Number.isFinite(s.score)).toBe(true);
             expect(s.score).toBeGreaterThanOrEqual(0);
-            expect(s.score).toBeLessThanOrEqual(MOCK_SCALE_MAX);
+            expect(s.score).toBeLessThanOrEqual(mathMax);
             expect(s.score).toBe(Math.round(s.score * 10) / 10);
         }
     });
@@ -247,13 +248,18 @@ describe("300 учеников на реальном моке по матема�
         }
     });
 
-    it("300 сдавших не сдвигают шкалу: θ = 0 по-прежнему 50 баллов", () => {
+    it("300 сдавших не сдвигают точку отсчёта: θ = 0 по-прежнему T = 50", () => {
         // Отличие от прежнего механизма: сколько бы ни сдало и как бы ни
         // решили, точка отсчёта не двигается.
-        expect(tScoreToCertificate(raschThetaToT(0, REFERENCE_DEFAULT.mu, REFERENCE_DEFAULT.sigma), "math")).toBe(50);
-        // И средний балл когорты НЕ равен 50 — именно это и было сломано.
+        const t0 = raschThetaToT(0, REFERENCE_DEFAULT.mu, REFERENCE_DEFAULT.sigma);
+        expect(t0).toBe(50);
+        // На шкале показа математики те же 50 логит-баллов выражаются как 66,7
+        // из 100 — точка отсчёта не сдвинулась, изменилась только единица.
+        expect(tScoreToCertificate(t0, "math")).toBe(66.7);
+        // И средний балл когорты НЕ равен точке отсчёта — именно это и было
+        // сломано, когда шкалу считали относительно самих сдавших.
         const avg = mean(realistic.map((s) => s.score));
-        expect(Math.abs(avg - 50)).toBeGreaterThan(10);
-        console.log(`\nсредний балл слабой когорты: ${avg.toFixed(1)} — а не 50 и не 66.67, как выходило по прежнему правилу\n`);
+        expect(Math.abs(avg - 66.7)).toBeGreaterThan(10);
+        console.log(`\nсредний балл слабой когорты: ${avg.toFixed(1)} из 100 — а не 66,7, как выходило по прежнему правилу\n`);
     });
 });

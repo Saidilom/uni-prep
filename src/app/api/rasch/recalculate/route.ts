@@ -15,7 +15,7 @@ import { classifyResponses, countStates, responseForModel, ResponseState } from 
 import { referencePopulationFor } from "@/lib/reference-population";
 import { essayPointsToScore75, combineSectionScores, isNativeCertSubject } from "@/lib/native-cert";
 import { writingPointsToScore } from "@/lib/english-cefr";
-import { certificateMaxForSubject, tScoreToCertificateExact } from "@/lib/certificate-scale";
+import { certificateMaxForSubject, tScoreToScaleExact } from "@/lib/certificate-scale";
 import { gradeLevelFromScore } from "@/lib/mock-grade-level";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { isInternalCall } from "@/lib/internal-auth";
@@ -59,8 +59,28 @@ export async function POST(req: NextRequest) {
 
     const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
 
-    const { data: test } = await admin.from("mock_tests").select("subject_id").eq("id", mockTestId).single();
+    const { data: test } = await admin.from("mock_tests").select("subject_id, certificate_scale_max").eq("id", mockTestId).single();
     const subjectId = (test?.subject_id as string | null) ?? null;
+    // Шкала показа ЗАКРЕПЛЕНА за тестом (миграция 112), а не выводится из
+    // предмета заново. Иначе первая новая сдача в старый тест пересчитала бы
+    // на новую шкалу все его прежние работы — включая уже показанные ученикам.
+    // NULL у теста означает «по предмету» и бывает только у новых тестов.
+    const pinnedScaleMax = test?.certificate_scale_max === null || test?.certificate_scale_max === undefined
+        ? null
+        : Number(test.certificate_scale_max);
+
+    // Максимум показанного балла: 100 у общеобразовательных, 75 у английского
+    // (решение владельца от 2026-09-10). T при этом остаётся 0–75 — это
+    // измерение, а не показ. См. src/lib/certificate-scale.ts.
+    //
+    // Закреплённая за тестом шкала главнее предметной: она и есть обещание,
+    // что уже показанный ученику балл не поменяется под ним.
+    //
+    // Объявлено ЗДЕСЬ, а не ниже у записи результатов: таблица баллов (§R.6)
+    // строится раньше и берёт ту же шкалу. Объявление ниже давало обращение
+    // до инициализации — ошибку, которую tsc поймал, а рантайм показал бы
+    // пустым баллом.
+    const certificateMax = pinnedScaleMax ?? certificateMaxForSubject(subjectId);
 
     // Порядок секций нужен не для красоты: NOT_REACHED (§A.4) определяется
     // ТОЛЬКО положением задания в варианте — «дальше ученик не отвечал».
@@ -318,6 +338,9 @@ export async function POST(req: NextRequest) {
         const scoreTable = buildScoreTable(itemDifficultyByIndex, reference, {
             subjectId,
             hasSecondSection: hasEssaySection,
+            // Та же шкала, что уйдёт в mock_results: таблица и записанный балл
+            // обязаны быть одним числом, иначе §R.6 перестаёт объяснять балл.
+            scaleMax: certificateMax,
         });
 
         personAbility = examResponses.map((row) => {
@@ -692,9 +715,6 @@ export async function POST(req: NextRequest) {
         return combineSectionScores(sections);
     });
 
-    // Балл сертификата — по той же шкале 75, что и T (решение владельца
-    // «макс 75 во всех предметах»). См. src/lib/certificate-scale.ts.
-    const certificateMax = certificateMaxForSubject(subjectId);
 
     // Сколько разделов участвует в итоге. Итог — среднее арифметическое
     // разделов (Baholash_mezoni.pdf стр. 4), поэтому вклад Раш-раздела в
@@ -717,7 +737,9 @@ export async function POST(req: NextRequest) {
             // расчёт. Различимость от этого не страдает: на реальном варианте
             // математики различных баллов 49 из 56 и у точных, и у округлённых
             // до 0,1 — округление показа не склеивает ни одной пары.
-            const certificate = t === null ? null : tScoreToCertificateExact(t, subjectId);
+            // По закреплённой шкале теста, а не по предметной: см.
+            // certificateMax выше.
+            const certificate = t === null ? null : tScoreToScaleExact(t, certificateMax);
 
             // Погрешность есть только у Раш-раздела: у сочинения балл берётся
             // из таблицы документа, а не оценивается моделью, и своей ошибки у
@@ -743,7 +765,11 @@ export async function POST(req: NextRequest) {
                 // Буква — от того же точного балла, а он получен из раш-меры θ
                 // (raschThetaToT), а не из взвешенной суммы баллов за задания.
                 // Веса заданий в измерение не входят вовсе.
-                grade_level: certificate === null ? null : gradeLevelFromScore(certificate),
+                // Максимум передаётся ОБЯЗАТЕЛЬНО: пороги заданы на шкале 75,
+                // а balls показывается из 100 у всех, кроме английского. Без
+                // него сотенный балл сравнился бы с порогами из 75, и ученик
+                // с T = 52,5 (это C+) получил бы A+.
+                grade_level: certificate === null ? null : gradeLevelFromScore(certificate, { max: certificateMax }),
                 theta_se: precision?.thetaSe ?? null,
                 score_se: scoreSe,
                 test_information: precision?.information ?? null,

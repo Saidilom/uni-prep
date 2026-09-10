@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { estimateRasch, Observation, mean, stdev, raschThetaToT, MOCK_SCALE_MAX } from "./rasch";
 import { gradeLevelFromScore } from "./mock-grade-level";
 import { essayPointsToScore75, combineSectionScores } from "./native-cert";
-import { tScoreToCertificate, formatScore } from "./certificate-scale";
+import { tScoreToCertificate, formatScore, certificateMaxForSubject} from "./certificate-scale";
 import { REFERENCE_DEFAULT } from "./reference-population";
 
 // Проверка модели Раша на СИНТЕТИЧЕСКОЙ когорте — та самая, о которой просил
@@ -147,7 +147,10 @@ describe("модель Раша на когорте из 50 (узбекский)
     });
 
     it("уровни A+..C распределяются, а не сваливаются в один", () => {
-        const levels = new Set(tScores.map(gradeLevelFromScore));
+        // Обёртка обязательна: .map передаёт индекс вторым аргументом, и раньше он
+        // молча попадал в шкалу — все баллы становились A+. Теперь так не
+        // скомпилируется, но и писать надо явно.
+        const levels = new Set(tScores.map((t) => gradeLevelFromScore(t)));
         expect(levels.size).toBeGreaterThan(2);
         // Сверка порогов с документом на самих полученных баллах. Полосы —
         // полуоткрытые интервалы по ТОЧНОМУ T, без округления в полосу
@@ -164,15 +167,18 @@ describe("модель Раша на когорте из 50 (узбекский)
         }
     });
 
-    // Решение владельца от 2026-09-08: «макс 75 во всех предметах». Балл и
-    // порог уровня стали одним числом — на сотенной шкале 60.3 означало
-    // «Ниже C», потому что порог C = 46 задан на T-шкале.
-    it("итоговый балл выдаётся из 75, как и T", () => {
+    // Решение владельца от 2026-09-10: сотня всем, английскому 75. Балл и
+    // порог уровня по-прежнему одно число, но уже на шкале показа: пороги
+    // масштабируются вместе с баллом (levelFloorsFor).
+    it("итоговый балл узбекского выдаётся из 100, пропорционально T", () => {
+        const max = certificateMaxForSubject("uzbek");
+        expect(max).toBe(100);
         for (const t of tScores) {
             const certificate = tScoreToCertificate(t, "uzbek");
             expect(certificate).toBeGreaterThanOrEqual(0);
-            expect(certificate).toBeLessThanOrEqual(MOCK_SCALE_MAX);
-            expect(certificate).toBeCloseTo(t, 1);
+            expect(certificate).toBeLessThanOrEqual(max);
+            // Пропорция, а не равенство: T = 50 даёт 66,7 из 100.
+            expect(certificate).toBeCloseTo(t / MOCK_SCALE_MAX * max, 1);
         }
     });
 

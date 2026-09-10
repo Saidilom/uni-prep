@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { estimateRasch, Observation, raschThetaToT, mean, stdev, MOCK_SCALE_MAX } from "./rasch";
 import { REFERENCE_DEFAULT } from "./reference-population";
-import { certificateMaxForSubject, tScoreToCertificate, formatScore, CERTIFICATE_MAX } from "./certificate-scale";
-import { gradeLevelFromScore, gradeLevelDisplay } from "./mock-grade-level";
+import { certificateMaxForSubject, tScoreToCertificate, tScoreToCertificateExact, formatScore, CERTIFICATE_MAX } from "./certificate-scale";
+import { gradeLevelFromScore, gradeLevelDisplay, levelFloorsFor } from "./mock-grade-level";
 import { essayPointsToScore75, combineSectionScores, isNativeCertSubject } from "./native-cert";
 import { MOCK_SUBJECTS } from "./mock-import-schema";
 
@@ -58,7 +58,9 @@ function spearman(a: number[], b: number[]): number {
 function scoreFromTheta(theta: number, subjectId: string) {
     const t = raschThetaToT(theta, REFERENCE_DEFAULT.mu, REFERENCE_DEFAULT.sigma);
     const score = tScoreToCertificate(t, subjectId);
-    return { t, score, max: certificateMaxForSubject(subjectId), level: gradeLevelFromScore(score) };
+    const max = certificateMaxForSubject(subjectId);
+    // Максимум обязателен: буква считается по шкале ПОКАЗА этого предмета.
+    return { t, score, max, level: gradeLevelFromScore(score, { max: max }) };
 }
 
 const pad = (v: unknown, w: number) => String(v).padEnd(w);
@@ -66,7 +68,7 @@ const num = (v: number, w: number, d = 1) => v.toFixed(d).padStart(w);
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("1. Потолок 75 — у каждого предмета без исключений", () => {
+describe("1. Потолок: 100 у всех, 75 у английского", () => {
     it("одна шкала на все предметы, и она видна в баллах порогов", () => {
         const rows: string[] = [];
         rows.push(`${pad("предмет", 12)} ${pad("потолок", 8)} ${pad("T=75", 6)} ${pad("T=70", 6)} ${pad("T=46", 6)} ${pad("T=45.9", 7)} буква на T=46`);
@@ -76,16 +78,25 @@ describe("1. Потолок 75 — у каждого предмета без и�
             const aPlus = tScoreToCertificate(70, subject);
             const atC = tScoreToCertificate(46, subject);
             const belowC = tScoreToCertificate(45.9, subject);
+            // Буква — от ТОЧНОГО балла, как и в роуте: округление до десятой
+            // может унести значение под порог (61.3333 → 61.3 < 61.3333).
+            const atCExact = tScoreToCertificateExact(46, subject);
+            const belowCExact = tScoreToCertificateExact(45.9, subject);
 
-            // Само требование ТЗ §0.3: максимум 75, не 100.
-            expect(max).toBe(75);
-            expect(top).toBe(75);
-            // Балл и порог уровня — одно и то же число. Именно этого не было на
-            // сотенной шкале, где порог C выглядел как 61.3.
-            expect(atC).toBe(46);
-            expect(aPlus).toBe(70);
-            expect(gradeLevelFromScore(atC)).toBe("C");
-            expect(gradeLevelFromScore(belowC)).toBe("below_c");
+            // Решение владельца от 2026-09-10: сотня всем, английскому 75.
+            // Английские 75 — норма из Multilevel-bm.pdf, не наш выбор.
+            expect(max).toBe(subject === "english" ? 75 : 100);
+            expect(top).toBe(max);
+            // Балл и порог уровня — одно и то же число НА СВОЕЙ шкале. Именно
+            // этого не было на прежней сотенной шкале, где балл растягивали, а
+            // пороги оставляли от семидесяти пяти.
+            const floors = new Map(levelFloorsFor(max));
+            expect(atC).toBeCloseTo(floors.get("C")!, 1);
+            expect(aPlus).toBeCloseTo(floors.get("A+")!, 1);
+            // Буква — по шкале ЭТОГО предмета: atC получен из T = 46, то есть
+            // ровно порог C, на какой шкале его ни показывай.
+            expect(gradeLevelFromScore(atCExact, { max: max })).toBe("C");
+            expect(gradeLevelFromScore(belowCExact, { max: max })).toBe("below_c");
 
             rows.push(`${pad(subject, 12)} ${pad(max, 8)} ${num(top, 6)} ${num(aPlus, 6)} ${num(atC, 6)} ${num(belowC, 7)}  ${gradeLevelDisplay(gradeLevelFromScore(atC), "ru")}`);
         }
@@ -93,12 +104,12 @@ describe("1. Потолок 75 — у каждого предмета без и�
         expect(CERTIFICATE_MAX).toBe(75);
     });
 
-    it("выше 75 балл не выдаётся ни при какой способности", () => {
+    it("выше своего потолка балл не выдаётся ни при какой способности", () => {
         // Даже у ученика, который решил всё, и даже если θ уехала в клампы ±8.
         for (const subject of MOCK_SUBJECTS) {
             for (const theta of [2, 4, 8, 100]) {
                 const { score } = scoreFromTheta(theta, subject);
-                expect(score).toBeLessThanOrEqual(75);
+                expect(score).toBeLessThanOrEqual(certificateMaxForSubject(subject));
             }
             expect(scoreFromTheta(-100, subject).score).toBe(0);
         }
@@ -157,9 +168,12 @@ describe("2. Цепочка целиком: что видит ученик пр�
         // заданием теста». Это и делает балл абсолютным, а не рейтинговым.
         const { t, score, level } = scoreFromTheta(0, "math");
         expect(t).toBe(50);
-        expect(score).toBe(50);
+        // T = 50 — это по-прежнему «вровень со средним заданием». На шкале
+        // показа математики оно выражается как 66,7 из 100, а буква остаётся
+        // той же: C+ начинается с T = 50.
+        expect(score).toBe(66.7);
         expect(level).toBe("C+");
-        console.log(`\nθ = 0  →  T = ${t}  →  балл ${formatScore(score)} из 75  →  ${level}`);
+        console.log(`\nθ = 0  →  T = ${t}  →  балл ${formatScore(score)} из 100  →  ${level}`);
         console.log(`θ = +1 →  T = ${scoreFromTheta(1, "math").t}  →  одна логита стоит 10 баллов`);
         console.log(`θ = −1 →  T = ${scoreFromTheta(-1, "math").t}\n`);
     });
@@ -305,18 +319,19 @@ describe("4. Свойства модели, без которых балл бы�
         // Полоса берётся от округлённого балла, а не от точного T (L.8):
         // иначе рядом с «65,0» могла стоять буква B+.
         for (let p = 0; p < PERSONS; p++) {
-            const { score, level } = scoreFromTheta(result.personAbility[p], "math");
+            const { score, level, max } = scoreFromTheta(result.personAbility[p], "math");
             const shown = Number(formatScore(score).replace(",", "."));
-            expect(gradeLevelFromScore(shown)).toBe(level);
+            expect(gradeLevelFromScore(shown, { max: max })).toBe(level);
         }
     });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("5. Родной язык: два раздела и та же шкала 75", () => {
-    it("сочинение усредняется с тестом, потолок остаётся 75", () => {
+describe("5. Родной язык: два раздела, шкала показа 100", () => {
+    it("сочинение усредняется с тестом, потолок остаётся своим", () => {
         expect(isNativeCertSubject("uzbek")).toBe(true);
+        const nativeMax = certificateMaxForSubject("uzbek");   // 100
         const raschT = 60; // условный балл за тестовую часть
 
         const rows: string[] = [`${pad("сочинение", 14)} ${pad("раздел 1", 9)} ${pad("раздел 2", 9)} ${pad("итог", 6)} ${pad("из", 4)} буква`];
@@ -324,9 +339,11 @@ describe("5. Родной язык: два раздела и та же шкал�
             const essayT = essayPointsToScore75(earned, 24);
             const combined = combineSectionScores([raschT, essayT])!;
             const score = tScoreToCertificate(combined, "uzbek");
-            const level = gradeLevelFromScore(score);
-            expect(score).toBeLessThanOrEqual(75);
-            rows.push(`${pad(label, 14)} ${num(raschT, 9)} ${num(essayT, 9)} ${num(score, 6)} ${pad(75, 4)} ${gradeLevelDisplay(level, "ru")}`);
+            const level = gradeLevelFromScore(score, { max: nativeMax });
+            // Разделы усредняются на T-шкале (0–75), и только потом балл
+            // растягивается до шкалы показа этого предмета.
+            expect(score).toBeLessThanOrEqual(nativeMax);
+            rows.push(`${pad(label, 14)} ${num(raschT, 9)} ${num(essayT, 9)} ${num(score, 6)} ${pad(nativeMax, 4)} ${gradeLevelDisplay(level, "ru")}`);
         }
         console.log("\n" + rows.join("\n") + "\n");
 
@@ -334,6 +351,8 @@ describe("5. Родной язык: два раздела и та же шкал�
         // (A.3: в режиме экзамена пропуск не даёт баллов), и по таблице
         // документа ноль даёт ровно 0, а не нижнюю границу шкалы.
         expect(essayPointsToScore75(0, 24)).toBe(0);
-        expect(tScoreToCertificate(combineSectionScores([raschT, 0])!, "uzbek")).toBe(30);
+        // T = (60 + 0) / 2 = 30, а на шкале показа узбекского это 40 из 100.
+        expect(combineSectionScores([raschT, 0])).toBe(30);
+        expect(tScoreToCertificate(combineSectionScores([raschT, 0])!, "uzbek")).toBe(40);
     });
 });

@@ -43,7 +43,7 @@
 import { estimateThetaWle, WLE_ESTIMATOR, WLE_VERSION, WleStatus } from "./rasch-wle";
 import { measurementPrecision, raschThetaToT, MeasurementStatus } from "./rasch";
 import { ReferencePopulation } from "./reference-population";
-import { tScoreToCertificateExact } from "./certificate-scale";
+import { tScoreToScaleExact, certificateMaxForSubject } from "./certificate-scale";
 import { gradeLevelFromScore, GradeLevel } from "./mock-grade-level";
 
 export type ScoreTableRow = {
@@ -91,11 +91,13 @@ export type ScoreTable = {
 export function buildScoreTable(
     difficulties: number[],
     reference: ReferencePopulation,
-    opts: { subjectId?: string | null; hasSecondSection?: boolean } = {},
+    opts: { subjectId?: string | null; hasSecondSection?: boolean; scaleMax?: number | null } = {},
 ): ScoreTable {
     const itemCount = difficulties.length;
     const hasSecondSection = opts.hasSecondSection ?? false;
     const subjectId = opts.subjectId ?? null;
+    // Закреплённая за тестом шкала показа. null — определить по предмету.
+    const scaleMax = opts.scaleMax ?? null;
 
     const rows: ScoreTableRow[] = [];
     for (let rawScore = 0; rawScore <= itemCount; rawScore++) {
@@ -117,7 +119,11 @@ export function buildScoreTable(
         // показ, и делает это formatScore на экране. Строка таблицы — это
         // внутреннее значение, из которого дальше считаются средние и
         // интервалы; округлив её здесь, мы округлили бы в середине цепочки.
-        const exactScore = hasSecondSection ? null : tScoreToCertificateExact(sectionScore, subjectId);
+        // Шкала берётся из опций, если её закрепили за тестом (миграция 112),
+        // иначе выводится из предмета. Иначе строка таблицы показывала бы балл
+        // не по той шкале, что записан ученику.
+        const certificateMax = scaleMax ?? certificateMaxForSubject(subjectId);
+        const exactScore = hasSecondSection ? null : tScoreToScaleExact(sectionScore, certificateMax);
 
         rows.push({
             rawScore,
@@ -126,7 +132,9 @@ export function buildScoreTable(
             information: precision.information,
             sectionScore,
             score: exactScore,
-            level: exactScore === null ? null : gradeLevelFromScore(exactScore),
+            // Тот же максимум, из которого посчитан exactScore: иначе строка
+            // таблицы показывала бы балл по одной шкале, а букву по другой.
+            level: exactScore === null ? null : gradeLevelFromScore(exactScore, { max: certificateMax }),
             measurementStatus: precision.status,
             wleStatus: wle.status,
         });

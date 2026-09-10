@@ -8,6 +8,8 @@
 // относителен когорте: с этапа 1 T = 10·θ + 50 относительно эталонной
 // популяции (src/lib/reference-population.ts), поэтому одинаковая способность
 // даёт одинаковую букву независимо от того, кто ещё сдавал этот мок.
+import { MOCK_SCALE_MAX } from "./rasch";
+
 export type GradeLevel = "A+" | "A" | "B+" | "B" | "C+" | "C" | "below_c";
 
 // Нижние границы полос, от верхней к нижней. ЕДИНСТВЕННЫЙ источник порогов:
@@ -17,6 +19,46 @@ export type GradeLevel = "A+" | "A" | "B+" | "B" | "C+" | "C" | "below_c";
 const LEVEL_FLOORS: Array<readonly [GradeLevel, number]> = [
   ["A+", 70], ["A", 65], ["B+", 60], ["B", 55], ["C+", 50], ["C", 46],
 ];
+
+// Шкала, НА КОТОРОЙ заданы пороги выше: 0–75, та же, что выдаёт raschThetaToT.
+// Числа 46/50/55/60/65/70 взяты из Baholash_mezoni.pdf и осмысленны только на
+// ней.
+const LEVEL_FLOOR_SCALE = MOCK_SCALE_MAX;
+
+/**
+ * Те же пороги, приведённые к шкале показа.
+ *
+ * Балл ученику показывается из 100 у общеобразовательных предметов и из 75 у
+ * английского (см. certificateMaxForSubject). Пороги при этом остаются одними
+ * и теми же по смыслу, поэтому масштабируются пропорционально:
+ *
+ *   из 75:   C 46    C+ 50    B 55    B+ 60    A 65    A+ 70
+ *   из 100:  C 61.3  C+ 66.7  B 73.3  B+ 80    A 86.7  A+ 93.3
+ *
+ * ═══ ПОЧЕМУ НЕ ДВА СПИСКА ═══
+ *
+ * Соблазн — выписать сотенные пороги рядом константами. Нельзя: тогда
+ * официальные числа перестают быть единственным источником, и правка нормы
+ * (а её задаёт государство, не мы) потребует менять два места. Разъедутся они
+ * у границы полосы, то есть там, где цена ошибки максимальна.
+ *
+ * ═══ ЧТО ЭТО НЕ МЕНЯЕТ ═══
+ *
+ * Букву. Умножение и балла, и порогов на одно и то же число монотонно,
+ * поэтому уровень выходит тот же, на какой шкале ни считай. Проверено тестом
+ * на всех порогах и вокруг них.
+ */
+export function levelFloorsFor(max: number = LEVEL_FLOOR_SCALE): Array<readonly [GradeLevel, number]> {
+  if (!Number.isFinite(max) || max <= 0 || max === LEVEL_FLOOR_SCALE) return LEVEL_FLOORS;
+  // Порядок действий тот же, что в tScoreToCertificateExact: сначала деление
+  // на шкалу, потом умножение на максимум. Не «floor × (max/75)».
+  //
+  // Разница не косметическая. Балл считается как (t / 75) × max, и на самом
+  // пороге два разных порядка действий расходятся в последнем бите двоичной
+  // дроби: 55 × (100/75) не равно (55/75) × 100. Ученик ровно на границе
+  // полосы получал из-за этого не ту букву — поймано тестом level-scale.
+  return LEVEL_FLOORS.map(([level, floor]) => [level, (floor / LEVEL_FLOOR_SCALE) * max] as const);
+}
 
 // Полосы уровней — ПОЛУОТКРЫТЫЕ ИНТЕРВАЛЫ по точному T, без округления:
 //
@@ -40,9 +82,26 @@ const LEVEL_FLOORS: Array<readonly [GradeLevel, number]> = [
 // Округление до одной десятой осталось только на ПОКАЗ балла (roundScore,
 // src/lib/certificate-scale.ts). Порядок жёсткий: сначала полоса по точному
 // значению, потом округление для отображения — не наоборот.
-export function gradeLevelFromScore(score: number): GradeLevel {
+/**
+ * Шкала показа, на которой пришёл балл.
+ *
+ * ═══ ПОЧЕМУ ОБЪЕКТ, А НЕ ВТОРОЕ ЧИСЛО ═══
+ *
+ * Первая версия принимала `max: number` вторым позиционным аргументом — и
+ * тут же нашёлся вызов `tScores.map(gradeLevelFromScore)`. Array.map передаёт
+ * коллбэку ИНДЕКС вторым аргументом, тот попадал в max, и на элементе с
+ * индексом 1 пороги делились на 75: все баллы становились A+. TypeScript
+ * молчал, потому что индекс — тоже number.
+ *
+ * С объектом такой вызов перестаёт компилироваться: число не присваивается
+ * типу опций. Функция решает, какую букву увидит ученик в сертификате, и
+ * ошибка в ней не должна зависеть от того, заметил ли кто-то лишний аргумент.
+ */
+export type LevelScale = { max?: number };
+
+export function gradeLevelFromScore(score: number, scale?: LevelScale): GradeLevel {
   if (!Number.isFinite(score)) return "below_c";
-  for (const [level, floor] of LEVEL_FLOORS) {
+  for (const [level, floor] of levelFloorsFor(scale?.max)) {
     if (score >= floor) return level;
   }
   return "below_c";
@@ -60,10 +119,11 @@ export function gradeLevelFromScore(score: number): GradeLevel {
 // выдумывать её вместо отсутствующей).
 export function levelsWithinInterval(
   interval: { low: number; high: number } | null,
+  scale?: LevelScale,
 ): GradeLevel[] | null {
   if (!interval) return null;
-  const lowLevel = gradeLevelFromScore(interval.low);
-  const highLevel = gradeLevelFromScore(interval.high);
+  const lowLevel = gradeLevelFromScore(interval.low, scale);
+  const highLevel = gradeLevelFromScore(interval.high, scale);
   if (lowLevel === highLevel) return [lowLevel];
 
   const levels: GradeLevel[] = ["below_c"];
@@ -83,12 +143,15 @@ export function levelsWithinInterval(
  *
  * null у A+: выше уровня нет, и показывать там «до следующего» нечего.
  */
-export function pointsToNextLevel(score: number): { nextLevel: GradeLevel; pointsNeeded: number } | null {
+export function pointsToNextLevel(
+  score: number,
+  scale?: LevelScale,
+): { nextLevel: GradeLevel; pointsNeeded: number } | null {
   if (!Number.isFinite(score)) return null;
   // Полосы идут сверху вниз, поэтому ближайшая цель — последняя граница,
   // которая ещё выше текущего балла.
   let target: readonly [GradeLevel, number] | null = null;
-  for (const floor of LEVEL_FLOORS) {
+  for (const floor of levelFloorsFor(scale?.max)) {
     if (floor[1] > score) target = floor;
   }
   if (!target) return null;
@@ -107,8 +170,11 @@ export function gapIsWithinError(pointsNeeded: number, scoreSe: number | null | 
   return pointsNeeded <= z * scoreSe;
 }
 
-export function levelIsBorderline(interval: { low: number; high: number } | null): boolean {
-  const levels = levelsWithinInterval(interval);
+export function levelIsBorderline(
+  interval: { low: number; high: number } | null,
+  scale?: LevelScale,
+): boolean {
+  const levels = levelsWithinInterval(interval, scale);
   return levels !== null && levels.length > 1;
 }
 

@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import { buildScoreTable, lookupScoreRow } from "./score-table";
 import { estimateThetaWle } from "./rasch-wle";
 import { REFERENCE_DEFAULT } from "./reference-population";
-import { raschThetaToT, MOCK_SCALE_MAX } from "./rasch";
-import { tScoreToCertificateExact, formatScore } from "./certificate-scale";
+import { raschThetaToT } from "./rasch";
+import { tScoreToCertificateExact, formatScore, certificateMaxForSubject} from "./certificate-scale";
 import { gradeLevelFromScore } from "./mock-grade-level";
 
 // Реальные сложности бесплатного мока по математике, снятые с прода
@@ -49,7 +49,8 @@ describe("форма таблицы (§R.6)", () => {
         let anyExact = false;
         for (const row of table.rows) {
             expect(row.score!).toBeGreaterThanOrEqual(0);
-            expect(row.score!).toBeLessThanOrEqual(MOCK_SCALE_MAX);
+            // Таблица считана для математики, значит шкала показа — 100.
+            expect(row.score!).toBeLessThanOrEqual(certificateMaxForSubject("math"));
             if (row.score! !== Math.round(row.score! * 10) / 10) anyExact = true;
             // А показанное число — с одной десятой (§L.8).
             expect(formatScore(row.score!)).toMatch(/^\d+,\d$/);
@@ -58,8 +59,10 @@ describe("форма таблицы (§R.6)", () => {
     });
 
     it("уровень в строке согласован с её баллом", () => {
+        // Максимум обязателен: балл в строке сотенный, а пороги заданы на 75.
+        const max = certificateMaxForSubject("math");
         for (const row of table.rows) {
-            expect(row.level).toBe(gradeLevelFromScore(row.score!));
+            expect(row.level).toBe(gradeLevelFromScore(row.score!, { max: max }));
         }
     });
 });

@@ -18,8 +18,8 @@
 // только валидные данные, а подогнать шкалу под чужие опечатки — худший из
 // возможных способов ошибиться.
 
-import { GradeLevel, gradeLevelFromScore } from "./mock-grade-level";
-import { MOCK_SCALE_MAX } from "./rasch";
+import { GradeLevel, gradeLevelFromScore, levelFloorsFor } from "./mock-grade-level";
+import { certificateMaxForSubject, formatScore } from "./certificate-scale";
 
 /** Кто внёс запись. */
 export type CertificateSource =
@@ -32,19 +32,30 @@ export type CertificateSource =
 export type CertificateVerification = "verified" | "unverified";
 
 /**
- * Минимальный балл, с которым сертификат вообще выдаётся.
+ * Минимальный балл, с которым сертификат вообще выдаётся, — НА ШКАЛЕ 75.
  *
- * §0.3: «< 46 — нет сертификата». То есть запись с баллом ниже 46 описывает
- * документ, которого не существует, и почти наверняка это опечатка.
+ * §0.3: «< 46 — нет сертификата». То есть запись с баллом ниже порога C
+ * описывает документ, которого не существует, и почти наверняка это опечатка.
+ *
+ * Порог зависит от шкалы предмета так же, как и остальные: на сотне это 61.3.
+ * Поэтому наружу он идёт через certificateMinScoreFor, а не константой —
+ * иначе сертификат по математике на 55 из 100 (это ниже C) прошёл бы проверку.
  */
 export const CERTIFICATE_MIN_SCORE = 46;
+
+/** Тот же порог, приведённый к шкале предмета. */
+export function certificateMinScoreFor(subjectId: string | null | undefined): number {
+    const floors = levelFloorsFor(certificateMaxForSubject(subjectId));
+    // Нижняя полоса — последняя в списке, это и есть порог C.
+    return floors[floors.length - 1][1];
+}
 
 /** Уровни, которые может нести сертификат. `below_c` среди них нет — см. выше. */
 export const CERTIFICATE_LEVELS: readonly GradeLevel[] = ["C", "C+", "B", "B+", "A", "A+"];
 
 export type ExternalCertificateInput = {
     subjectId: string;
-    /** Балл по шкале БМБА, 0–75. */
+    /** Балл по шкале БМБА: 0–75 у английского, 0–100 у остальных. */
     score: number;
     /** Уровень с документа. Необязателен: на некоторых сертификатах только балл. */
     level?: GradeLevel | null;
@@ -72,13 +83,18 @@ export type CertificateValidation =
 export function validateCertificate(input: ExternalCertificateInput): CertificateValidation {
     if (!input.subjectId) return { ok: false, reason: "Не указан предмет" };
     if (!Number.isFinite(input.score)) return { ok: false, reason: "Балл не число" };
-    if (input.score < 0 || input.score > MOCK_SCALE_MAX) {
-        return { ok: false, reason: `Балл ${input.score} вне шкалы 0–${MOCK_SCALE_MAX}` };
+    // Шкала — предметная: у английского 75, у остальных 100. Проверять всё
+    // единой границей значило бы отвергать настоящие сертификаты по
+    // математике с баллом выше 75.
+    const max = certificateMaxForSubject(input.subjectId);
+    const minScore = certificateMinScoreFor(input.subjectId);
+    if (input.score < 0 || input.score > max) {
+        return { ok: false, reason: `Балл ${input.score} вне шкалы 0–${max}` };
     }
-    if (input.score < CERTIFICATE_MIN_SCORE) {
+    if (input.score < minScore) {
         return {
             ok: false,
-            reason: `Балл ${input.score} ниже ${CERTIFICATE_MIN_SCORE}: с таким баллом сертификат не выдаётся (§0.3)`,
+            reason: `Балл ${input.score} ниже ${formatScore(minScore)}: с таким баллом сертификат не выдаётся (§0.3)`,
         };
     }
     if (input.level && !CERTIFICATE_LEVELS.includes(input.level)) {
@@ -87,7 +103,7 @@ export function validateCertificate(input: ExternalCertificateInput): Certificat
     const parsed = Date.parse(input.issuedAt);
     if (!Number.isFinite(parsed)) return { ok: false, reason: "Некорректная дата выдачи" };
 
-    const levelFromScore = gradeLevelFromScore(input.score);
+    const levelFromScore = gradeLevelFromScore(input.score, { max });
     return {
         ok: true,
         levelFromScore,

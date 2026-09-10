@@ -151,7 +151,7 @@ export default function ResultsPage() {
                                                         Показывается только когда посчитана: у работ
                                                         до миграции 093 её нет, и выдумывать нельзя
                                                         (§233). */}
-                                                    {r.score_se != null && errorIsShowable(r.score_se) && (
+                                                    {r.score_se != null && errorIsShowable(r.score_se, 1.96, r.level_score_max ?? undefined) && (
                                                         <span
                                                             className="text-[11px] font-semibold tabular-nums text-muted-foreground"
                                                             title={t("scoreErrorHint")}

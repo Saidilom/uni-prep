@@ -14,71 +14,92 @@ import {
     errorIsShowable,
 } from "./certificate-scale";
 import { MOCK_SUBJECTS } from "./mock-import-schema";
-import { gradeLevelFromScore } from "./mock-grade-level";
+import { gradeLevelFromScore, levelFloorsFor } from "./mock-grade-level";
 import { accuracyColor } from "./status-colors";
 
 // Решение владельца от 2026-09-08: «макс 75 во всех предметах» — та же шкала,
 // что у модели Раша, и та, на которой заданы пороги уровней (ТЗ §0.3).
 describe("certificateMaxForSubject", () => {
-    it("одна шкала 75 на все предметы", () => {
-        expect(CERTIFICATE_MAX).toBe(75);
+    // Решение владельца от 2026-09-10: сотня всем, английскому 75.
+    it("английский из 75 — это норма из госдокумента, а не наш выбор", () => {
+        expect(certificateMaxForSubject("english")).toBe(75);
+    });
+
+    it("остальные предметы из 100", () => {
         for (const subject of MOCK_SUBJECTS) {
-            expect(certificateMaxForSubject(subject)).toBe(75);
+            if (subject === "english") continue;
+            expect(certificateMaxForSubject(subject)).toBe(100);
         }
     });
 
-    it("предмет без указания получает ту же шкалу", () => {
-        expect(certificateMaxForSubject(null)).toBe(75);
-        expect(certificateMaxForSubject(undefined)).toBe(75);
+    it("предмет без указания получает сотню, а не 75", () => {
+        // Тест без предмета почти наверняка общеобразовательный; отдать ему
+        // 75 значило бы занизить показанный балл на четверть.
+        expect(certificateMaxForSubject(null)).toBe(100);
+        expect(certificateMaxForSubject(undefined)).toBe(100);
     });
 
-    // Сторож смысла шкалы: балл и порог уровня обязаны быть одним числом.
-    // На сотенной шкале это разъезжалось — 60.3 из 100 означало «Ниже C»,
-    // потому что порог C = 46 задан на T-шкале. Если кто-то вернёт сюда 100,
-    // упадёт этот тест, а не ученик.
+    it("CERTIFICATE_MAX — шкала ИЗМЕРЕНИЯ, а не максимум показанного балла", () => {
+        // Он остался 75 и совпадает с выходом модели Раша. К нему приводятся
+        // баллы разных предметов перед усреднением.
+        expect(CERTIFICATE_MAX).toBe(75);
+    });
+
+    // Сторож смысла шкалы. Балл и порог обязаны быть одним числом — именно
+    // это разъезжалось на прежней сотенной шкале, где «60 из 100» означало
+    // «сертификата нет». Теперь пороги масштабируются вместе с баллом.
     it("порог уровня выражен в тех же баллах, что и сам балл", () => {
-        expect(tScoreToCertificate(46, "math")).toBe(46);
-        expect(tScoreToCertificate(70, "math")).toBe(70);
+        // Математика из 100: T = 46 (порог C) даёт балл 61,3, и порог C на
+        // сотне — тоже 61,3.
+        const cOnHundred = levelFloorsFor(100).find(([lvl]) => lvl === "C")![1];
+        expect(tScoreToCertificate(46, "math")).toBeCloseTo(cOnHundred, 1);
+        // Английский остался на 75, там балл и порог по-прежнему 46.
+        expect(tScoreToCertificate(46, "english")).toBe(46);
     });
 });
 
 describe("tScoreToCertificate", () => {
-    it("отдаёт T как есть — шкалы совпадают", () => {
-        for (const subject of ["english", "math", "uzbek", null]) {
-            expect(tScoreToCertificate(75, subject)).toBe(75);
-            expect(tScoreToCertificate(50, subject)).toBe(50);
+    it("английскому отдаёт T как есть — у него шкалы совпадают", () => {
+        expect(tScoreToCertificate(75, "english")).toBe(75);
+        expect(tScoreToCertificate(50, "english")).toBe(50);
+        expect(tScoreToCertificate(0, "english")).toBe(0);
+    });
+
+    it("остальным растягивает T до сотни", () => {
+        for (const subject of ["math", "uzbek", null]) {
+            expect(tScoreToCertificate(75, subject)).toBe(100);
+            expect(tScoreToCertificate(37.5, subject)).toBe(50);
             expect(tScoreToCertificate(0, subject)).toBe(0);
         }
     });
 
-    it("пороги уровней видны в самом балле", () => {
-        // Ровно то, чего не было на сотенной шкале: балл 46 — это порог C,
-        // а не 61.3.
-        expect(tScoreToCertificate(70, "math")).toBe(70);   // A+
-        expect(tScoreToCertificate(65, "math")).toBe(65);   // A
-        expect(tScoreToCertificate(60, "math")).toBe(60);   // B+
-        expect(tScoreToCertificate(55, "math")).toBe(55);   // B
-        expect(tScoreToCertificate(50, "math")).toBe(50);   // C+
-        expect(tScoreToCertificate(46, "math")).toBe(46);   // C
+    it("каждый порог T попадает ровно в свой порог на шкале показа", () => {
+        // Это и есть замена прежнего сторожа: числа стали другими, но
+        // тождество «балл порога = порог» сохранилось.
+        const floors100 = new Map(levelFloorsFor(100));
+        for (const [level, tFloor] of levelFloorsFor(75)) {
+            expect(tScoreToCertificateExact(tFloor, "math")).toBeCloseTo(floors100.get(level)!, 10);
+        }
     });
 
     // Ради чего всё и делалось: балл округляется до одной десятой, а не до
     // целого. Раньше округлений было три — здесь, в raschThetaToT и в
     // combineSectionScores, — и балл выходил целым.
     it("держит одну десятую, а не целое", () => {
-        expect(tScoreToCertificate(64.79, "math")).toBe(64.8);
-        expect(tScoreToCertificate(51.67, "math")).toBe(51.7);
-        expect(tScoreToCertificate(74.878, "math")).toBe(74.9);
+        expect(tScoreToCertificate(64.79, "english")).toBe(64.8);
+        expect(tScoreToCertificate(51.67, "english")).toBe(51.7);
+        expect(tScoreToCertificate(74.878, "english")).toBe(74.9);
         // Второй десятой быть не должно: точность в проекте одна.
         expect(tScoreToCertificate(64.79, "math") * 10 % 1).toBe(0);
+        expect(tScoreToCertificate(51.67, "math") * 10 % 1).toBe(0);
     });
 
     it("различает T, которые прежде сливались в один балл", () => {
         expect(tScoreToCertificate(50.2, "math")).not.toBe(tScoreToCertificate(50.8, "math"));
     });
 
-    it("не выходит за границы шкалы", () => {
-        expect(tScoreToCertificate(999, "math")).toBe(75);
+    it("не выходит за границы своей шкалы", () => {
+        expect(tScoreToCertificate(999, "math")).toBe(100);
         expect(tScoreToCertificate(-5, "math")).toBe(0);
         expect(tScoreToCertificate(999, "english")).toBe(75);
         expect(tScoreToCertificate(NaN, "math")).toBe(0);
@@ -255,18 +276,23 @@ describe("formatScoreInterval", () => {
 // Отсюда две функции на один перевод, и путать их нельзя.
 describe("tScoreToCertificateExact против tScoreToCertificate", () => {
     it("точный не округляет, показной округляет до десятой", () => {
-        expect(tScoreToCertificateExact(64.96, "math")).toBeCloseTo(64.96, 10);
-        expect(tScoreToCertificate(64.96, "math")).toBe(65);
+        // На английском шкала показа совпадает с T, поэтому разницу двух
+        // функций видно без пересчёта.
+        expect(tScoreToCertificateExact(64.96, "english")).toBeCloseTo(64.96, 10);
+        expect(tScoreToCertificate(64.96, "english")).toBe(65);
     });
 
     it("округлённый есть в точности roundScore от точного", () => {
-        for (const t of [0, 12.34, 45.99, 46, 64.949, 64.96, 70.04, 74.999, 75]) {
-            expect(tScoreToCertificate(t, "math")).toBe(roundScore(tScoreToCertificateExact(t, "math")));
+        for (const subject of ["math", "english"]) {
+            for (const t of [0, 12.34, 45.99, 46, 64.949, 64.96, 70.04, 74.999, 75]) {
+                expect(tScoreToCertificate(t, subject)).toBe(roundScore(tScoreToCertificateExact(t, subject)));
+            }
         }
     });
 
-    it("оба зажимают шкалу", () => {
-        expect(tScoreToCertificateExact(999, "math")).toBe(75);
+    it("оба зажимают шкалу — каждый свою", () => {
+        expect(tScoreToCertificateExact(999, "math")).toBe(100);
+        expect(tScoreToCertificateExact(999, "english")).toBe(75);
         expect(tScoreToCertificateExact(-5, "math")).toBe(0);
         expect(tScoreToCertificateExact(Number.NaN, "math")).toBe(0);
     });
@@ -274,11 +300,22 @@ describe("tScoreToCertificateExact против tScoreToCertificate", () => {
     // Тот самый случай, ради которого две функции и разведены: округление
     // переносит балл через порог, а точное значение его не достигало.
     it("на 0,05 ниже порога буква и показанный балл расходятся — и это ожидаемо", () => {
+        // Максимум ОБЯЗАТЕЛЕН вторым аргументом: без него сотенный балл 86,6
+        // сравнился бы с порогом A из 75-й шкалы и дал бы A+ вместо B+. Ровно
+        // эта ловушка и делает возврат сотенной шкалы нетривиальным.
         const exact = tScoreToCertificateExact(64.96, "math");
-        expect(gradeLevelFromScore(exact)).toBe("B+");        // точное 64.96 < 65
-        expect(formatScore(tScoreToCertificate(64.96, "math"))).toBe("65,0"); // показ округлён
+        expect(gradeLevelFromScore(exact, { max: 100 })).toBe("B+");   // точное 64.96 < 65
+        expect(formatScore(tScoreToCertificate(64.96, "english"))).toBe("65,0"); // показ округлён
         // Буква обязана следовать точному значению, а не показанному.
-        expect(gradeLevelFromScore(tScoreToCertificate(64.96, "math"))).toBe("A");
+        expect(gradeLevelFromScore(tScoreToCertificate(64.96, "english"), { max: 75 })).toBe("A");
+    });
+
+    it("без максимума сотенный балл дал бы неверную букву", () => {
+        // Сторож самой ловушки: если кто-то уберёт второй аргумент в вызове,
+        // упадёт этот тест, а не ученик получит завышенный уровень.
+        const hundred = tScoreToCertificateExact(52.5, "math");   // T = 52.5 → C+
+        expect(gradeLevelFromScore(hundred, { max: 100 })).toBe("C+");
+        expect(gradeLevelFromScore(hundred)).toBe("A+");          // ошибка без максимума
     });
 });
 
@@ -333,9 +370,20 @@ describe("errorIsShowable — когда «±» перестаёт быть ин
     });
 
     it("граница — там, где полуширина накрывает шкалу целиком", () => {
-        const edge = CERTIFICATE_MAX / 1.96;
-        expect(errorIsShowable(edge - 0.01)).toBe(true);
-        expect(errorIsShowable(edge)).toBe(false);
+        // Граница СВОЯ у каждой шкалы: на сотне погрешность, которая ещё
+        // что-то сообщает, шире, чем на семидесяти пяти.
+        for (const max of [75, 100]) {
+            const edge = max / 1.96;
+            expect(errorIsShowable(edge - 0.01, 1.96, max)).toBe(true);
+            expect(errorIsShowable(edge, 1.96, max)).toBe(false);
+        }
+    });
+
+    it("на сотне не режется погрешность, осмысленная для сотни", () => {
+        // ±40 на шкале 100 — интервал 0…80, верх исключён, значит сообщает.
+        // На шкале 75 та же ±40 накрывает почти всё и показываться не должна.
+        expect(errorIsShowable(40, 1.96, 100)).toBe(true);
+        expect(errorIsShowable(40, 1.96, 75)).toBe(false);
     });
 
     it("отсутствие и нефизичные значения — не показываются", () => {

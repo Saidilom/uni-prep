@@ -8,8 +8,6 @@ import {
   Check,
   CheckCircle2,
   Clock,
-  ExternalLink,
-  Eye,
   Loader2,
   Send,
   Sparkles,
@@ -532,15 +530,19 @@ export default function MockTestPage() {
                           <SafeMathText content={question.text} className="text-[15px] font-semibold sm:text-base" />
                           {question.points > 0 && <p className="mt-1 text-xs text-muted-foreground">{t("pointsSuffix").replace("{points}", String(question.points))}</p>}
 
-                          {/* Вырезанный рисунок задания.
-                              Раньше здесь при needsSourceImage открывался ВЕСЬ исходный
-                              PDF в iframe: ученик видел не свой рисунок, а страницу — а
-                              на стр. 9 математики их четыре, от заданий 40a, 40b, 41a и
-                              41b, — и мог листать остальные листы теста.
-                              Теперь показывается ровно рисунок этого задания. Разворот
-                              страницы ниже остался запасным путём: он рисуется только
-                              когда вырезки нет (старые тесты, не найденная моделью
-                              рамка). */}
+                          {/* Рисунок задания — и ТОЛЬКО он.
+                              Здесь при needsSourceImage без картинки открывался ВЕСЬ
+                              исходный PDF в iframe: ученик видел не свой рисунок, а
+                              страницу — на стр. 9 математики их четыре, от заданий 40a,
+                              40b, 41a и 41b, — и листал остальные листы теста прямо на
+                              экзамене. Картинки при этом не было ни у одного задания:
+                              автовырезка на сервере не работала вовсе (см. шапку
+                              next.config.mjs).
+                              Запасной путь убран целиком. Рисунок теперь долить
+                              нечего не стоит — кнопкой у задания в студии и на экране
+                              «Рисунки» у опубликованного теста, — а показывать ученику
+                              весь тест ради одного графика нельзя ни при каких
+                              обстоятельствах. */}
                           {question.image_url && (
                             <div className="mt-4 overflow-hidden rounded-xl border border-border bg-white">
                               {/* Обычный img, а не next/image: ссылка приходит из
@@ -554,22 +556,6 @@ export default function MockTestPage() {
                               />
                             </div>
                           )}
-
-                          {!question.image_url && question.content?.needsSourceImage && question.source_page && (() => {
-                            const sourceUrl = `/api/mock-tests/${id}/source?page=${question.source_page}&file=${question.source_file_index ?? 0}`;
-                            return (
-                              <details className="mt-4 overflow-hidden rounded-xl border border-[hsl(var(--brand-blue))]/20 bg-[hsl(var(--brand-blue-soft))]/60" open>
-                                <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm font-bold text-[hsl(var(--brand-blue-ink))]"><Eye size={16} /> {t("sourceImageLabel").replace("{page}", String(question.source_page))}</summary>
-                                <iframe title={t("sourceIframeTitle").replace("{number}", question.content.number || "")} src={sourceUrl} className="h-[300px] w-full border-t border-[hsl(var(--brand-blue))]/20 bg-white sm:h-[520px]" />
-                                {/* iOS Safari and Android Chrome refuse to render a PDF inside an
-                                    iframe at all — without this the figure is simply missing on a
-                                    phone, whatever the frame headers say. */}
-                                <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 border-t border-[hsl(var(--brand-blue))]/20 px-4 py-3 text-xs font-semibold text-[hsl(var(--brand-blue-ink))] underline underline-offset-2">
-                                  <ExternalLink size={13} /> {t("sourceImageOpenInNewTab")}
-                                </a>
-                              </details>
-                            );
-                          })()}
 
                           {["single_choice", "true_false", "matching"].includes(question.question_type || "single_choice") && (
                             <div className="mt-5 grid gap-2">

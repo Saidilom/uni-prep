@@ -10,6 +10,8 @@ import {
   CalendarClock,
   Eye,
   FileText,
+  Image as ImageIcon,
+  ImageOff,
   ClipboardCheck,
   ListChecks,
   Lock,
@@ -39,6 +41,9 @@ import {
 } from "@/lib/mock-import-schema";
 import { sumPoints } from "@/lib/mock-points";
 import { certificateMaxForSubject } from "@/lib/certificate-scale";
+import QuestionFigureSlot from "@/components/question-figure-slot";
+import MockFiguresEditor from "@/components/mock-figures-editor";
+import { uploadQuestionFigure, openImportSourcePage } from "@/lib/question-figure-upload";
 import { fetchOylikSets, fetchReviewerCandidates, fetchMockReviewerId, setMockReviewer, OylikSet, ReviewerCandidate } from "@/lib/class-utils";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
@@ -59,6 +64,9 @@ type TestRow = {
   starts_at: string | null;
   results_publish_at: string | null;
   completed_count: number;
+  /** Сколько заданий теста ждут рисунок и у скольких его нет (миграция 113). */
+  figure_needed: number;
+  figure_missing: number;
 };
 
 type TeacherClass = { id: string; name: string };
@@ -183,6 +191,10 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
   const [pricingFreeDraft, setPricingFreeDraft] = useState(false);
   const [pricingPriceDraft, setPricingPriceDraft] = useState(0);
   const [savingPricing, setSavingPricing] = useState(false);
+  // Рисунки уже опубликованного теста. Публикация без рисунка разрешена, а
+  // рамку модель находит не всегда — значит правка после публикации нужна как
+  // обычный путь, а не как исключение.
+  const [editingFigures, setEditingFigures] = useState<TestRow | null>(null);
   // Назначение проверяющего письменных работ (миграция 080).
   const [editingReviewer, setEditingReviewer] = useState<TestRow | null>(null);
   const [reviewerCandidates, setReviewerCandidates] = useState<ReviewerCandidate[]>([]);
@@ -732,6 +744,24 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
     if (!draft) return 0;
     return draft.sections.flatMap((section) => section.questions).filter((question) => question.answerOrigin === "missing" && !question.requiresManualReview).length;
   }, [draft]);
+  // Сколько заданий ждут рисунок. Публикация без него по решению владельца
+  // разрешена, поэтому единственная защита от пустого задания — чтобы человек
+  // увидел счёт здесь и в списке тестов после публикации.
+  const figureStats = useMemo(() => {
+    let needed = 0;
+    let missing = 0;
+    let firstMissingAnchor: string | null = null;
+    draft?.sections.forEach((section, sectionIndex) => {
+      section.questions.forEach((question, questionIndex) => {
+        if (!question.needsSourceImage) return;
+        needed += 1;
+        if (question.imageUrl) return;
+        missing += 1;
+        if (!firstMissingAnchor) firstMissingAnchor = `studio-question-${sectionIndex}-${questionIndex}`;
+      });
+    });
+    return { needed, missing, firstMissingAnchor: firstMissingAnchor as string | null };
+  }, [draft]);
   const totalPoints = useMemo(() => {
     if (!draft) return 0;
     return sumPoints(draft.sections.flatMap((section) => section.questions).map((question) => question.points));
@@ -901,6 +931,32 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
                   </>
                 )}
               </div>
+              {figureStats.needed > 0 && (
+                figureStats.missing > 0 ? (
+                  <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:bg-amber-950/30">
+                    <p className="flex flex-wrap items-center gap-2 font-bold">
+                      <ImageOff size={16} />
+                      {t("figuresMissingSummary")
+                        .replace("{missing}", String(figureStats.missing))
+                        .replace("{total}", String(figureStats.needed))}
+                      {figureStats.firstMissingAnchor && (
+                        <button
+                          type="button"
+                          onClick={() => document.getElementById(figureStats.firstMissingAnchor!)?.scrollIntoView({ behavior: "smooth", block: "center" })}
+                          className="rounded-lg border border-amber-400 bg-background px-2.5 py-1 text-xs font-bold hover:bg-amber-100 dark:hover:bg-amber-950/40"
+                        >
+                          {t("figuresJumpAction")}
+                        </button>
+                      )}
+                    </p>
+                    <p className="mt-1 text-xs font-normal">{t("figuresMissingHint")}</p>
+                  </div>
+                ) : (
+                  <p className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-400">
+                    <ImageIcon size={16} /> {t("figuresAllSetSummary").replace("{total}", String(figureStats.needed))}
+                  </p>
+                )
+              )}
               {(draft.warnings.length > 0 || missingKeys > 0) && (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:bg-amber-950/30">
                   <p className="flex items-center gap-2 font-bold"><AlertTriangle size={16} /> {t("reviewCarefully")}</p>
@@ -923,7 +979,7 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
                 </div>
 
                 {section.questions.map((question, questionIndex) => (
-                  <article key={`${question.number}-${questionIndex}`} className={`rounded-2xl border bg-card p-5 shadow-sm ${question.answerOrigin === "missing" && !question.requiresManualReview ? "border-amber-300" : "border-border"}`}>
+                  <article id={`studio-question-${sectionIndex}-${questionIndex}`} key={`${question.number}-${questionIndex}`} className={`scroll-mt-24 rounded-2xl border bg-card p-5 shadow-sm ${question.answerOrigin === "missing" && !question.requiresManualReview ? "border-amber-300" : "border-border"}`}>
                     <div className="mb-4 flex flex-wrap items-center gap-2">
                       <input aria-label={t("questionNumberAria")} value={question.number} onChange={(event) => updateQuestion(sectionIndex, questionIndex, { number: event.target.value })} className="w-14 rounded-lg bg-primary px-2.5 py-1 text-center text-xs font-bold text-primary-foreground outline-none" />
                       <select value={question.type} onChange={(event) => updateQuestion(sectionIndex, questionIndex, { type: event.target.value as ImportedQuestion["type"] })} className="rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-semibold">
@@ -961,11 +1017,32 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
                       <textarea value={question.prompt} onChange={(event) => updateQuestion(sectionIndex, questionIndex, { prompt: event.target.value })} rows={3} className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm font-normal normal-case tracking-normal text-foreground" />
                     </label>
 
-                    {question.needsSourceImage && (
-                      <p className="mt-3 inline-flex items-center gap-2 rounded-lg bg-[hsl(var(--brand-blue-soft))] px-3 py-2 text-xs font-semibold text-[hsl(var(--brand-blue-ink))]">
-                        <Eye size={14} /> {t("sourceImageNotice")}
-                      </p>
-                    )}
+                    {/* Рисунок задания.
+                        Здесь стояла надпись «в задании будет показана исходная
+                        страница с рисунком» — и она врала: страницу ученику
+                        показывали целым PDF, а сама автовырезка на сервере не
+                        работала ни разу. Теперь на этом месте живой слот:
+                        видно, есть ли картинка, и её можно долить руками. */}
+                    <QuestionFigureSlot
+                      imageUrl={question.imageUrl ?? null}
+                      needsFigure={question.needsSourceImage}
+                      numberLabel={question.number || String(questionIndex + 1)}
+                      page={question.sourcePage}
+                      onUpload={async (file) => {
+                        const url = await uploadQuestionFigure(
+                          file,
+                          { importId: importResult.importId },
+                          question.number || `${sectionIndex + 1}-${questionIndex + 1}`,
+                        );
+                        updateQuestion(sectionIndex, questionIndex, { imageUrl: url });
+                      }}
+                      onClear={() => updateQuestion(sectionIndex, questionIndex, { imageUrl: undefined })}
+                      onNoFigure={() => updateQuestion(sectionIndex, questionIndex, { needsSourceImage: false })}
+                      onOpenSource={() => openImportSourcePage(
+                        importResult.sourcePdfPaths[question.sourceFileIndex] ?? importResult.sourcePdfPaths[0],
+                        question.sourcePage,
+                      )}
+                    />
 
                     {isChoiceQuestion(question) ? (
                       <div className="mt-4 space-y-2">
@@ -1236,6 +1313,26 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
                     <ListChecks size={13} /> <span className="hidden xl:inline">{t("openResultsAction")}</span>
                   </Link>
                 )}
+                {/* Рисунки заданий. Кнопка есть у всех тестов с рисунками, а
+                    красный счётчик — только когда картинки не хватает: иначе
+                    пустое задание уедет ученику незаметно, ровно как уже было с
+                    десятью заданиями 7-MOCK MATEMATIKA. */}
+                {test.figure_needed > 0 && (
+                  <button
+                    onClick={() => setEditingFigures(test)}
+                    title={t("figuresAction")}
+                    aria-label={t("figuresAction")}
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-semibold transition-colors ${
+                      test.figure_missing > 0
+                        ? "border-red-300 bg-red-50 text-red-700 hover:bg-red-100 dark:border-red-900 dark:bg-red-950/30 dark:text-red-400"
+                        : "border-border hover:bg-muted"
+                    }`}
+                  >
+                    {test.figure_missing > 0 ? <ImageOff size={13} /> : <ImageIcon size={13} />}
+                    <span className="hidden xl:inline">{t("figuresAction")}</span>
+                    {test.figure_missing > 0 && <span className="tabular-nums">{test.figure_missing}</span>}
+                  </button>
+                )}
                 {/* Кто проверяет письменные работы этого теста. Супер-админ
                     этим заниматься не должен, а у бесплатного мока нет ни
                     класса, ни назначений, за которые мог бы зацепиться
@@ -1358,6 +1455,20 @@ export default function MockTestStudio({ mode }: { mode: StudioMode }) {
             </div>
           </div>
         </div>
+      )}
+
+      {editingFigures && (
+        <MockFiguresEditor
+          testId={editingFigures.id}
+          title={editingFigures.title}
+          onClose={() => {
+            setEditingFigures(null);
+            // Счётчик нехватки живёт в списке — после правки он обязан
+            // пересчитаться, иначе красная цифра осталась бы висеть на
+            // исправленном тесте.
+            void loadTests({ force: true });
+          }}
+        />
       )}
 
       {editingPricing && (

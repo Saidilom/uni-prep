@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
     figureDecision, summarizeFigures, attachQuestionFigures,
     FigureCandidate, FigureOutcome,
@@ -74,6 +74,62 @@ describe("attachQuestionFigures — сбой одной картинки не р
             () => "p.png",
         );
         expect(uploads).toBe(0);
+    });
+});
+
+// Вырезка идёт пачками (FIGURE_CONCURRENCY), а не строгой очередью — иначе
+// десяток рендеров плюс заливок встали бы в критический путь импорта один за
+// другим. Здесь проверяется единственное, чем за это платят: раскладка
+// результатов по индексам. Перепутай их — и рисунок 40a уедет заданию 41b, а
+// заметить это можно будет только глазами на экзамене.
+describe("attachQuestionFigures — параллельность не путает задания", () => {
+    const files = [{ bytes: new Uint8Array([1, 2, 3]) }];
+
+    it("результат и путь загрузки соответствуют своему заданию", async () => {
+        vi.resetModules();
+        // Настоящий cropFigureToPng требует настоящего PDF, поэтому подменяем
+        // только его: остальное — проверка рамки, порядок, пути — работает как
+        // в бою. Задержка обратна номеру страницы, так что готовность приходит
+        // в обратном порядке — самое злое для раскладки по индексам.
+        vi.doMock("./pdf-figure-crop", async () => {
+            const actual = await vi.importActual<typeof import("./pdf-figure-crop")>("./pdf-figure-crop");
+            return {
+                ...actual,
+                cropFigureToPng: async (_bytes: Uint8Array, page: number) => {
+                    await new Promise((resolve) => setTimeout(resolve, Math.max(0, 20 - page)));
+                    return { png: new Uint8Array([page]), width: 10, height: 10 };
+                },
+            };
+        });
+        const { attachQuestionFigures: attach } = await import("./attach-question-figures");
+
+        // Девять заданий — больше двух пачек по четыре, так что границы пачек
+        // проверяются тоже.
+        const questions = Array.from({ length: 9 }, (_, index) => q({
+            number: `q${index}`,
+            sourcePage: index + 1,
+            needsSourceImage: index % 3 !== 2,
+        }));
+        const paths: string[] = [];
+        const outcomes = await attach(
+            questions,
+            files,
+            async (path, png) => { paths.push(`${path}:${png[0]}`); return { url: `https://x/${path}` }; },
+            (question, index) => `${question.number}-${index}.png`,
+        );
+
+        outcomes.forEach((outcome, index) => {
+            if (index % 3 === 2) {
+                expect(outcome).toEqual({ status: "SKIPPED", reason: "NO_FIGURE" });
+                return;
+            }
+            // Ссылка того задания, что стоит на этом месте.
+            expect(outcome).toEqual({ status: "ATTACHED", url: `https://x/q${index}-${index}.png`, bytes: 1 });
+        });
+        // Путь получил свой индекс, и байты — своей страницы.
+        expect(paths).toContain(`q0-0.png:1`);
+        expect(paths).toContain(`q7-7.png:8`);
+        vi.doUnmock("./pdf-figure-crop");
     });
 });
 

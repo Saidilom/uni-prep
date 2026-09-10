@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createRouteHandlerClient, supabaseServer } from "@/lib/supabase/server";
 import { getPublicationIssues, ImportedMockSchema } from "@/lib/mock-import-schema";
+import { isOwnFigureUrl } from "@/lib/question-figure";
 
 export const dynamic = "force-dynamic";
 
@@ -49,17 +50,33 @@ export async function GET() {
     completedCountByTest.set(key, (completedCountByTest.get(key) || 0) + 1);
   });
 
+  // Сколько заданий каждого теста ждут рисунок. Одним вызовом на весь список:
+  // выбирать вопросы и считать здесь значило бы тащить content у 55 заданий на
+  // каждый тест, а .select() без пагинации ещё и молча обрежется по max_rows.
+  const { data: figureRows } = testIds.length
+    ? await supabaseServer.rpc("mock_figure_counts", { p_test_ids: testIds })
+    : { data: [] as Array<{ mock_test_id: string; needed: number; missing: number }> };
+  const figuresByTest = new Map(
+    ((figureRows || []) as Array<{ mock_test_id: string; needed: number; missing: number }>).map((row) => [
+      row.mock_test_id,
+      { needed: Number(row.needed) || 0, missing: Number(row.missing) || 0 },
+    ]),
+  );
+
   const rows = await Promise.all((tests || []).map(async (test) => {
     const { data: sections } = await supabaseServer.from("mock_sections").select("id").eq("mock_test_id", test.id);
     const sectionIds = (sections || []).map((section) => section.id);
     const { count } = sectionIds.length
       ? await supabaseServer.from("mock_questions").select("id", { count: "exact", head: true }).in("section_id", sectionIds)
       : { count: 0 };
+    const figures = figuresByTest.get(test.id);
     return {
       ...test,
       question_count: count || 0,
       creator_name: test.created_by ? creatorMap.get(test.created_by) || "—" : "Старый тест",
       completed_count: completedCountByTest.get(test.id) || 0,
+      figure_needed: figures?.needed || 0,
+      figure_missing: figures?.missing || 0,
     };
   }));
 
@@ -101,6 +118,23 @@ export async function POST(req: NextRequest) {
   }
 
   const issues = getPublicationIssues(parsed.data.draft);
+
+  // Ссылка на рисунок обязана быть нашей.
+  //
+  // Черновик приезжает от клиента, а imageUrl описан в схеме как «любой
+  // валидный URL» — то есть сюда пройдёт адрес чужого сайта и поедет ученику на
+  // экзамен: сторонний хост увидит IP каждого сдающего, а картинку там могут
+  // подменить в любой момент. Пускаем только то, что лежит в нашем bucket.
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+  parsed.data.draft.sections.forEach((section, sectionIndex) => {
+    section.questions.forEach((question) => {
+      if (!question.imageUrl) return;
+      if (isOwnFigureUrl(question.imageUrl, supabaseUrl)) return;
+      const label = question.number || `${sectionIndex + 1}.${question.order + 1}`;
+      issues.push(`Задание ${label}: рисунок должен быть загружен в систему, внешняя ссылка не принимается`);
+    });
+  });
+
   if (issues.length > 0) {
     return NextResponse.json({ error: "Исправьте тест перед публикацией", issues }, { status: 422 });
   }

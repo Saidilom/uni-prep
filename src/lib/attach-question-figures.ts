@@ -65,20 +65,27 @@ export function figureDecision(
  * Проходит по всем заданиям черновика, вырезает рисунки и отдаёт результат по
  * каждому. Ничего не мутирует: вызывающий сам решает, что записать в черновик.
  */
+/**
+ * Сколько рисунков режем и заливаем одновременно.
+ *
+ * Строгая очередь обходилась даром, пока вырезка вообще не работала: она
+ * падала у всех заданий сразу. Теперь это настоящая работа внутри запроса
+ * импорта — рендер страницы плюс заливка на каждый рисунок, десяток заданий у
+ * обычного математического теста, — а за время импорта владелец уже спрашивал
+ * отдельно. Четыре: рендер mupdf упирается в процессор, и большим числом
+ * параллельных страниц на маленькой serverless-машине выигрыша нет.
+ */
+export const FIGURE_CONCURRENCY = 4;
+
 export async function attachQuestionFigures(
     questions: readonly FigureCandidate[],
     files: readonly FigureSource[],
     upload: FigureUploader,
     pathFor: (question: FigureCandidate, index: number) => string,
 ): Promise<FigureOutcome[]> {
-    const results: FigureOutcome[] = [];
-    for (let index = 0; index < questions.length; index++) {
-        const question = questions[index];
+    const cropOne = async (question: FigureCandidate, index: number): Promise<FigureOutcome> => {
         const decision = figureDecision(question, files.length);
-        if (!decision.crop) {
-            results.push({ status: "SKIPPED", reason: decision.reason });
-            continue;
-        }
+        if (!decision.crop) return { status: "SKIPPED", reason: decision.reason };
         try {
             const { png } = await cropFigureToPng(
                 files[question.sourceFileIndex].bytes,
@@ -86,17 +93,21 @@ export async function attachQuestionFigures(
                 decision.box,
             );
             const uploaded = await upload(pathFor(question, index), png);
-            if ("error" in uploaded) {
-                results.push({ status: "FAILED", reason: uploaded.error });
-                continue;
-            }
-            results.push({ status: "ATTACHED", url: uploaded.url, bytes: png.length });
+            if ("error" in uploaded) return { status: "FAILED", reason: uploaded.error };
+            return { status: "ATTACHED", url: uploaded.url, bytes: png.length };
         } catch (error) {
-            results.push({
-                status: "FAILED",
-                reason: error instanceof Error ? error.message : String(error),
-            });
+            return { status: "FAILED", reason: error instanceof Error ? error.message : String(error) };
         }
+    };
+
+    // Результат раскладывается ПО ИНДЕКСУ, а не в порядке готовности: вызывающий
+    // сопоставляет outcomes[i] со своим questions[i], и перепутанный порядок
+    // привязал бы рисунок к чужому заданию.
+    const results: FigureOutcome[] = new Array(questions.length);
+    for (let start = 0; start < questions.length; start += FIGURE_CONCURRENCY) {
+        const batch = questions.slice(start, start + FIGURE_CONCURRENCY);
+        const done = await Promise.all(batch.map((question, offset) => cropOne(question, start + offset)));
+        done.forEach((outcome, offset) => { results[start + offset] = outcome; });
     }
     return results;
 }
@@ -112,7 +123,10 @@ export function summarizeFigures(outcomes: readonly FigureOutcome[]): string | n
     if (attached === 0 && failed === 0 && noBox === 0) return null;
 
     const parts = [`Рисунков вырезано: ${attached}`];
-    if (noBox > 0) parts.push(`не удалось определить рамку у ${noBox} — для них останется разворот страницы`);
+    // Раньше здесь стояло «для них останется разворот страницы» — и это был
+    // худший из возможных исходов: ученику открывался ВЕСЬ PDF теста. Разворот
+    // убран, а рисунок теперь доливается кнопкой у задания, о чём и говорим.
+    if (noBox > 0) parts.push(`не удалось определить рамку у ${noBox} — загрузите рисунок кнопкой у задания`);
     if (failed > 0) {
         // ПРИЧИНУ обязательно словами, а не только счётчиком. Первый же прогон
         // на сервере дал «сбой вырезки у 10» — и по этой строке нельзя было

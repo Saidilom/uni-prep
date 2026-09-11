@@ -23,8 +23,27 @@ function resolveRedirectTarget(request: NextRequest) {
 // заворачивал её на /login, и роут не отрабатывал никогда.
 const PUBLIC_API_PATHS = ["/api/payments/payme", "/api/payments/click", "/api/cron/auto-finalize"];
 
+// Роуты, которые авто-публикация (§15) зовёт с сервера общим секретом
+// (x-internal-secret), а не сессией.
+//
+// БЕЗ ЭТОГО СПИСКА ОНИ НЕ РАБОТАЛИ ВОВСЕ. Проверка ниже заворачивала такой
+// вызов на /login, fetch молча шёл по редиректу, получал страницу входа со
+// статусом 200 — и вызывающая сторона считала, что всё прошло. Пересчёт Раша,
+// CEFR и проверка эссе после автоматического закрытия теста не выполнялись, и
+// узнать об этом было нельзя: ошибки не возникало.
+//
+// Открывать их так безопасно: каждый из трёх проверяет вызывающего сам —
+// внутренним секретом ЛИБО сессией с правом на этот тест. Middleware здесь не
+// охраняет ничего, что не охранялось бы внутри.
+const INTERNAL_API_PATTERNS = [
+  /^\/api\/rasch\/recalculate$/,
+  /^\/api\/mock-tests\/[^/]+\/grade-essays$/,
+  /^\/api\/mock-tests\/[^/]+\/cefr-recalculate$/,
+];
+
 export async function middleware(request: NextRequest) {
-  if (PUBLIC_API_PATHS.some((path) => request.nextUrl.pathname === path)) {
+  if (PUBLIC_API_PATHS.some((path) => request.nextUrl.pathname === path)
+      || INTERNAL_API_PATTERNS.some((pattern) => pattern.test(request.nextUrl.pathname))) {
     return NextResponse.next();
   }
 

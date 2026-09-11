@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createRouteHandlerClient } from "@/lib/supabase/server";
-import { estimateRasch, Observation, raschThetaToT, measurementPrecision, itemPrecision, MOCK_SCALE_MAX } from "@/lib/rasch";
+import { Observation, raschThetaToT, measurementPrecision, itemPrecision, MOCK_SCALE_MAX } from "@/lib/rasch";
 import { computeSeparation, SeparationResult, RELIABILITY_HIGH_STAKES } from "@/lib/rasch-separation";
 import {
     analyzeQuestion, parseSelection, correctOptionsFor, isClosedQuestion,
@@ -12,7 +12,8 @@ import { buildScoreTable, lookupScoreRow } from "@/lib/score-table";
 import { itemFitReport, personFitReport, FitObservation, FitReport } from "@/lib/rasch-fit";
 import { modelResiduals, standardizedResiduals, q3Analysis, residualPca, Q3Analysis, PcaResult } from "@/lib/rasch-q3";
 import { classifyResponses, countStates, responseForModel, ResponseState } from "@/lib/response-status";
-import { referencePopulationFor } from "@/lib/reference-population";
+import type { ReferencePopulation } from "@/lib/reference-population";
+import { proportionDifficulties, cohortStatistics, type CohortStatistics } from "@/lib/rasch-proportion";
 import { essayPointsToScore75, combineSectionScores, isNativeCertSubject } from "@/lib/native-cert";
 import { writingPointsToScore } from "@/lib/english-cefr";
 import { certificateMaxForSubject, tScoreToScaleExact } from "@/lib/certificate-scale";
@@ -24,6 +25,14 @@ import { isInternalCall } from "@/lib/internal-auth";
 // Без явного maxDuration функция Vercel обрывалась по умолчанию, а вызывающая
 // сторона делала это «в фоне» и молча глотала сбой.
 export const maxDuration = 300;
+
+// ═══ Как помечается смена метода в истории баллов ═══
+//
+// scale_version в ревизии описывает ПРЕЖНЕЕ значение — то, каким способом было
+// получено число, которое ученик видел до пересчёта. reason называет саму
+// правку. Так по строке ревизии видно и откуда, и куда.
+const PREVIOUS_SCALE_VERSION = "v2-zero/jmle";
+const REVISION_REASON = "cohort_centering_proportion_difficulty";
 
 // Recalibrates the Rasch item difficulties + person abilities for one Mock
 // test, across every attempt that test has on record — a single new
@@ -59,7 +68,9 @@ export async function POST(req: NextRequest) {
 
     const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
 
-    const { data: test } = await admin.from("mock_tests").select("subject_id, certificate_scale_max").eq("id", mockTestId).single();
+    const { data: test } = await admin.from("mock_tests")
+        .select("subject_id, certificate_scale_max, cohort_mu, cohort_sigma, cohort_n, cohort_frozen_at")
+        .eq("id", mockTestId).single();
     const subjectId = (test?.subject_id as string | null) ?? null;
     // Шкала показа ЗАКРЕПЛЕНА за тестом (миграция 112), а не выводится из
     // предмета заново. Иначе первая новая сдача в старый тест пересчитала бы
@@ -137,8 +148,17 @@ export async function POST(req: NextRequest) {
     const essayQuestionIds = new Set(essayQuestions.map((q) => q.id));
     const essayMaxPoints = essayQuestions.reduce((sum, q) => sum + Number(q.points || 0), 0);
 
-    const { data: results } = await admin.from("mock_results").select("id").eq("mock_test_id", mockTestId);
-    const resultIds = (results || []).map((r) => r.id as string);
+    // Прежние значения читаются вместе с id: их надо положить в ревизию ДО
+    // перезаписи (§239), а revealed_at отвечает на вопрос, видел ли ученик
+    // это число вообще.
+    const { data: results } = await admin.from("mock_results")
+        .select("id, level_score, level_score_max, grade_level, rasch_score, revealed_at")
+        .eq("mock_test_id", mockTestId);
+    const resultRows = (results || []) as Array<{
+        id: string; level_score: number | null; level_score_max: number | null;
+        grade_level: string | null; rasch_score: number | null; revealed_at: string | null;
+    }>;
+    const resultIds = resultRows.map((r) => r.id);
     if (resultIds.length === 0) {
         return NextResponse.json({ ok: true, itemCount: 0, personCount: 0 });
     }
@@ -253,20 +273,32 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true, itemCount: 0, personCount: 0 });
     }
 
-    // Z-стандартизация по ЭТАЛОННОЙ популяции, а не по сдавшим этот мок.
+    // ═══ Z-стандартизация ПО ПОТОКУ (шаги 5–6 документа владельца) ═══
     //
-    // Раньше μ и σ брались из когорты того же теста, и люди измерялись
-    // относительно самих себя: средний T выходил ровно 50 при любой подготовке,
-    // а средний балл — 66.67 из 100. Прогресс между месяцами измерить было
-    // нельзя, и сильная когорта понижала балл каждому.
+    // Решение владельца от 2026-09-11. μ и σ берутся у сдавших этот самый тест,
+    // а не у эталонной популяции, как было до этого.
     //
-    // Формула та же, что в методике Агентства (стр. 1–2) — менялось только то,
-    // относительно кого считать. Подробности и слабые места эталона —
-    // src/lib/reference-population.ts и design/RASCH.md §268.
+    // Что это меняет, замерено на проде до правки и владельцем принято: средний
+    // T выходит РОВНО 50 в любом тесте при любой подготовке (это свойство
+    // центрирования, а не совпадение), все 90 существующих работ сменили букву,
+    // сертификат получают 68 вместо 3. Балл теперь означает место в своей
+    // группе, а не уровень подготовки; сравнивать месяцы им нельзя.
     //
-    // Побочно исчезла ветка «вырожденная когорта»: у константы разброс не
-    // вырождается, подменять нечего (§233).
-    const reference = referencePopulationFor(subjectId);
+    // Статистика ЗАКРЕПЛЯЕТСЯ за тестом, как только результат показан хотя бы
+    // одному ученику: роут пересчитывает весь тест после каждой сдачи, и без
+    // заморозки каждая новая работа двигала бы баллы всем остальным. Документ
+    // этого и не требует — расчёт в нём идёт один раз, после закрытия теста.
+    const frozenCohort: CohortStatistics | null = test?.cohort_frozen_at && test?.cohort_sigma !== null && test?.cohort_sigma !== undefined
+        ? {
+            mu: Number(test.cohort_mu),
+            sigma: Number(test.cohort_sigma),
+            count: Number(test.cohort_n ?? 0),
+            status: "OK",
+        }
+        : null;
+    const anyRevealed = resultRows.some((r) => r.revealed_at !== null);
+    // Считается ниже, когда появятся θ: до них статистики потока не существует.
+    let cohort: CohortStatistics = frozenCohort ?? { mu: NaN, sigma: NaN, count: 0, status: "TOO_FEW" };
 
     let personAbility: number[] = new Array(resultIds.length).fill(0);
     // Сложности нужны и ниже, при расчёте погрешности каждого балла, поэтому
@@ -287,8 +319,10 @@ export async function POST(req: NextRequest) {
     // Заполняется внутри блока ниже — сразу после калибровки, потому что
     // separation (§N.5) считается по этим же погрешностям и до записи сводки.
     const difficultiesByPerson: number[][] = Array.from({ length: resultIds.length }, () => []);
-    let converged = true;
-    let iterations = 0;
+    // Свойства прежней итерационной калибровки. У расчёта сложности по доле
+    // решивших их нет — остаются null и такими уходят в базу.
+    let converged: boolean | null = true;
+    let iterations: number | null = 0;
 
     // Сколько работ WLE не сошлось (§C.4): молча такое проглатывать нельзя,
     // поэтому счётчик уходит в ответ вместе с остальной диагностикой.
@@ -312,10 +346,30 @@ export async function POST(req: NextRequest) {
     let distractorReports: QuestionDistractorReport[] = [];
 
     if (hasObjectiveSection) {
-        const estimated = estimateRasch(observations, resultIds.length, questionIds.length);
-        itemDifficultyByIndex = estimated.itemDifficulty;
-        converged = estimated.converged;
-        iterations = estimated.iterations;
+        // ═══ Шаг 2: сложность задания из доли решивших ═══
+        //
+        //   β = −ln( p / (1 − p) )
+        //
+        // Совместной калибровки (JMLE) здесь больше нет: решение владельца от
+        // 2026-09-11. Считаем по столбцам матрицы КАЛИБРОВКИ — той самой, из
+        // которой исключены пропуски (§A.3), потому что пропуск не есть попытка.
+        const answeredByItem = new Array(questionIds.length).fill(0);
+        const correctAnswersByItem = new Array(questionIds.length).fill(0);
+        for (const obs of observations) {
+            answeredByItem[obs.item]++;
+            correctAnswersByItem[obs.item] += obs.correct;
+        }
+        const difficulties = proportionDifficulties(
+            questionIds.map((_, item) => ({ correct: correctAnswersByItem[item], responses: answeredByItem[item] })),
+        );
+        // Задание, которого никто не видел, сложности не имеет вовсе. В таблицу
+        // варианта нужно конечное число, и ноль здесь — не оценка, а заглушка;
+        // в mock_item_calibration такое задание помечается NO_OBSERVATIONS.
+        itemDifficultyByIndex = difficulties.map((d) => (Number.isFinite(d.difficulty) ? d.difficulty : 0));
+        // Сходимости у этого метода нет: формула замкнутая, итераций ноль.
+        // Писать сюда true значило бы сообщать о сходимости, которой не было.
+        converged = null;
+        iterations = null;
 
         // ═══ Балл берётся из ТАБЛИЦЫ варианта (§R.6) ═══
         //
@@ -330,22 +384,32 @@ export async function POST(req: NextRequest) {
         // не «слипание», а свойство модели Раша.
         //
         // Способ оценки θ при этом НЕ меняется: таблица вызывает тот же
-        // estimateThetaWle против тех же калиброванных b. Побочно уходит
-        // разброс в последнем бите: раньше сумма Σ(x_i − P_i) складывалась в
-        // порядке заданий, и у двоих с одинаковым числом верных θ отличалась
-        // на ~1e-16 (на проде это видно как разброс 4e-16). Теперь строка одна
-        // на всех по построению.
-        const scoreTable = buildScoreTable(itemDifficultyByIndex, reference, {
+        // estimateThetaWle против тех же сложностей. Побочно уходит разброс в
+        // последнем бите: раньше сумма Σ(x_i − P_i) складывалась в порядке
+        // заданий, и у двоих с одинаковым числом верных θ отличалась на ~1e-16
+        // (на проде это видно как разброс 4e-16). Теперь строка одна на всех
+        // по построению.
+        //
+        // ═══ ТАБЛИЦА СТРОИТСЯ ДВАЖДЫ, И ЭТО НЕ ЛИШНЯЯ РАБОТА ═══
+        //
+        // θ от μ и σ не зависит — от них зависит только T. А μ и σ теперь
+        // берутся из потока, то есть из самих θ. Круг разрывается порядком:
+        // сначала таблица ради одних θ (популяция здесь не участвует и взята
+        // нейтральной), потом статистика потока, потом таблица заново — уже с
+        // ней. Строк в таблице M+1, второй проход стоит доли миллисекунды.
+        const tableOptions = {
             subjectId,
             hasSecondSection: hasEssaySection,
             // Та же шкала, что уйдёт в mock_results: таблица и записанный балл
             // обязаны быть одним числом, иначе §R.6 перестаёт объяснять балл.
             scaleMax: certificateMax,
-        });
+        };
+        const NEUTRAL: ReferencePopulation = { version: "theta-only", mu: 0, sigma: 1 };
+        const thetaTable = buildScoreTable(itemDifficultyByIndex, NEUTRAL, tableOptions);
 
         personAbility = examResponses.map((row) => {
             const rawScore = row.reduce((sum: number, correct) => sum + correct, 0);
-            const tableRow = lookupScoreRow(scoreTable, rawScore);
+            const tableRow = lookupScoreRow(thetaTable, rawScore);
             if (!tableRow) {
                 // §233: строки нет — значит сырой балл вне варианта. Молча
                 // брать соседнюю нельзя, поэтому считаем напрямую и помечаем.
@@ -358,6 +422,24 @@ export async function POST(req: NextRequest) {
             if (tableRow.wleStatus === "NON_CONVERGED") wleNonConverged++;
             return tableRow.theta;
         });
+
+        // ═══ Шаг 5: статистика потока ═══
+        //
+        // Замороженная имеет приоритет: как только балл показан ученику, он
+        // больше не должен меняться от того, кто сдаст после него.
+        cohort = frozenCohort ?? cohortStatistics(personAbility);
+
+        // ═══ Шаг 6: та же таблица, но с точкой отсчёта потока ═══
+        //
+        // При status ≠ OK sigma равна NaN, raschThetaToT вернёт NaN, и балл в
+        // строке окажется пустым. Это верно: у потока из одного человека (или
+        // где все ответили одинаково) балла по этому методу не существует, и
+        // подставлять сюда эталон молча нельзя (§233).
+        const scoreTable = buildScoreTable(
+            itemDifficultyByIndex,
+            { version: `cohort/${cohort.status.toLowerCase()}`, mu: cohort.mu, sigma: cohort.sigma },
+            tableOptions,
+        );
         scoreTableRows = scoreTable.rows.length;
 
         // Одно время на весь прогон: таблица и калибровка получены из одной и
@@ -368,7 +450,12 @@ export async function POST(req: NextRequest) {
         // сверить, а §199 — чтобы по строке было видно, каким оценщиком и по
         // какой точке отсчёта получено число. Ученику она объясняет его балл,
         // учителю — почему у двоих он одинаковый.
-        const lookupRows = scoreTable.rows.map((r) => ({
+        // Поток без разброса таблицы не даёт: T в каждой строке была бы NaN, а
+        // section_score в таблице объявлен NOT NULL — вставка падала бы и
+        // обрывала весь пересчёт. Такое бывает у теста с одним сдавшим (на
+        // проде такой есть), и это не сбой, а отсутствие второго человека,
+        // относительно которого считается балл.
+        const lookupRows = cohort.status !== "OK" ? [] : scoreTable.rows.map((r) => ({
             mock_test_id: mockTestId,
             raw_score: r.rawScore,
             theta: r.theta,
@@ -384,7 +471,7 @@ export async function POST(req: NextRequest) {
             item_count: scoreTable.itemCount,
             built_at: calibratedAt,
         }));
-        const { error: lookupError } = await admin
+        const { error: lookupError } = lookupRows.length === 0 ? { error: null } : await admin
             .from("mock_score_lookup")
             .upsert(lookupRows, { onConflict: "mock_test_id,raw_score" });
         if (lookupError) {
@@ -517,7 +604,7 @@ export async function POST(req: NextRequest) {
                 || correctByPerson[p] === 0
                 || correctByPerson[p] === difficultiesByPerson[p].length,
         }));
-        const itemMeasures = estimated.itemDifficulty.map((b, i) => ({
+        const itemMeasures = itemDifficultyByIndex.map((b: number, i: number) => ({
             measure: b,
             se: itemPrecision(b, abilitiesByItem[i]).thetaSe,
             // Та же логика для заданий: решённое всеми или никем не калибруется
@@ -593,7 +680,20 @@ export async function POST(req: NextRequest) {
         }
 
         // Сводка по варианту: без знаменателя число флагов не читается.
+        // Число для базы: NaN в колонку не отправляем, там его место занимает
+        // NULL — и CHECK на положительную sigma это же и требует.
+        const dbNumber = (value: number) => (Number.isFinite(value) ? value : null);
         const { error: summaryError } = await admin.from("mock_tests").update({
+            // ═══ Статистика потока (шаги 5–6) ═══
+            //
+            // Записывается на каждом прогоне, пока не заморожена. Момент
+            // заморозки — первый показанный ученику результат: с этого мгновения
+            // его балл не должен меняться от того, кто сдаст после него.
+            cohort_mu: dbNumber(cohort.mu),
+            cohort_sigma: dbNumber(cohort.sigma),
+            cohort_n: cohort.count,
+            cohort_frozen_at: test?.cohort_frozen_at
+                ?? (anyRevealed && cohort.status === "OK" ? calibratedAt : null),
             q3_pairs_checked: q3?.pairs.filter((pair) => pair.excess !== null).length ?? null,
             q3_pairs_flagged: q3?.flaggedPairs.length ?? null,
             q3_max_excess: q3?.maxExcess ?? null,
@@ -641,7 +741,7 @@ export async function POST(req: NextRequest) {
 
         const calibrationRows = questionIds.map((id, i) => {
             const n = sampleSizeByItem[i];
-            const precision = itemPrecision(estimated.itemDifficulty[i], abilitiesByItem[i]);
+            const precision = itemPrecision(itemDifficultyByIndex[i], abilitiesByItem[i]);
             const fit = itemFitReports[i];
             const itemStatus = n === 0
                 ? "NO_OBSERVATIONS"
@@ -651,17 +751,21 @@ export async function POST(req: NextRequest) {
             return {
                 mock_test_id: mockTestId,
                 question_id: id,
-                difficulty: estimated.itemDifficulty[i],
+                difficulty: itemDifficultyByIndex[i],
                 difficulty_se: precision.thetaSe,
                 item_status: itemStatus,
                 sample_size: n,
-                converged: estimated.converged,
-                iterations: estimated.iterations,
+                converged,
+                iterations,
                 // Какой политикой пропусков посчитаны эти сложности (§A.3) и
                 // каким оценщиком — способность (§109: смена метода это новая
                 // версия, и она обязана быть видна в данных).
                 missing_policy: "CALIBRATION",
                 person_estimator: `${WLE_ESTIMATOR}/${WLE_VERSION}`,
+                // Каким методом получена сложность (§109). Без этой пометки
+                // через полгода по строке калибровки нельзя будет сказать,
+                // JMLE её посчитал или доля решивших.
+                difficulty_method: "PROPORTION",
                 // Модуль F. Флаги не влияют ни на балл, ни на сложность —
                 // задание остаётся в расчёте, пока человек не решит иначе.
                 infit: fit.infit,
@@ -710,7 +814,10 @@ export async function POST(req: NextRequest) {
     // целым T внутри gradeLevelFromScore.
     const tScores = resultIds.map((_, n) => {
         const sections: number[] = [];
-        if (hasObjectiveSection) sections.push(raschThetaToT(personAbility[n], reference.mu, reference.sigma));
+        // μ и σ — потока (шаг 6 документа). При status ≠ OK sigma равна NaN,
+        // raschThetaToT вернёт NaN, и combineSectionScores отбросит этот
+        // раздел: балла не будет вовсе, а не ноль вместо него.
+        if (hasObjectiveSection) sections.push(raschThetaToT(personAbility[n], cohort.mu, cohort.sigma));
         if (hasEssaySection) sections.push(essayToScore75(essayEarnedByPerson[n], essayMaxPoints));
         return combineSectionScores(sections);
     });
@@ -721,8 +828,9 @@ export async function POST(req: NextRequest) {
     // погрешность итога делится на их число.
     const sectionCount = (hasObjectiveSection ? 1 : 0) + (hasEssaySection ? 1 : 0);
 
-    const updateResults = await Promise.all(
-        resultIds.map((id, n) => {
+    // Полезная нагрузка считается ОТДЕЛЬНО от записи: между ними надо успеть
+    // положить в ревизии прежние значения (§239).
+    const nextValues = resultIds.map((id, n) => {
             const t = tScores[n];
             // Балл НЕ округляется — ни для полосы уровня, ни для записи.
             //
@@ -755,7 +863,8 @@ export async function POST(req: NextRequest) {
                 ? precision.scoreSe / sectionCount
                 : null;
 
-            return admin.from("mock_results").update({
+            return {
+                id,
                 // rasch_score пишется только когда его есть из чего считать:
                 // у теста из одного сочинения способности по Рашу не существует,
                 // и ноль здесь читался бы как «средняя способность».
@@ -777,7 +886,12 @@ export async function POST(req: NextRequest) {
                 // «результат существует» и «измерению можно доверять». У теста
                 // из одного сочинения способности по Рашу нет вовсе — это тоже
                 // INSUFFICIENT_INFORMATION, а не OK с пустой погрешностью.
-                measurement_status: precision?.status ?? "INSUFFICIENT_INFORMATION",
+                // Поток без разброса — это тоже отсутствие измерения, и статус
+                // обязан это назвать. Балл при таком потоке пуст (sigma = NaN
+                // выше), и «OK» рядом с пустым баллом противоречил бы сам себе.
+                measurement_status: cohort.status !== "OK" && hasObjectiveSection
+                    ? "INSUFFICIENT_INFORMATION"
+                    : precision?.status ?? "INSUFFICIENT_INFORMATION",
                 // Person-fit (§F.10). На балл и уровень НЕ влияет: §215
                 // требует различать «результат есть» и «результат доверенный»,
                 // а §N.2 прямо запрещает делать из misfit вывод о списывании.
@@ -786,8 +900,51 @@ export async function POST(req: NextRequest) {
                 person_infit_zstd: personFitReports[n]?.infitZstd ?? null,
                 person_outfit_zstd: personFitReports[n]?.outfitZstd ?? null,
                 person_fit_flags: personFitReports[n]?.flags ?? null,
-            }).eq("id", id);
-        })
+            };
+    });
+
+    // ═══ Ревизии перед перезаписью (§239) ═══
+    //
+    // Балл, который ученик уже видел, нельзя менять молча: в
+    // mock_result_revisions ложится ПРЕЖНЕЕ значение вместе с версией шкалы,
+    // по которой оно было получено.
+    //
+    // Только у показанных работ и только когда число действительно меняется:
+    // роут запускается после каждой сдачи, и ревизия на каждый прогон
+    // превратила бы таблицу в журнал вызовов вместо истории баллов.
+    const previousById = new Map(resultRows.map((row) => [row.id, row]));
+    const revisions = nextValues.flatMap((next) => {
+        const previous = previousById.get(next.id);
+        if (!previous || previous.revealed_at === null) return [];
+        const scoreMoved = Number(previous.level_score ?? NaN) !== Number(next.level_score ?? NaN)
+            && !(previous.level_score === null && next.level_score === null);
+        const levelMoved = (previous.grade_level ?? null) !== (next.grade_level ?? null);
+        if (!scoreMoved && !levelMoved) return [];
+        return [{
+            result_id: next.id,
+            revised_at: new Date().toISOString(),
+            reason: REVISION_REASON,
+            level_score: previous.level_score,
+            level_score_max: previous.level_score_max,
+            grade_level: previous.grade_level,
+            rasch_score: previous.rasch_score,
+            scale_version: PREVIOUS_SCALE_VERSION,
+        }];
+    });
+    if (revisions.length > 0) {
+        const { error: revisionError } = await admin.from("mock_result_revisions").insert(revisions);
+        if (revisionError) {
+            // Без ревизии перезаписывать нельзя: прежнее значение исчезнет
+            // безвозвратно, и объяснить ученику смену балла будет нечем.
+            return NextResponse.json(
+                { error: `Не удалось сохранить ревизии баллов: ${revisionError.message}` },
+                { status: 500 },
+            );
+        }
+    }
+
+    const updateResults = await Promise.all(
+        nextValues.map(({ id, ...payload }) => admin.from("mock_results").update(payload).eq("id", id)),
     );
     const failedCount = updateResults.filter((r) => r.error).length;
     if (failedCount > 0) {

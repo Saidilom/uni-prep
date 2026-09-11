@@ -123,7 +123,14 @@ export function buildScoreTable(
         // иначе выводится из предмета. Иначе строка таблицы показывала бы балл
         // не по той шкале, что записан ученику.
         const certificateMax = scaleMax ?? certificateMaxForSubject(subjectId);
-        const exactScore = hasSecondSection ? null : tScoreToScaleExact(sectionScore, certificateMax);
+        // Пусто не только у двухраздельного теста, но и когда T не посчиталась
+        // вовсе: с центрированием по потоку sectionScore равна NaN там, где у
+        // потока нет разброса (один сдавший; все ответили одинаково).
+        // tScoreToScaleExact отдал бы на NaN ноль, а ноль здесь читался бы как
+        // настоящий балл — худшее из возможных значений.
+        const exactScore = hasSecondSection || !Number.isFinite(sectionScore)
+            ? null
+            : tScoreToScaleExact(sectionScore, certificateMax);
 
         rows.push({
             rawScore,

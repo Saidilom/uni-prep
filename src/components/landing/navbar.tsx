@@ -6,6 +6,7 @@ import { ArrowUpRight } from "lucide-react";
 import { APP_NAME } from "@/lib/app-config";
 import { useTranslations } from "@/lib/i18n/locale-provider";
 import LocaleSwitcher from "@/components/locale-switcher";
+import { LANDING_PATH } from "@/lib/landing-routes";
 
 function scrollToId(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -42,7 +43,7 @@ export default function LandingNavbar() {
         </nav>
 
         <div className="flex items-center gap-2">
-          <LocaleSwitcher variant="light" className="hidden sm:inline-flex" />
+          <LocaleSwitcher variant="light" className="hidden sm:inline-flex" hrefFor={(locale) => LANDING_PATH[locale]} />
           <Link
             href="/login"
             className="hidden rounded-full px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted sm:inline-block"

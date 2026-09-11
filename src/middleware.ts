@@ -1,6 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { sanitizeRedirectTarget } from "@/lib/redirect-safety";
+import { LOCALE_HEADER } from "@/lib/i18n/get-locale";
+import { LANDING_PATH } from "@/lib/landing-routes";
 
 function resolveRedirectTarget(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
@@ -26,9 +28,23 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // ═══ Язык языковых версий лендинга ═══
+  //
+  // На /ru и /uz язык задаёт АДРЕС, а не cookie посетителя. Передаём его
+  // заголовком запроса: из него getServerLocale() соберёт <html lang>, и
+  // разметка совпадёт с текстом. Без этого робот, у которого cookie нет
+  // вовсе, получил бы обе страницы с языком по умолчанию.
+  const landingLocale = request.nextUrl.pathname === LANDING_PATH.ru
+    ? "ru"
+    : request.nextUrl.pathname === "/uz"
+      ? "uz"
+      : null;
+  const requestHeaders = new Headers(request.headers);
+  if (landingLocale) requestHeaders.set(LOCALE_HEADER, landingLocale);
+
   const response = NextResponse.next({
     request: {
-      headers: request.headers,
+      headers: requestHeaders,
     },
   });
 
@@ -62,7 +78,30 @@ export async function middleware(request: NextRequest) {
   const isAdminPage = request.nextUrl.pathname.startsWith("/admin");
   const isBranchPage = request.nextUrl.pathname.startsWith("/branch");
 
-  if (!user && !isAuthPage && request.nextUrl.pathname !== "/") {
+  // ═══ Корень для незалогиненного — лендинг, отданный сервером ═══
+  //
+  // Rewrite, а не redirect: адрес в браузере и в выдаче остаётся
+  // «testregiston.uz», без лишнего перехода и без второй ссылки в индексе.
+  //
+  // Сама страница живёт в (landing)/uz — вне раскладки (dashboard), которая
+  // до появления сессии отдаёт крутилку вместо разметки. Раньше корень уходил
+  // именно в неё, и роботу доставалось 8 символов текста.
+  if (!user && request.nextUrl.pathname === "/") {
+    const landingHeaders = new Headers(request.headers);
+    landingHeaders.set(LOCALE_HEADER, "uz");
+    const rewritten = NextResponse.rewrite(new URL("/uz", request.url), {
+      request: { headers: landingHeaders },
+    });
+    // Куки, которые успел обновить Supabase, переносим руками: они живут на
+    // прежнем ответе, а возвращаем мы другой.
+    response.cookies.getAll().forEach((cookie) => rewritten.cookies.set(cookie));
+    return rewritten;
+  }
+
+  // Языковые версии лендинга — такие же публичные страницы, как /login.
+  // Без этого /ru заворачивался на вход, и у русской версии не было ни
+  // посетителей, ни индексации.
+  if (!user && !isAuthPage && !landingLocale && request.nextUrl.pathname !== "/") {
     const target = resolveRedirectTarget(request);
     const loginUrl = new URL("/login", request.url);
     if (target) {
@@ -114,6 +153,9 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // robots.txt, sitemap.xml и карточка для соцсетей ОБЯЗАНЫ быть здесь.
+    // Без них matcher ловил и эти адреса тоже, и робот получал на них 307 на
+    // страницу входа — то есть карты сайта у сайта не было вовсе.
+    "/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|opengraph-image|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

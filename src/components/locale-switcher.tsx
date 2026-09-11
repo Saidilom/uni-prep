@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useLocale } from "@/lib/i18n/locale-provider";
 import type { Locale } from "@/lib/i18n/config";
 import { useAuthStore } from "@/store/useAuthStore";
@@ -26,9 +27,19 @@ const VARIANTS = {
 export default function LocaleSwitcher({
   className = "",
   variant = "dark",
+  hrefFor,
 }: {
   className?: string;
   variant?: keyof typeof VARIANTS;
+  /**
+   * Адрес языковой версии ЭТОЙ страницы, если у неё он свой.
+   *
+   * Нужен лендингу: там язык задаёт адрес (`/` и `/ru`), а не cookie, и одна
+   * лишь смена cookie ничего бы не изменила — страница перерисовалась бы тем
+   * же языком, и кнопка выглядела бы сломанной. Внутри приложения язык
+   * по-прежнему живёт в cookie, и проп не передаётся.
+   */
+  hrefFor?: (locale: Locale) => string;
 }) {
   const { locale, setLocale } = useLocale();
   const { user } = useAuthStore();
@@ -45,17 +56,34 @@ export default function LocaleSwitcher({
 
   return (
     <div className={`inline-flex items-center rounded-full border p-0.5 text-[11px] font-semibold ${styles.wrapper} ${className}`}>
-      {OPTIONS.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          onClick={() => handleSelect(option.value)}
-          aria-pressed={locale === option.value}
-          className={`rounded-full px-2.5 py-1 transition-colors ${locale === option.value ? styles.active : styles.inactive}`}
-        >
-          {option.label}
-        </button>
-      ))}
+      {OPTIONS.map((option) => {
+        const classes = `rounded-full px-2.5 py-1 transition-colors ${locale === option.value ? styles.active : styles.inactive}`;
+        // Ссылкой, а не кнопкой: выбор языка на лендинге — это переход на
+        // другой адрес, и поиск должен увидеть его обычной ссылкой.
+        // Cookie при этом всё равно ставим, чтобы выбор дожил до входа.
+        return hrefFor ? (
+          <Link
+            key={option.value}
+            href={hrefFor(option.value)}
+            onClick={() => handleSelect(option.value)}
+            aria-current={locale === option.value ? "true" : undefined}
+            hrefLang={option.value}
+            className={classes}
+          >
+            {option.label}
+          </Link>
+        ) : (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => handleSelect(option.value)}
+            aria-pressed={locale === option.value}
+            className={classes}
+          >
+            {option.label}
+          </button>
+        );
+      })}
     </div>
   );
 }

@@ -4,7 +4,7 @@ import localFont from "next/font/local";
 import { Golos_Text } from "next/font/google";
 import AuthProvider from "@/components/auth-provider";
 import { GlobalProviders } from "@/components/global-providers";
-import { APP_NAME, APP_DESCRIPTION } from "@/lib/app-config";
+import { APP_NAME, APP_DESCRIPTION, SITE_URL } from "@/lib/app-config";
 import { LocaleProvider } from "@/lib/i18n/locale-provider";
 import { getServerLocale } from "@/lib/i18n/get-locale";
 import "./globals.css";
@@ -27,8 +27,29 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: APP_NAME,
+  // Без metadataBase относительные ссылки на картинку соцсетей так и остаются
+  // относительными, а Telegram и Google требуют абсолютных — карточка просто
+  // не собирается.
+  metadataBase: new URL(SITE_URL),
+  title: {
+    // Внутренние экраны оставляют короткое имя во вкладке; поисковый заголовок
+    // задают страницы лендинга своим absolute-заголовком.
+    default: APP_NAME,
+    template: `%s · ${APP_NAME}`,
+  },
   description: APP_DESCRIPTION,
+  robots: { index: true, follow: true },
+  openGraph: {
+    type: "website",
+    siteName: APP_NAME,
+    url: SITE_URL,
+  },
+  // Подтверждение прав в Search Console. Через окружение, а не строкой в коде:
+  // код у каждого ресурса свой, и в репозитории ему делать нечего. Пока
+  // переменной нет, тега тоже нет — пустой meta хуже отсутствующего.
+  ...(process.env.GOOGLE_SITE_VERIFICATION
+    ? { verification: { google: process.env.GOOGLE_SITE_VERIFICATION } }
+    : {}),
   icons: {
     icon: [
       { url: "/gogg.png", sizes: "any", type: "image/png" },

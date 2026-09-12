@@ -32,7 +32,7 @@ export default function LandingView({ stats = null }: { stats?: LandingStats | n
         className="fixed left-0 right-0 top-0 z-[60] h-[3px] origin-left bg-[hsl(var(--brand-olive-ink))]"
       />
       <LandingNavbar />
-      <LandingHero />
+      <LandingHero stats={stats} />
       <LandingStatsStrip stats={stats} />
       <LandingResults stats={stats} />
       <LandingFeatures />

@@ -88,6 +88,7 @@ const uz: typeof ru = {
     tagline: "O'quvchilar, o'qituvchilar va o'quv markazi administratorlari uchun platforma.",
   },
   landingHero: {
+    studentsNote: "{count} o'quvchi platformada testlardan o'tgan",
     badge: "Registan haqida",
     titleLead: "Sizning darajangizni",
     titleHighlight: "tushunadigan tayyorgarlik",

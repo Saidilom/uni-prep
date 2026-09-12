@@ -59,6 +59,9 @@ const config: Config = {
 			fontFamily: {
 				sans: ['var(--font-golos-text)', 'var(--font-geist-sans)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
 				mono: ['var(--font-geist-mono)', 'monospace'],
+				// Только для заголовка лендинга: в макете он с засечками.
+				// Остальной сайт остаётся на Golos Text.
+				display: ['var(--font-display)', 'Georgia', 'serif'],
 			}
 		}
 	},

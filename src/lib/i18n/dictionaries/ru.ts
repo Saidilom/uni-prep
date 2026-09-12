@@ -86,6 +86,7 @@ const ru = {
     tagline: "Платформа для учеников, учителей и администраторов учебного центра.",
   },
   landingHero: {
+    studentsNote: "{count} учеников уже прошли тесты на платформе",
     badge: "О Registan",
     titleLead: "Подготовка, которая",
     titleHighlight: "понимает ваш уровень",

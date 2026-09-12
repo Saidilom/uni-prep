@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import localFont from "next/font/local";
-import { Golos_Text } from "next/font/google";
+import { Golos_Text, Playfair_Display } from "next/font/google";
 import AuthProvider from "@/components/auth-provider";
 import { GlobalProviders } from "@/components/global-providers";
 import { APP_NAME, APP_DESCRIPTION, SITE_URL } from "@/lib/app-config";
@@ -10,6 +10,14 @@ import { getServerLocale } from "@/lib/i18n/get-locale";
 import "./globals.css";
 import "katex/dist/katex.min.css";
 
+// Заголовок лендинга с засечками — по присланному макету. Подключён только
+// как переменная: класс font-display применяется точечно, на сайте в целом
+// шрифт не меняется.
+const playfair = Playfair_Display({
+  subsets: ["latin", "cyrillic"],
+  variable: "--font-display",
+  weight: ["600", "700"],
+});
 const golosText = Golos_Text({
   subsets: ["latin", "cyrillic"],
   variable: "--font-golos-text",
@@ -81,7 +89,7 @@ export default function RootLayout({
         <link rel="apple-touch-icon" sizes="180x180" href="/gogg.png" />
       </head>
       <body
-        className={`${golosText.variable} ${geistSans.variable} ${geistMono.variable} antialiased min-h-screen relative app-bg`}
+        className={`${golosText.variable} ${playfair.variable} ${geistSans.variable} ${geistMono.variable} antialiased min-h-screen relative app-bg`}
       >
         <div className="relative z-10 min-h-screen">
           <LocaleProvider initialLocale={locale}>

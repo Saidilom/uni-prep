@@ -179,7 +179,7 @@ describe("300 учеников на реальном моке по матема�
             expect(Number.isFinite(s.score)).toBe(true);
             expect(s.score).toBeGreaterThanOrEqual(0);
             expect(s.score).toBeLessThanOrEqual(mathMax);
-            expect(s.score).toBe(Math.round(s.score * 10) / 10);
+            expect(s.score).toBe(Math.round(s.score * 100) / 100);
         }
     });
 
@@ -255,7 +255,7 @@ describe("300 учеников на реальном моке по матема�
         expect(t0).toBe(50);
         // На шкале показа математики те же 50 логит-баллов выражаются как 66,7
         // из 100 — точка отсчёта не сдвинулась, изменилась только единица.
-        expect(tScoreToCertificate(t0, "math")).toBe(66.7);
+        expect(tScoreToCertificate(t0, "math")).toBe(66.67);
         // И средний балл когорты НЕ равен точке отсчёта — именно это и было
         // сломано, когда шкалу считали относительно самих сдавших.
         const avg = mean(realistic.map((s) => s.score));

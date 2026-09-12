@@ -41,11 +41,11 @@ describe("buildResultsSheet", () => {
         expect(scoreCell?.type).toBe(Number);
     });
 
-    it("балл показывается с одним знаком после запятой", () => {
+    it("балл показывается с двумя знаками после запятой", () => {
         // Иначе в одной колонке оказались бы «99» и «99,8» вперемешку. Сам
         // символ разделителя подставит Excel по своей локали.
         const scoreCell = cells(buildResultsSheet([row({ levelScore: 100 })], labels), 1)[2];
-        expect(scoreCell?.format).toBe("0.0");
+        expect(scoreCell?.format).toBe("0.00");
     });
 
     it("номер строки — тоже число, чтобы сортировка не была текстовой", () => {

@@ -82,16 +82,16 @@ describe("tScoreToCertificate", () => {
         }
     });
 
-    // Ради чего всё и делалось: балл округляется до одной десятой, а не до
-    // целого. Раньше округлений было три — здесь, в raschThetaToT и в
+    // Ради чего всё и делалось: балл округляется до сотой, а не до целого.
+    // Раньше округлений было три — здесь, в raschThetaToT и в
     // combineSectionScores, — и балл выходил целым.
-    it("держит одну десятую, а не целое", () => {
-        expect(tScoreToCertificate(64.79, "english")).toBe(64.8);
-        expect(tScoreToCertificate(51.67, "english")).toBe(51.7);
-        expect(tScoreToCertificate(74.878, "english")).toBe(74.9);
-        // Второй десятой быть не должно: точность в проекте одна.
-        expect(tScoreToCertificate(64.79, "math") * 10 % 1).toBe(0);
-        expect(tScoreToCertificate(51.67, "math") * 10 % 1).toBe(0);
+    it("держит две сотых, а не целое", () => {
+        expect(tScoreToCertificate(64.79, "english")).toBe(64.79);
+        expect(tScoreToCertificate(51.666, "english")).toBe(51.67);
+        expect(tScoreToCertificate(74.878, "english")).toBe(74.88);
+        // Третьего знака быть не должно: точность в проекте одна.
+        expect(tScoreToCertificate(64.794, "math") * 100 % 1).toBeCloseTo(0, 9);
+        expect(tScoreToCertificate(51.666, "math") * 100 % 1).toBeCloseTo(0, 9);
     });
 
     it("различает T, которые прежде сливались в один балл", () => {
@@ -114,10 +114,18 @@ describe("tScoreToCertificate", () => {
 });
 
 describe("roundScore", () => {
-    it("округляет до одной десятой", () => {
-        expect(roundScore(86.44)).toBe(86.4);
-        expect(roundScore(86.46)).toBe(86.5);
+    it("округляет до сотых", () => {
+        expect(roundScore(86.444)).toBe(86.44);
+        expect(roundScore(86.446)).toBe(86.45);
         expect(roundScore(100)).toBe(100);
+    });
+
+    it("множитель округления следует за SCORE_DECIMALS", () => {
+        // Он был зашит числом (×10 / 10), и при смене константы на два знака
+        // балл резался бы до десятой, а печатался с двумя: «51,70» вместо
+        // «51,67». Сторож именно на это: второй знак обязан доживать до показа.
+        expect(formatScore(roundScore(51.66561275680224))).toBe("51,67");
+        expect(formatScore(roundScore(51.66561275680224)).endsWith("0")).toBe(false);
     });
 
     it("не отдаёт NaN наружу", () => {
@@ -127,19 +135,19 @@ describe("roundScore", () => {
 });
 
 describe("formatScore", () => {
-    it("пишет балл с запятой и одной десятой", () => {
+    it("пишет балл с запятой и двумя знаками", () => {
         // Запятая, а не точка: так в ru/uz, и так Excel с русской локалью
         // читает значение как ЧИСЛО, а не как текст.
-        expect(formatScore(67.8)).toBe("67,8");
-        expect(formatScore(100)).toBe("100,0");
-        expect(formatScore(0)).toBe("0,0");
+        expect(formatScore(67.83)).toBe("67,83");
+        expect(formatScore(100)).toBe("100,00");
+        expect(formatScore(0)).toBe("0,00");
     });
 
     it("не показывает мусор двоичной дроби", () => {
         // Ровно то, что вылезло бы при печати балла сырым: 86.4 в double
         // хранится неточно.
-        expect(formatScore(0.1 + 0.2 + 86.1)).toBe("86,4");
-        expect(formatScore(86.40000000000001)).toBe("86,4");
+        expect(formatScore(0.1 + 0.2 + 86.1)).toBe("86,40");
+        expect(formatScore(86.40000000000001)).toBe("86,40");
     });
 
     it("на отсутствующем балле даёт пустую строку, а не «0» и не «null»", () => {
@@ -232,9 +240,9 @@ describe("averageCertificateScore", () => {
             { score: 51.1, max: 75 },
         ])!;
         expect(avg).toBeCloseTo((49.8 + 50.5 + 51.1) / 3, 12);
-        expect(avg).not.toBe(Math.round(avg * 10) / 10);
-        // А на экране — одна десятая (§L.8).
-        expect(formatScore(avg)).toBe("50,5");
+        expect(avg).not.toBe(Math.round(avg * 100) / 100);
+        // А на экране — две сотых (§L.8).
+        expect(formatScore(avg)).toBe("50,47");
     });
 });
 
@@ -243,17 +251,17 @@ describe("averageCertificateScore", () => {
 // моке SE вышла ±3–4 балла и они неразличимы.
 describe("formatScoreWithError", () => {
     it("пишет балл и погрешность через ±", () => {
-        expect(formatScoreWithError(31.4, 3.9)).toBe("31,4 ± 3,9");
-        expect(formatScoreWithError(50, 3.24)).toBe("50,0 ± 3,2");
+        expect(formatScoreWithError(31.42, 3.87)).toBe("31,42 ± 3,87");
+        expect(formatScoreWithError(50, 3.244)).toBe("50,00 ± 3,24");
     });
 
     it("без погрешности отдаёт просто балл, а не «± null»", () => {
         // У работ, посчитанных до миграции 093, SE в базе нет, и выдумывать её
         // нельзя (§233).
-        expect(formatScoreWithError(31.4, null)).toBe("31,4");
-        expect(formatScoreWithError(31.4, undefined)).toBe("31,4");
-        expect(formatScoreWithError(31.4, Number.NaN)).toBe("31,4");
-        expect(formatScoreWithError(31.4, 0)).toBe("31,4");
+        expect(formatScoreWithError(31.42, null)).toBe("31,42");
+        expect(formatScoreWithError(31.42, undefined)).toBe("31,42");
+        expect(formatScoreWithError(31.42, Number.NaN)).toBe("31,42");
+        expect(formatScoreWithError(31.42, 0)).toBe("31,42");
     });
 
     it("без балла ничего не пишет", () => {
@@ -264,7 +272,7 @@ describe("formatScoreWithError", () => {
 
 describe("formatScoreInterval", () => {
     it("пишет интервал через тире", () => {
-        expect(formatScoreInterval({ low: 20.2, high: 35.6 })).toBe("20,2 – 35,6");
+        expect(formatScoreInterval({ low: 20.25, high: 35.64 })).toBe("20,25 – 35,64");
     });
 
     it("на отсутствующем интервале даёт пустую строку", () => {
@@ -275,11 +283,11 @@ describe("formatScoreInterval", () => {
 // §202–203: внутренний расчёт в полной точности, округление только на выводе.
 // Отсюда две функции на один перевод, и путать их нельзя.
 describe("tScoreToCertificateExact против tScoreToCertificate", () => {
-    it("точный не округляет, показной округляет до десятой", () => {
+    it("точный не округляет, показной округляет до сотой", () => {
         // На английском шкала показа совпадает с T, поэтому разницу двух
         // функций видно без пересчёта.
-        expect(tScoreToCertificateExact(64.96, "english")).toBeCloseTo(64.96, 10);
-        expect(tScoreToCertificate(64.96, "english")).toBe(65);
+        expect(tScoreToCertificateExact(64.9649, "english")).toBeCloseTo(64.9649, 10);
+        expect(tScoreToCertificate(64.9649, "english")).toBe(64.96);
     });
 
     it("округлённый есть в точности roundScore от точного", () => {
@@ -303,11 +311,11 @@ describe("tScoreToCertificateExact против tScoreToCertificate", () => {
         // Максимум ОБЯЗАТЕЛЕН вторым аргументом: без него сотенный балл 86,6
         // сравнился бы с порогом A из 75-й шкалы и дал бы A+ вместо B+. Ровно
         // эта ловушка и делает возврат сотенной шкалы нетривиальным.
-        const exact = tScoreToCertificateExact(64.96, "math");
-        expect(gradeLevelFromScore(exact, { max: 100 })).toBe("B+");   // точное 64.96 < 65
-        expect(formatScore(tScoreToCertificate(64.96, "english"))).toBe("65,0"); // показ округлён
+        const exact = tScoreToCertificateExact(64.996, "math");
+        expect(gradeLevelFromScore(exact, { max: 100 })).toBe("B+");   // точное 64.996 < 65
+        expect(formatScore(tScoreToCertificate(64.996, "english"))).toBe("65,00"); // показ округлён
         // Буква обязана следовать точному значению, а не показанному.
-        expect(gradeLevelFromScore(tScoreToCertificate(64.96, "english"), { max: 75 })).toBe("A");
+        expect(gradeLevelFromScore(tScoreToCertificate(64.996, "english"), { max: 75 })).toBe("A");
     });
 
     it("без максимума сотенный балл дал бы неверную букву", () => {

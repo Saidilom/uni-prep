@@ -51,9 +51,9 @@ describe("форма таблицы (§R.6)", () => {
             expect(row.score!).toBeGreaterThanOrEqual(0);
             // Таблица считана для математики, значит шкала показа — 100.
             expect(row.score!).toBeLessThanOrEqual(certificateMaxForSubject("math"));
-            if (row.score! !== Math.round(row.score! * 10) / 10) anyExact = true;
-            // А показанное число — с одной десятой (§L.8).
-            expect(formatScore(row.score!)).toMatch(/^\d+,\d$/);
+            if (row.score! !== Math.round(row.score! * 100) / 100) anyExact = true;
+            // А показанное число — с двумя сотыми (§L.8).
+            expect(formatScore(row.score!)).toMatch(/^\d+,\d\d$/);
         }
         expect(anyExact).toBe(true);
     });

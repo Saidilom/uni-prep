@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { LocaleProvider } from "@/lib/i18n/locale-provider";
 import LandingView from "@/components/landing";
 import { landingMetadata, landingJsonLd } from "@/lib/seo";
+import { fetchLandingStats } from "@/lib/landing-stats-server";
 
 // Узбекская версия лендинга.
 //
@@ -21,7 +22,11 @@ import { landingMetadata, landingJsonLd } from "@/lib/seo";
 // серверному рендеру не мешает — мешал именно гейт.
 export const metadata: Metadata = landingMetadata("uz");
 
-export default function UzLandingPage() {
+export default async function UzLandingPage() {
+    // Числа считаются здесь, на сервере: в разметку они попадают уже готовыми,
+    // и роботу не приходится ждать браузерного запроса.
+    const stats = await fetchLandingStats();
+
     return (
         <>
             <script
@@ -31,7 +36,7 @@ export default function UzLandingPage() {
                 dangerouslySetInnerHTML={{ __html: JSON.stringify(landingJsonLd("uz")) }}
             />
             <LocaleProvider initialLocale="uz">
-                <LandingView />
+                <LandingView stats={stats} />
             </LocaleProvider>
         </>
     );

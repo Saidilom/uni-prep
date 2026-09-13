@@ -37,6 +37,7 @@ const PUBLIC_API_PATHS = ["/api/payments/payme", "/api/payments/click", "/api/cr
 // охраняет ничего, что не охранялось бы внутри.
 const INTERNAL_API_PATTERNS = [
   /^\/api\/rasch\/recalculate$/,
+  /^\/api\/irt\/3pl$/,
   /^\/api\/mock-tests\/[^/]+\/grade-essays$/,
   /^\/api\/mock-tests\/[^/]+\/cefr-recalculate$/,
 ];

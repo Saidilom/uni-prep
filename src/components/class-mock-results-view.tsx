@@ -19,6 +19,7 @@ import EssayCriteriaForm, { EssayCriteriaPayload } from "@/components/essay-crit
 import MockReliabilityPanel from "@/components/mock-reliability-panel";
 import DistractorReport from "@/components/distractor-report";
 import PsychometricCharts from "@/components/psychometric-charts";
+import Irt3plPanel from "@/components/irt-3pl-panel";
 import { ESSAY_MAX_POINTS } from "@/lib/essay-rubric";
 import { mistakeReviewAccess } from "@/lib/mistake-review-access";
 import { accuracyColor } from "@/lib/status-colors";
@@ -295,6 +296,14 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref, re
             {/* §D.3, D.10–D.12. Тоже свёрнуто: графики отвечают на вопрос
                 «подходит ли этот вариант этой группе», а не на «кто как сдал». */}
             <PsychometricCharts mockTestId={mockTestId} />
+
+            {/* Модель 3PL — РЯДОМ с действующим баллом, не вместо него (§238).
+                Считается по кнопке и пишет в свои таблицы; mock_results этот
+                раздел не трогает. Нужен, чтобы на собственных работах было
+                видно, что даёт трёхпараметрическая модель и хватает ли для
+                неё данных. Только для админа: это вопрос методики, а не
+                проверки работ. */}
+            {!readOnly && <Irt3plPanel mockTestId={mockTestId} />}
 
             <section>
                 {/* Раздел аналитический: для проверки работ он не нужен, а перед

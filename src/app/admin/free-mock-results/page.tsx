@@ -208,7 +208,7 @@ export default function AdminFreeMockResultsPage() {
 
     return (
         <div className="flex flex-col gap-8">
-            <section className="flex flex-wrap items-start justify-between gap-4">
+            <section className="flex flex-col items-stretch gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{t("title")}</h1>
                     <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base">{t("subtitle")}</p>
@@ -216,11 +216,15 @@ export default function AdminFreeMockResultsPage() {
                 {/* Один файл на все бесплатные моки текущей вкладки: сводка,
                     надёжность, разбор дистракторов, психометрические графики,
                     протокол 3PL, рейтинг заданий и список учеников — на
-                    каждый мок отдельным разделом. */}
+                    каждый мок отдельным разделом.
+                    На телефоне — во всю ширину под заголовком, а не узкая
+                    кнопка сбоку: рядом с крупным h1 в одну строку с текстом
+                    ей не хватало места и она соскакивала вниз сама по себе,
+                    прижатая к левому краю. */}
                 <button
                     onClick={downloadAllPdf}
                     disabled={pdfExporting || loading}
-                    className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-60"
+                    className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-60 sm:w-auto"
                 >
                     {pdfExporting ? <Loader2 size={15} className="animate-spin" /> : <FileText size={15} />}
                     {pdfExporting ? t("pdfExporting") : t("pdfExportAction")}

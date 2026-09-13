@@ -314,18 +314,30 @@ export default function AdminFreeMockResultsPage() {
                 )}
             </section>
 
-            {/* Офскрин-копия для выгрузки: реально отрисована (html2canvas
-                снимает раскладку, а не скриншот вьюпорта), но вынесена далеко
-                за левый край — обычный посетитель раздела её не видит и не
-                может случайно на неё нажать. Монтируется только на время
-                самого клика по «Скачать PDF» (см. downloadAllPdf выше), а не
-                постоянно: полный разбор дистракторов и психометрия на
-                каждый мок — не бесплатная по ресурсам вещь. */}
+            {/* ═══ Копия для выгрузки — в ОБЫЧНЫХ координатах документа ═══
+                //
+                // Раньше пряталась смещением `left: -100000px`. Это и было
+                // причиной наплыва текста со скриншота владельца: чтобы
+                // отрисовать элемент так далеко от обычного содержимого,
+                // html2canvas обязан выделить канвас, покрывающий расстояние
+                // от x≈0 (видимая страница) до x≈-100000 — то есть канвас
+                // шириной за сто тысяч пикселей. Это выше предела, который
+                // браузер способен выделить под один canvas (у Chrome это
+                // порядка 32 767 пикселей по стороне): холст обрезался или
+                // адресация в нём съезжала, и пиксели одного блока рисовались
+                // поверх другого — ровно то самое наложение текста.
+                //
+                // Здесь координаты обычные (эта копия — часть нормального
+                // потока страницы), поэтому предела канваса не касаемся вовсе.
+                // От глаз человека её прячет непрозрачная плашка НИЖЕ по
+                // коду (bg-background, z-index выше) — html2canvas это не
+                // задевает: он перерисовывает дерево по стилям заново, а не
+                // фотографирует то, что реально видно на экране. */}
             {pdfExportRows && (
                 <div
                     ref={pdfBundleRef}
                     aria-hidden
-                    className="pointer-events-none fixed left-[-100000px] top-0 z-[-1] flex w-[860px] flex-col gap-12"
+                    className="pointer-events-none mx-auto w-[860px] max-w-full flex flex-col gap-12"
                 >
                     {pdfExportRows.map((row) => (
                         <div key={row.id} className="flex flex-col gap-6">
@@ -333,6 +345,17 @@ export default function AdminFreeMockResultsPage() {
                             <ClassMockResultsView classId={null} mockTestId={row.id} backHref="" readOnly forceExpandForExport />
                         </div>
                     ))}
+                </div>
+            )}
+
+            {/* Плашка — единственное, что видит человек, пока идёт выгрузка.
+                Копия выше в это время лежит в обычном потоке страницы (может
+                временно раздвинуть скролл вниз), но плашка её полностью
+                закрывает, пока pdfExporting не станет false. */}
+            {pdfExporting && (
+                <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-background">
+                    <Loader2 size={26} className="animate-spin text-muted-foreground" />
+                    <p className="text-sm font-semibold text-muted-foreground">{t("pdfExporting")}</p>
                 </div>
             )}
         </div>

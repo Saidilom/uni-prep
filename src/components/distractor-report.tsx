@@ -34,7 +34,11 @@ import PanelSkeleton from "@/components/panel-skeleton";
 //
 // Ни один флаг не удаляет задание (§222, §224).
 
-export type DistractorReportProps = { mockTestId: string };
+export type DistractorReportProps = {
+    mockTestId: string;
+    /** Раскрыть всё — панель, «показать все», каждое задание — для выгрузки в PDF. */
+    forceOpen?: boolean;
+};
 
 const FLAG_ICON: Record<string, typeof KeyRound> = {
     OUTPERFORMS_CORRECT: KeyRound,
@@ -44,12 +48,16 @@ const FLAG_ICON: Record<string, typeof KeyRound> = {
 const fmtTheta = (v: number | null) =>
     v === null || !Number.isFinite(v) ? "—" : (v >= 0 ? "+" : "") + v.toFixed(2);
 
-export default function DistractorReport({ mockTestId }: DistractorReportProps) {
+export default function DistractorReport({ mockTestId, forceOpen }: DistractorReportProps) {
     const t = useTranslations("distractorReport");
     const [questions, setQuestions] = useState<DistractorQuestion[] | null>(null);
-    const [open, setOpen] = useState(false);
-    const [showAll, setShowAll] = useState(false);
+    const [openState, setOpen] = useState(false);
+    const [showAllState, setShowAll] = useState(false);
     const [openQuestionId, setOpenQuestionId] = useState<string | null>(null);
+    const open = forceOpen || openState;
+    // Для файла нужен полный разбор, а не только помеченные задания —
+    // «все графики все все», а не «только подозрительные».
+    const showAll = forceOpen || showAllState;
 
     useEffect(() => {
         let active = true;
@@ -118,7 +126,7 @@ export default function DistractorReport({ mockTestId }: DistractorReportProps) 
                     ) : (
                         <ul className="space-y-2">
                             {visible.map((q) => {
-                                const expanded = openQuestionId === q.questionId;
+                                const expanded = forceOpen || openQuestionId === q.questionId;
                                 return (
                                     <li key={q.questionId} className="rounded-xl border border-border">
                                         <button

@@ -39,7 +39,11 @@ import PanelSkeleton from "@/components/panel-skeleton";
 // ICC — по кривой на задание. Наклон у всех одинаков (это и есть модель Раша),
 // поэтому видно только разброс сложностей.
 
-export type PsychometricChartsProps = { mockTestId: string };
+export type PsychometricChartsProps = {
+    mockTestId: string;
+    /** Раскрыть содержимое независимо от того, что нажимал пользователь — для выгрузки в PDF. */
+    forceOpen?: boolean;
+};
 
 const W = 520;
 const H = 170;
@@ -102,10 +106,11 @@ function Frame({ children, xMin, xMax, scale, yLabel }: {
 const fmt = (v: number | null | undefined, d = 2) =>
     v === null || v === undefined || !Number.isFinite(v) ? "—" : (v >= 0 ? "+" : "") + v.toFixed(d);
 
-export default function PsychometricCharts({ mockTestId }: PsychometricChartsProps) {
+export default function PsychometricCharts({ mockTestId, forceOpen }: PsychometricChartsProps) {
     const t = useTranslations("psychometricCharts");
     const [measures, setMeasures] = useState<MockMeasures | null>(null);
-    const [open, setOpen] = useState(false);
+    const [openState, setOpen] = useState(false);
+    const open = forceOpen || openState;
 
     useEffect(() => {
         let active = true;

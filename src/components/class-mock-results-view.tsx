@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Trophy, TrendingUp, TrendingDown, CheckCircle2, ChevronDown, Circle, ListOrdered, Clock } from "lucide-react";
+import { ArrowLeft, Trophy, TrendingUp, TrendingDown, CheckCircle2, ChevronDown, Circle, ListOrdered, Clock, Download, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/useToast";
+import { exportBlocksToPdf } from "@/lib/pdf-export";
 import {
     fetchClassMockResults,
     fetchMockAnswerDetails,
@@ -69,6 +70,45 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref, re
     const [rankingOpen, setRankingOpen] = useState<boolean | null>(null);
     const [onlyPendingStudents, setOnlyPendingStudents] = useState(false);
     const [onlyPendingAnswers, setOnlyPendingAnswers] = useState(true);
+
+    // Выгрузка всей аналитики страницы в один PDF: сводка, надёжность, разбор
+    // дистракторов, психометрические графики, протокол 3PL, рейтинг заданий и
+    // список учеников. exportRef охватывает именно этот набор — не хедер с
+    // кнопкой «назад» и не сам список результатов внутри карточек учеников:
+    // разворачивать ответ каждого ученика значило бы выгружать проверку работ,
+    // а не аналитику по варианту.
+    const exportRef = useRef<HTMLDivElement>(null);
+    const [exportingPdf, setExportingPdf] = useState(false);
+    // Панели сами решают, что показывать, по своему internal-состоянию;
+    // forceExpand переопределяет его на время снимка (см. forceOpen у каждой
+    // из них) и возвращается к обычному виду сразу после — иначе разбор
+    // дистракторов на полсотни заданий оставался бы раскрытым у админа
+    // навсегда после одного нажатия «Скачать PDF».
+    const [forceExpand, setForceExpand] = useState(false);
+
+    const downloadPdf = async () => {
+        if (!exportRef.current || !summary) return;
+        setExportingPdf(true);
+        setForceExpand(true);
+        try {
+            // Раскрытие панелей — это смена состояния React, а снимать нужно
+            // уже ОТРИСОВАННЫЙ результат: без кадра ожидания html2canvas
+            // получил бы DOM таким, каким он был до клика.
+            await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+            await exportBlocksToPdf(exportRef.current, {
+                // Название теста может быть на кириллице — вычищаем только то,
+                // что ломает имя файла в файловой системе, а не всё, что не
+                // латиница: иначе «Ona Tili Milliy Sertifikat» превратилось бы
+                // в подчёркивания.
+                filename: `${summary.mockTitle}-rezultaty`.replace(/[\\/:*?"<>|]+/g, "_").trim(),
+            });
+        } catch (error) {
+            toast.error(t("pdfExportFailed"), { description: error instanceof Error ? error.message : String(error) });
+        } finally {
+            setForceExpand(false);
+            setExportingPdf(false);
+        }
+    };
 
     // Guards against a slower response for a previous classId/mockTestId
     // pair overwriting a faster one's already-rendered state (this effect
@@ -233,19 +273,32 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref, re
         assignedByTeacher: Boolean(classId),
     });
     const showMistakes = reviewAccess.allowed;
-    const showRanking = rankingOpen ?? !hasPendingWork;
+    const showRanking = forceExpand || (rankingOpen ?? !hasPendingWork);
     const visibleStudents = onlyPendingStudents
         ? summary.students.filter((s) => s.pendingReviewCount > 0)
         : summary.students;
 
     return (
         <div className="flex flex-col gap-10 py-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <section>
-                <button onClick={() => router.push(backHref)} className="mb-2 inline-flex items-center gap-1.5 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground">
-                    <ArrowLeft size={14} /> {t("backToClass")}
+            <section className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                    <button onClick={() => router.push(backHref)} className="mb-2 inline-flex items-center gap-1.5 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground">
+                        <ArrowLeft size={14} /> {t("backToClass")}
+                    </button>
+                    <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{summary.mockTitle}</h1>
+                    <p className="mt-2 text-sm text-muted-foreground">{t("resultsSubtitle")}</p>
+                </div>
+                {/* Один файл со всей аналитикой ниже: сводка, надёжность,
+                    разбор дистракторов, психометрические графики, протокол
+                    3PL, рейтинг заданий и список учеников. */}
+                <button
+                    onClick={downloadPdf}
+                    disabled={exportingPdf}
+                    className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-60"
+                >
+                    {exportingPdf ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+                    {exportingPdf ? t("pdfExporting") : t("pdfExportAction")}
                 </button>
-                <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{summary.mockTitle}</h1>
-                <p className="mt-2 text-sm text-muted-foreground">{t("resultsSubtitle")}</p>
             </section>
 
             {!readOnly && summary.pendingReviewCount > 0 && (
@@ -257,7 +310,13 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref, re
                 </div>
             )}
 
-            <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            {/* exportRef охватывает аналитику и список учеников — не хедер с
+                кнопкой «назад» и не саму кнопку выгрузки. data-pdf-block на
+                каждом прямом ребёнке — единица раскладки PDF (pdf-export.ts):
+                при печати блок либо переносится на новую страницу целиком,
+                либо, если сам выше страницы, режется по высоте. */}
+            <div ref={exportRef} className="flex flex-col gap-10">
+            <section data-pdf-block className="grid grid-cols-2 gap-4 lg:grid-cols-4">
                 <div className="rounded-2xl border border-border bg-card p-5">
                     <div className="flex items-center gap-2 text-muted-foreground"><CheckCircle2 size={15} /><span className="text-[10px] font-bold uppercase tracking-widest">{t("passedLabel")}</span></div>
                     <p className="mt-2 text-2xl font-extrabold tabular-nums text-foreground">{summary.completedCount}/{summary.totalCount}</p>
@@ -286,16 +345,22 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref, re
             {/* §N.5. Свёрнуто и после плиток со средним: это характеристика
                 теста, а не ученика, и она объясняет, насколько вообще можно
                 опираться на разницу баллов в рейтинге ниже. */}
-            <MockReliabilityPanel reliability={summary.reliability} />
+            <div data-pdf-block>
+                <MockReliabilityPanel reliability={summary.reliability} forceOpen={forceExpand} />
+            </div>
 
             {/* §R.7. Тоже свёрнуто: разбор нужен методисту при проверке
                 качества варианта, а не при проверке работ. Ученику не виден —
                 таблица раскрывает ключ, доступ закрыт в RLS (миграция 103). */}
-            <DistractorReport mockTestId={mockTestId} />
+            <div data-pdf-block>
+                <DistractorReport mockTestId={mockTestId} forceOpen={forceExpand} />
+            </div>
 
             {/* §D.3, D.10–D.12. Тоже свёрнуто: графики отвечают на вопрос
                 «подходит ли этот вариант этой группе», а не на «кто как сдал». */}
-            <PsychometricCharts mockTestId={mockTestId} />
+            <div data-pdf-block>
+                <PsychometricCharts mockTestId={mockTestId} forceOpen={forceExpand} />
+            </div>
 
             {/* Модель 3PL — РЯДОМ с действующим баллом, не вместо него (§238).
                 Считается по кнопке и пишет в свои таблицы; mock_results этот
@@ -303,9 +368,13 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref, re
                 видно, что даёт трёхпараметрическая модель и хватает ли для
                 неё данных. Только для админа: это вопрос методики, а не
                 проверки работ. */}
-            {!readOnly && <Irt3plPanel mockTestId={mockTestId} />}
+            {!readOnly && (
+                <div data-pdf-block>
+                    <Irt3plPanel mockTestId={mockTestId} />
+                </div>
+            )}
 
-            <section>
+            <section data-pdf-block>
                 {/* Раздел аналитический: для проверки работ он не нужен, а перед
                     списком учеников лежат все 50 строк теста. Поэтому заголовок —
                     кнопка, тем же жестом, что раскрывает карточку ученика. */}
@@ -356,7 +425,7 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref, re
                 )}
             </section>
 
-            <section>
+            <section data-pdf-block>
                 <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
                     <h2 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">{t("studentsSection")}</h2>
                     {/* Чип нужен, только пока есть что проверять: по мере работы
@@ -565,6 +634,7 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref, re
                     })}
                 </div>
             </section>
+            </div>
         </div>
     );
 }

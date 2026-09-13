@@ -29,7 +29,11 @@ import { useTranslations } from "@/lib/i18n/locale-provider";
 // 0.495. Прятать это нельзя — иначе исключение выглядит как подгонка, — поэтому
 // оба числа стоят рядом и подписаны.
 
-export type MockReliabilityPanelProps = { reliability: MockReliability | null };
+export type MockReliabilityPanelProps = {
+    reliability: MockReliability | null;
+    /** Раскрыть содержимое независимо от того, что нажимал пользователь — для выгрузки в PDF. */
+    forceOpen?: boolean;
+};
 
 const fmt = (v: number | null, digits = 2) =>
     v === null || !Number.isFinite(v) ? "—" : v.toFixed(digits);
@@ -43,9 +47,10 @@ const STATUS_KEY = {
     TOO_FEW: "statusTooFew",
 } as const;
 
-export default function MockReliabilityPanel({ reliability }: MockReliabilityPanelProps) {
+export default function MockReliabilityPanel({ reliability, forceOpen }: MockReliabilityPanelProps) {
     const t = useTranslations("mockReliability");
-    const [open, setOpen] = useState(false);
+    const [openState, setOpen] = useState(false);
+    const open = forceOpen || openState;
 
     if (!reliability) return null;
 

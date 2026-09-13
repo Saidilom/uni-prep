@@ -16,7 +16,10 @@
 // в один null и значило получить рывок.
 export default function PanelSkeleton() {
     return (
-        <div className="rounded-2xl border border-border bg-card px-5 py-4">
+        // data-panel-skeleton — не для стилей: по нему выгрузка в PDF узнаёт,
+        // что данные ещё не пришли, и ждёт, а не снимает заглушку как готовую
+        // картинку (pdf-export.ts).
+        <div data-panel-skeleton className="rounded-2xl border border-border bg-card px-5 py-4">
             <div className="flex items-center gap-3">
                 <div className="h-[18px] w-[18px] shrink-0 animate-pulse rounded-md bg-muted" />
                 <div className="min-w-0 flex-1">

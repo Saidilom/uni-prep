@@ -210,7 +210,25 @@ export async function exportBlocksToPdf(
     const contentWidthPt = pageWidth - PAGE_MARGIN_PT * 2;
     const contentHeightPt = pageHeight - PAGE_MARGIN_PT * 2;
 
-    const rendered = await Promise.all(elements.map((el) => renderBlock(html2canvas, el, scale)));
+    // ═══ ОДИН ЗА ДРУГИМ, А НЕ Promise.all ═══
+    //
+    // Живой баг: параллельный рендер (Promise.all по всем блокам) давал наплыв
+    // текста одного блока на другой — заголовок следующего мока выходил как бы
+    // «перечёркнутым» строкой из соседнего блока. Причина в самом html2canvas:
+    // на каждый вызов он клонирует ВЕСЬ документ во временный iframe, снимает
+    // его и вырезает нужный прямоугольник. Несколько таких клонов, запущенных
+    // одновременно, толкаются за один и тот же документ — DOM-мутации одного
+    // клона на секунду задевают раскладку, которую в этот момент измеряет
+    // другой. Результат детерминированно ломается только когда блоков много
+    // (несколько моков разом в одной выгрузке), поэтому на одной странице
+    // одного мока баг было не поймать.
+    //
+    // Последовательно медленнее, но каждый снимок получает документ в покое —
+    // ровно так, как его видел бы человек.
+    const rendered: HTMLCanvasElement[] = [];
+    for (const el of elements) {
+        rendered.push(await renderBlock(html2canvas, el, scale));
+    }
     const ptPerPxByBlock = rendered.map((canvas) => contentWidthPt / canvas.width);
     const sizes: PdfBlockSize[] = rendered.map((canvas, i) => ({ heightPt: canvas.height * ptPerPxByBlock[i] }));
 

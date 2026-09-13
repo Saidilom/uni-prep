@@ -15,7 +15,7 @@ import { classifyResponses, countStates, responseForModel, ResponseState } from 
 import { cohortStatistics, type CohortStatistics } from "@/lib/rasch-proportion";
 import { essayPointsToScore75, combineSectionScores, isNativeCertSubject } from "@/lib/native-cert";
 import { writingPointsToScore } from "@/lib/english-cefr";
-import { certificateMaxForSubject, tScoreToScaleExact } from "@/lib/certificate-scale";
+import { certificateMaxForSubject, tScoreToScaleExact, scoreMovedForRevision } from "@/lib/certificate-scale";
 import { gradeLevelFromScore } from "@/lib/mock-grade-level";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { isInternalCall } from "@/lib/internal-auth";
@@ -927,12 +927,28 @@ export async function POST(req: NextRequest) {
     // Только у показанных работ и только когда число действительно меняется:
     // роут запускается после каждой сдачи, и ревизия на каждый прогон
     // превратила бы таблицу в журнал вызовов вместо истории баллов.
+    //
+    // ═══ СРАВНЕНИЕ — ПО ОКРУГЛЁННОМУ БАЛЛУ, А НЕ ПО СЫРОМУ ЧИСЛУ ═══
+    //
+    // Ньютон-Рафсон в estimateTheta3pl останавливается по допуску (1e-4 на
+    // шаг), а не по точному значению, и на живом прогоне это дало видимый
+    // эффект: два подряд запуска БЕЗ единой новой сдачи вернули θ, различную в
+    // девятом знаке (−1,8182049557… против −1,8182049512…). На балл это
+    // ложится тем же порядком, и raw !== raw считало такое различие сменой
+    // балла. В классе роут запускается после КАЖДОЙ сдачи и пересчитывает
+    // всех — то есть каждая новая сдача штамповала бы ревизию всей группе,
+    // хотя ученик её балл на экране не увидел бы иным ни на сотую.
+    //
+    // Сравнивается тем же roundScore, каким балл показывается (§L.8): смена
+    // меньше видимой на экране — это не смена, а численный шум оценщика.
     const previousById = new Map(resultRows.map((row) => [row.id, row]));
     const revisions = nextValues.flatMap((next) => {
         const previous = previousById.get(next.id);
         if (!previous || previous.revealed_at === null) return [];
-        const scoreMoved = Number(previous.level_score ?? NaN) !== Number(next.level_score ?? NaN)
-            && !(previous.level_score === null && next.level_score === null);
+        const scoreMoved = scoreMovedForRevision(
+            previous.level_score === null ? null : Number(previous.level_score),
+            next.level_score === null ? null : Number(next.level_score),
+        );
         const levelMoved = (previous.grade_level ?? null) !== (next.grade_level ?? null);
         if (!scoreMoved && !levelMoved) return [];
         return [{

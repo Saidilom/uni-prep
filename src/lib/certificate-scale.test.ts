@@ -12,6 +12,7 @@ import {
     formatScoreInterval,
     CERTIFICATE_MAX,
     errorIsShowable,
+    scoreMovedForRevision,
 } from "./certificate-scale";
 import { MOCK_SUBJECTS } from "./mock-import-schema";
 import { gradeLevelFromScore, levelFloorsFor } from "./mock-grade-level";
@@ -400,5 +401,32 @@ describe("errorIsShowable — когда «±» перестаёт быть ин
         expect(errorIsShowable(Number.NaN)).toBe(false);
         expect(errorIsShowable(0)).toBe(false);
         expect(errorIsShowable(-1)).toBe(false);
+    });
+});
+
+describe("scoreMovedForRevision — шум оценщика не пишет ревизию", () => {
+    it("числовой шум ниже показанного знака — не смена", () => {
+        // Регрессия боевого прогона: два вызова recalculate ПОДРЯД, без единой
+        // новой сдачи, вернули θ, различную в девятом знаке — на боевой
+        // математике 34.94657403479053 против 34.94657408949433. Точное !==
+        // считало бы это сменой балла и штамповало ревизию всей группе на
+        // КАЖДУЮ сдачу одного ученика: recalculate пересчитывает весь тест.
+        expect(scoreMovedForRevision(34.94657403479053, 34.94657408949433)).toBe(false);
+    });
+
+    it("смена в пределах видимого знака — это смена", () => {
+        expect(scoreMovedForRevision(51.66, 51.67)).toBe(true);
+    });
+
+    it("округление само по себе не создаёт ложной разницы на границе", () => {
+        // 86.444 и 86.446 округляются в разные стороны (86.44 vs 86.45) —
+        // это НАСТОЯЩАЯ смена, а не шум, и функция обязана её увидеть.
+        expect(scoreMovedForRevision(86.444, 86.446)).toBe(true);
+    });
+
+    it("null считается наравне с числом, а не выбивает NaN-сравнение", () => {
+        expect(scoreMovedForRevision(null, null)).toBe(false);
+        expect(scoreMovedForRevision(null, 50)).toBe(true);
+        expect(scoreMovedForRevision(50, null)).toBe(true);
     });
 });

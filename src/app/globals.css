@@ -97,3 +97,162 @@
 .ql-content u { text-decoration: underline; }
 .ql-content sub { vertical-align: sub; font-size: 0.8em; }
 .ql-content sup { vertical-align: super; font-size: 0.8em; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ЛЕНДИНГ — «чертёжная» тема из макета Claude Design
+   (проект f807b908, файл «Registan Landing.dc.html»)
+
+   Всё заперто внутри .landing-root: это отдельная визуальная система со
+   своим фоном, акцентом, шрифтами и НУЛЕВЫМИ скруглениями. Вынеси её на
+   :root — и кабинет, где радиус 1.25rem и свои цвета, поедет целиком.
+
+   Токены перенесены из макета один в один, чтобы витрину можно было сверить
+   с ним пиксель в пиксель.
+   ═══════════════════════════════════════════════════════════════════════ */
+.landing-root {
+  --color-bg: #f2f2f3;
+  --color-surface: #e9e9ea;
+  --color-text: #1d1f20;
+  --color-accent: #5980a6;
+  --color-divider: color-mix(in srgb, #1d1f20 16%, transparent);
+  --color-neutral-400: #b7b7ba;
+  --color-neutral-600: #7a7a7d;
+  --color-accent-100: #eef6ff;
+  --color-accent-600: #597ea3;
+  --color-accent-700: #416180;
+  --color-accent-800: #2c455d;
+
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body-landing), system-ui, sans-serif;
+  text-wrap: pretty;
+}
+
+/* Заголовки — узкий гротеск в верхнем регистре. Barlow Condensed из макета
+   не имеет кириллицы; его же цепочка запасных шрифтов называет Roboto
+   Condensed, поэтому он и подключён — одним семейством на оба языка. */
+.landing-root h1,
+.landing-root h2,
+.landing-root h3,
+.landing-root .heading {
+  font-family: var(--font-heading-landing), system-ui, sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+/* ═══ Рамка чертежа с приводочными метками по углам ═══
+   Главный приём макета: рамка в волос и четыре «креста» по углам, вынесенные
+   ЗА её пределы. Отсюда overflow: visible — без него метки обрезаются. */
+.landing-root .blueprint {
+  position: relative;
+  border: 1px solid var(--color-divider);
+  border-radius: 0;
+  overflow: visible;
+}
+.landing-root .blueprint > .corner {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+}
+.landing-root .blueprint > .corner::before,
+.landing-root .blueprint > .corner::after {
+  content: "";
+  position: absolute;
+  background: currentColor;
+}
+.landing-root .blueprint > .corner::before { left: 5px; top: 0; width: 1px; height: 100%; }
+.landing-root .blueprint > .corner::after { top: 5px; left: 0; width: 100%; height: 1px; }
+.landing-root .blueprint > .corner.tl { top: -6px; left: -6px; }
+.landing-root .blueprint > .corner.tr { top: -6px; right: -6px; }
+.landing-root .blueprint > .corner.bl { bottom: -6px; left: -6px; }
+.landing-root .blueprint > .corner.br { bottom: -6px; right: -6px; }
+
+/* ═══ Кнопки ═══ Квадратные, в волос, заголовочным шрифтом. */
+.landing-root .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  text-decoration: none;
+  font-family: var(--font-heading-landing), system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 1.2;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 12px 20px;
+  border: 1px solid var(--color-divider);
+  border-radius: 0;
+  color: var(--color-text);
+  background: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.landing-root .btn-primary { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-bg); }
+.landing-root .btn-primary:hover { background: var(--color-accent-600); border-color: var(--color-accent-600); }
+.landing-root .btn-ghost { color: var(--color-accent); border-color: var(--color-divider); }
+.landing-root .btn-ghost:hover { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
+.landing-root .btn-block { width: 100%; }
+
+/* ═══ Метки уровня ═══ */
+.landing-root .tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding: 3px 10px;
+  border-radius: 0;
+}
+.landing-root .tag-accent { background: var(--color-accent-100); color: var(--color-accent-800); }
+.landing-root .tag-outline { border: 1px solid var(--color-accent); color: var(--color-accent); }
+
+/* ═══ Таблицы-спецификации ═══ Ими макет и показывает данные. */
+.landing-root .table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.landing-root .table th {
+  text-align: left;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-text) 60%, transparent);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-divider);
+}
+.landing-root .table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent);
+}
+.landing-root .table tbody tr:hover { background: color-mix(in srgb, var(--color-text) 4%, transparent); }
+
+/* Надпись раздела: «РЕЗУЛЬТАТЫ» с линейкой под ней. */
+.landing-root .eyebrow {
+  display: block;
+  font-size: 13px;
+  line-height: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--color-accent-700);
+  margin: 0 0 12px;
+}
+.landing-root .rule { height: 1px; background: var(--color-divider); margin: 0 0 24px; }
+
+/* Таблица показателей на узком экране раскладывается в строки: четыре колонки
+   в 375 пикселей не помещаются, а горизонтальная прокрутка у таблицы с
+   ключевыми числами — худший из вариантов. */
+@media (max-width: 760px) {
+  .landing-root .plate-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .landing-root .plate-table, .landing-root .plate-table tbody, .landing-root .plate-table td { display: block; }
+  .landing-root .plate-table tr {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    column-gap: 12px;
+    row-gap: 8px;
+    padding: 16px;
+    border-bottom: 1px solid var(--color-divider);
+  }
+  .landing-root .plate-table td { padding: 0 !important; border: 0; }
+  .landing-root .plate-table td:nth-child(3), .landing-root .plate-table td:nth-child(4) { grid-column: 1 / -1; }
+}

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import localFont from "next/font/local";
-import { Golos_Text, Playfair_Display } from "next/font/google";
+import { Golos_Text, Roboto_Condensed, Fira_Sans } from "next/font/google";
 import AuthProvider from "@/components/auth-provider";
 import { GlobalProviders } from "@/components/global-providers";
 import { APP_NAME, APP_DESCRIPTION, SITE_URL } from "@/lib/app-config";
@@ -10,13 +10,24 @@ import { getServerLocale } from "@/lib/i18n/get-locale";
 import "./globals.css";
 import "katex/dist/katex.min.css";
 
-// Заголовок лендинга с засечками — по присланному макету. Подключён только
-// как переменная: класс font-display применяется точечно, на сайте в целом
-// шрифт не меняется.
-const playfair = Playfair_Display({
+// Шрифты ЛЕНДИНГА — из макета Claude Design.
+//
+// В макете это Barlow Condensed и Barlow, но у Barlow нет кириллицы, и его
+// собственная цепочка запасных называет Roboto Condensed и Fira Sans. Беру
+// сразу их: два семейства вместо четырёх, оба со своей кириллицей, и русская
+// версия выглядит так же, как узбекская.
+//
+// Подключены переменными и применяются только внутри .landing-root — кабинет
+// остаётся на Golos Text.
+const headingLanding = Roboto_Condensed({
   subsets: ["latin", "cyrillic"],
-  variable: "--font-display",
-  weight: ["600", "700"],
+  variable: "--font-heading-landing",
+  weight: ["500", "600", "700"],
+});
+const bodyLanding = Fira_Sans({
+  subsets: ["latin", "cyrillic"],
+  variable: "--font-body-landing",
+  weight: ["400", "500", "600"],
 });
 const golosText = Golos_Text({
   subsets: ["latin", "cyrillic"],
@@ -89,7 +100,7 @@ export default function RootLayout({
         <link rel="apple-touch-icon" sizes="180x180" href="/gogg.png" />
       </head>
       <body
-        className={`${golosText.variable} ${playfair.variable} ${geistSans.variable} ${geistMono.variable} antialiased min-h-screen relative app-bg`}
+        className={`${golosText.variable} ${headingLanding.variable} ${bodyLanding.variable} ${geistSans.variable} ${geistMono.variable} antialiased min-h-screen relative app-bg`}
       >
         <div className="relative z-10 min-h-screen">
           <LocaleProvider initialLocale={locale}>

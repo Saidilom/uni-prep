@@ -1,24 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, ShieldCheck } from "lucide-react";
 import { formatScore } from "@/lib/certificate-scale";
 import { gradeLevelDisplay } from "@/lib/mock-grade-level";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
-import type { LandingStats } from "@/lib/landing-stats";
-import { LANDING_SCORE_MAX } from "@/lib/landing-stats";
+import { LANDING_SCORE_MAX, type LandingStats } from "@/lib/landing-stats";
 
-// Блок «Результаты» — сильнейшая часть присланного макета.
+// Блок «Результаты» — по макету: слева таблица работ, справа карточка
+// протокола и врезка с призывом.
 //
-// ═══ ЧТО ИЗМЕНЕНО ПРОТИВ МАКЕТА ═══
+// ═══ ДВА ОТЛИЧИЯ ОТ МАКЕТА, И ОБА НАМЕРЕННЫЕ ═══
 //
-// В макете рядом с баллами стояли ИМЕНА — одиннадцать вымышленных человек.
-// Здесь баллы настоящие, и поэтому имён нет: решение владельца. Балл экзамена
-// рядом с фамилией это личные данные, а согласия на публикацию никто не давал.
+// 1. В колонке «Ученик» у макета одиннадцать имён. Здесь баллы настоящие,
+//    поэтому вместо имени стоит предмет: балл экзамена рядом с фамилией это
+//    личные данные, согласия на публикацию никто не давал.
 //
-// Сравнение «наши 72,4 против 51,0 по стране» тоже не перенесено: источника
-// такого числа не существует. Вместо него — честное «что получает ученик»:
-// протокол с погрешностью, который у нас действительно есть.
+// 2. Полоса «Ученики Registan 72,4 против средний по стране 51,0» не
+//    перенесена. Источника второго числа не существует, а после перехода на
+//    центрирование по потоку средний балл любого теста равен ровно 50 по
+//    построению — сравнивать им нечего.
 
 const SUBJECT_KEYS: Record<string, string> = {
   math: "subjectMath",
@@ -38,87 +38,98 @@ export default function LandingResults({ stats }: { stats: LandingStats | null }
   const t = useTranslations("landingResults");
   const { locale } = useLocale();
 
-  // Нет базы или нет ни одной опубликованной работы — блока просто нет.
-  // Пустая витрина с заголовком «Результаты» хуже её отсутствия.
   if (!stats || stats.topResults.length === 0) return null;
-
   const best = stats.topResults[0];
 
   return (
-    <section id="results" className="scroll-mt-20 px-4 py-20 sm:px-6">
-      <div className="mx-auto max-w-6xl">
-        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[hsl(var(--brand-olive-ink))]">
-          {t("sectionLabel")}
-        </p>
-        <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <h2 className="max-w-xl text-3xl font-bold leading-tight tracking-tight sm:text-4xl">
-            {t("title")}
-          </h2>
-          <p className="max-w-sm text-sm leading-relaxed text-muted-foreground">
-            {t("subtitle").replace("{count}", String(stats.attempts))}
-          </p>
-        </div>
+    <section id="results" className="scroll-mt-16 py-[clamp(32px,4vw,56px)]">
+      <span className="eyebrow">{t("sectionLabel")}</span>
+      <div className="rule" />
+      <h2 className="max-w-[22ch] text-[clamp(30px,3.6vw,46px)] leading-[1.06]">{t("title")}</h2>
+      <p
+        className="mt-5 max-w-[52ch] text-[16px] leading-6"
+        style={{ color: "color-mix(in srgb, var(--color-text) 82%, transparent)" }}
+      >
+        {t("subtitle").replace("{count}", String(stats.attempts))}
+      </p>
 
-        <div className="mt-10 grid gap-4 lg:grid-cols-[1.15fr_1fr]">
-          {/* Лучшие работы. Балл и уровень — без имён. */}
-          <div className="rounded-3xl border border-border bg-card p-5 shadow-sm sm:p-6">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="mt-10 grid items-start gap-[clamp(24px,4vw,56px)] lg:grid-cols-2">
+        {/* Таблица работ */}
+        <div className="blueprint">
+          <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
+          <table className="table">
+            <thead>
+              <tr>
+                <th scope="col" className="pl-5">№</th>
+                <th scope="col">{t("columnSubject")}</th>
+                <th scope="col">{t("columnScore")}</th>
+                <th scope="col">{t("columnLevel")}</th>
+              </tr>
+            </thead>
+            <tbody>
               {stats.topResults.map((result, index) => (
-                <div
-                  key={index}
-                  className="rounded-2xl border border-border bg-background p-4 transition-colors hover:border-[hsl(var(--brand-olive))]/40"
-                >
-                  <p className="text-2xl font-bold tabular-nums tracking-tight text-foreground">
-                    {formatScore(result.score)}
-                  </p>
-                  <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-[hsl(var(--brand-olive-ink))]">
-                    {gradeLevelDisplay(result.level, locale)}
-                  </p>
-                  <p className="mt-2 truncate text-[11px] text-muted-foreground">
+                <tr key={index}>
+                  <td className="pl-5 text-[13px] font-semibold tracking-[0.08em]" style={{ color: "var(--color-accent-700)" }}>
+                    {String(index + 1).padStart(2, "0")}
+                  </td>
+                  <td className="text-[15px] leading-6">
                     {result.subjectId && SUBJECT_KEYS[result.subjectId]
                       ? t(SUBJECT_KEYS[result.subjectId] as "subjectMath")
                       : t("subjectOther")}
-                  </p>
-                </div>
+                  </td>
+                  <td className="heading text-[17px] tabular-nums">{formatScore(result.score)}</td>
+                  <td>
+                    <span className="tag tag-outline">{gradeLevelDisplay(result.level, locale)}</span>
+                  </td>
+                </tr>
               ))}
-            </div>
-            <p className="mt-4 flex items-start gap-2 text-[11px] leading-relaxed text-muted-foreground">
-              <ShieldCheck size={14} className="mt-0.5 shrink-0" />
+            </tbody>
+          </table>
+          <div className="px-5 py-3" style={{ borderTop: "1px solid var(--color-divider)" }}>
+            <p className="text-[13px] leading-5" style={{ color: "color-mix(in srgb, var(--color-text) 70%, transparent)" }}>
               {t("anonymousNote").replace("{max}", String(LANDING_SCORE_MAX))}
             </p>
           </div>
+        </div>
 
-          {/* Протокол: что ученик получает после попытки. */}
-          <div className="rounded-3xl bg-[hsl(var(--brand-olive-ink))] p-6 text-white shadow-sm sm:p-7">
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/60">
-              {t("protocolLabel")}
-            </p>
-            <p className="mt-5 text-5xl font-bold tabular-nums tracking-tight">
-              {formatScore(best.score)}
-              <span className="ml-2 text-xl font-medium text-white/50">/ {LANDING_SCORE_MAX}</span>
-            </p>
-            <p className="mt-1 text-sm font-semibold text-white/80">
-              {t("protocolLevel")} {gradeLevelDisplay(best.level, locale)}
-            </p>
+        <div className="flex flex-col gap-10">
+          {/* Протокол */}
+          <div className="blueprint">
+            <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
+            <header
+              className="flex items-center justify-between gap-4 px-5 py-3 text-[13px] uppercase tracking-[0.08em]"
+              style={{ borderBottom: "1px solid var(--color-divider)" }}
+            >
+              <span>{t("protocolLabel")}</span>
+              <span className="tag tag-accent">{gradeLevelDisplay(best.level, locale)}</span>
+            </header>
 
-            <dl className="mt-6 space-y-3 border-t border-white/15 pt-5 text-sm">
-              {([
-                ["protocolRowError", "protocolRowErrorValue"],
-                ["protocolRowScale", "protocolRowScaleValue"],
-                ["protocolRowMistakes", "protocolRowMistakesValue"],
-              ] as const).map(([labelKey, valueKey]) => (
-                <div key={labelKey} className="flex items-baseline justify-between gap-4">
-                  <dt className="text-white/60">{t(labelKey)}</dt>
-                  <dd className="text-right font-semibold">{t(valueKey)}</dd>
+            <div className="grid" style={{ gap: "1px", background: "var(--color-divider)" }}>
+              {[
+                [t("protocolRowScore"), `${formatScore(best.score)} / ${LANDING_SCORE_MAX}`],
+                [t("protocolRowError"), t("protocolRowErrorValue")],
+                [t("protocolRowScale"), t("protocolRowScaleValue")],
+                [t("protocolRowMistakes"), t("protocolRowMistakesValue")],
+              ].map(([label, value]) => (
+                <div key={label} className="flex items-baseline justify-between gap-4 px-5 py-4" style={{ background: "var(--color-bg)" }}>
+                  <span className="text-[13px] uppercase tracking-[0.08em]" style={{ color: "color-mix(in srgb, var(--color-text) 70%, transparent)" }}>
+                    {label}
+                  </span>
+                  <span className="heading text-right text-[17px]">{value}</span>
                 </div>
               ))}
-            </dl>
+            </div>
+          </div>
 
-            <Link
-              href="/join"
-              className="mt-7 inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-semibold text-[hsl(var(--brand-olive-ink))] transition-transform hover:scale-[1.02] active:scale-[0.98]"
-            >
-              {t("protocolCta")} <ArrowRight size={16} />
+          {/* Врезка с призывом */}
+          <div className="blueprint p-5">
+            <i className="corner tl" /><i className="corner tr" /><i className="corner bl" /><i className="corner br" />
+            <h3 className="text-[22px] leading-tight">{t("ctaTitle")}</h3>
+            <p className="mt-3 text-[15px] leading-6" style={{ color: "color-mix(in srgb, var(--color-text) 82%, transparent)" }}>
+              {t("ctaBody")}
+            </p>
+            <Link href="/join" className="btn btn-primary btn-block mt-5">
+              {t("protocolCta")} →
             </Link>
           </div>
         </div>

@@ -1,9 +1,8 @@
 "use client";
 
-import { motion, useScroll, useSpring } from "framer-motion";
 import LandingNavbar from "./navbar";
 import LandingHero from "./hero";
-import LandingStatsStrip from "./stats-strip";
+import LandingSpecPlate from "./spec-plate";
 import LandingResults from "./results";
 import LandingFeatures from "./features";
 import LandingHowItWorks from "./how-it-works";
@@ -12,34 +11,33 @@ import LandingCtaSection from "./cta-section";
 import LandingFooter from "./footer";
 import type { LandingStats } from "@/lib/landing-stats";
 
-// Порядок разделов взят из присланного макета: сначала доказательство
-// (результаты), потом устройство (возможности, шаги), потом ответы на
-// возражения (вопросы) и только в конце призыв.
+// Лендинг по макету Claude Design («Registan Landing.dc.html»).
 //
-// stats приходит ПРОПОМ с серверной страницы, а не запрашивается здесь: числа
-// должны попасть в разметку до того, как её увидит поисковый робот.
-// stats необязателен: в дашборде тот же лендинг показывается долю секунды
-// после выхода из аккаунта, и данных там взять неоткуда — блоки с числами
-// просто не рисуются.
+// ═══ ПОЧЕМУ ВСЁ ЗАВЁРНУТО В .landing-root ═══
+//
+// Это отдельная визуальная система: свой фон, стальной акцент, узкий гротеск и
+// НУЛЕВЫЕ скругления. У кабинета радиус 1.25rem и своя палитра. Токены живут в
+// globals.css под .landing-root — вынеси их на :root, и поедет весь кабинет.
+//
+// Порядок разделов из макета: доказательство (сводка и результаты), потом
+// устройство (платформа, шаги), потом возражения (вопросы), потом призыв.
+//
+// stats приходит ПРОПОМ с серверной страницы: числа должны попасть в разметку
+// до того, как её увидит поисковый робот.
 export default function LandingView({ stats = null }: { stats?: LandingStats | null }) {
-  const { scrollYProgress } = useScroll();
-  const scaleX = useSpring(scrollYProgress, { stiffness: 300, damping: 40, restDelta: 0.001 });
-
   return (
-    <div className="min-h-dvh bg-background">
-      <motion.div
-        style={{ scaleX }}
-        className="fixed left-0 right-0 top-0 z-[60] h-[3px] origin-left bg-[hsl(var(--brand-olive-ink))]"
-      />
+    <div className="landing-root min-h-dvh pb-1">
       <LandingNavbar />
-      <LandingHero stats={stats} />
-      <LandingStatsStrip stats={stats} />
-      <LandingResults stats={stats} />
-      <LandingFeatures />
-      <LandingHowItWorks />
-      <LandingFaq />
-      <LandingCtaSection />
-      <LandingFooter />
+      <div className="mx-auto max-w-[1200px] px-[clamp(20px,5vw,72px)]">
+        <LandingHero stats={stats} />
+        <LandingSpecPlate stats={stats} />
+        <LandingResults stats={stats} />
+        <LandingFeatures />
+        <LandingHowItWorks />
+        <LandingFaq />
+        <LandingCtaSection />
+        <LandingFooter />
+      </div>
     </div>
   );
 }

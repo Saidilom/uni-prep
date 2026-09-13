@@ -17,6 +17,7 @@ import {
 import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
 import { certificatePercent, formatScore } from "@/lib/certificate-scale";
 import EssayCriteriaForm, { EssayCriteriaPayload } from "@/components/essay-criteria-form";
+import SafeMathText from "@/components/safe-math-text";
 import MockReliabilityPanel from "@/components/mock-reliability-panel";
 import DistractorReport from "@/components/distractor-report";
 import PsychometricCharts from "@/components/psychometric-charts";
@@ -90,6 +91,10 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref, re
         if (!exportRef.current || !summary) return;
         setExportingPdf(true);
         setForceExpand(true);
+        // Класс скрывает всё помеченное data-pdf-hide (globals.css) — стрелки
+        // сворачивания и кнопку «Запустить» 3PL: в статичном файле разворачивать
+        // уже нечего (панели раскрыты forceOpen), а нажать кнопку нельзя.
+        exportRef.current.classList.add("pdf-export-active");
         try {
             // Раскрытие панелей — это смена состояния React, а снимать нужно
             // уже ОТРИСОВАННЫЙ результат: без кадра ожидания html2canvas
@@ -105,6 +110,7 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref, re
         } catch (error) {
             toast.error(t("pdfExportFailed"), { description: error instanceof Error ? error.message : String(error) });
         } finally {
+            exportRef.current?.classList.remove("pdf-export-active");
             setForceExpand(false);
             setExportingPdf(false);
         }
@@ -390,7 +396,9 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref, re
                             </span>
                         )}
                     </span>
-                    <ChevronDown size={18} className={`shrink-0 text-muted-foreground transition-transform ${showRanking ? "rotate-180" : ""}`} />
+                    {/* data-pdf-hide: см. mock-reliability-panel.tsx —
+                        стрелка сворачивания бессмысленна в статичном PDF. */}
+                    <ChevronDown data-pdf-hide size={18} className={`shrink-0 text-muted-foreground transition-transform ${showRanking ? "rotate-180" : ""}`} />
                 </button>
                 {!showRanking ? null : (
                 <>
@@ -409,7 +417,7 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref, re
                             <div key={q.questionId} className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
                                 <div className="flex min-w-0 items-center gap-3">
                                     <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border bg-muted text-xs font-bold text-muted-foreground">{i + 1}</span>
-                                    <p className="truncate text-sm font-medium text-foreground">{q.questionText}</p>
+                                    <SafeMathText as="p" content={q.questionText} className="truncate text-sm font-medium text-foreground" />
                                 </div>
                                 <div className="flex shrink-0 items-center gap-3">
                                     <span className="text-xs text-muted-foreground">{t("wrongOfTotalTemplate").replace("{wrong}", String(q.wrongCount)).replace("{total}", String(q.totalCount))}</span>
@@ -556,7 +564,7 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref, re
                                                     )}
                                                     {ordered.map(({ d, number }) => (
                                                     <div key={d.id} className="rounded-xl border border-border bg-card p-3">
-                                                        <p className="text-sm font-medium text-foreground">{number}. {d.questionText}</p>
+                                                        <SafeMathText as="p" content={`${number}. ${d.questionText}`} className="text-sm font-medium text-foreground" />
                                                         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
                                                             <span className={d.isCorrect ? "text-emerald-600" : "text-red-600"}>
                                                                 {t("studentAnswerLabel")} <strong>{d.selectedAnswer || "—"}</strong>

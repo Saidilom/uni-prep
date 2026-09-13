@@ -88,7 +88,10 @@ export default function Irt3plPanel({ mockTestId }: { mockTestId: string }) {
                     <h3 className="text-lg font-bold">{t("title")}</h3>
                     <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{t("subtitle")}</p>
                 </div>
+                {/* data-pdf-hide: запуск пересчёта — действие, а не данные;
+                    кнопке, которую нельзя нажать в файле, там не место. */}
                 <button
+                    data-pdf-hide
                     onClick={run}
                     disabled={running}
                     className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-50"

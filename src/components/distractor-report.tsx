@@ -5,6 +5,7 @@ import { ChevronDown, KeyRound, CircleOff, AlertTriangle } from "lucide-react";
 import { fetchDistractorReport, DistractorQuestion } from "@/lib/class-utils";
 import { useTranslations } from "@/lib/i18n/locale-provider";
 import PanelSkeleton from "@/components/panel-skeleton";
+import SafeMathText from "@/components/safe-math-text";
 
 // Разбор закрытых заданий по вариантам. ТЗ §R.7.
 //
@@ -101,14 +102,19 @@ export default function DistractorReport({ mockTestId, forceOpen }: DistractorRe
                         </p>
                     </div>
                 </div>
-                <ChevronDown size={16} className={`shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
+                {/* data-pdf-hide: см. mock-reliability-panel.tsx — стрелка
+                    сворачивания бессмысленна в статичном PDF. */}
+                <ChevronDown data-pdf-hide size={16} className={`shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
             </button>
 
             {open && (
                 <div className="border-t border-border px-5 py-4">
                     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                         <p className="text-[11px] leading-relaxed text-muted-foreground">{t("explain")}</p>
+                        {/* data-pdf-hide: в PDF всегда показаны все задания
+                            (forceOpen), и переключатель нечего переключать. */}
                         <button
+                            data-pdf-hide
                             type="button"
                             onClick={() => setShowAll((v) => !v)}
                             className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-xs font-bold text-foreground"
@@ -135,9 +141,10 @@ export default function DistractorReport({ mockTestId, forceOpen }: DistractorRe
                                             className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left"
                                         >
                                             <div className="min-w-0">
-                                                <p className="line-clamp-2 text-xs leading-relaxed text-foreground">
-                                                    {q.text}
-                                                </p>
+                                                {/* Условие часто содержит формулу ($...$, \frac{}{}):
+                                                    без KaTeX методист видел бы сырую разметку вместо
+                                                    дроби или корня. */}
+                                                <SafeMathText as="p" content={q.text} className="line-clamp-2 text-xs text-foreground" />
                                                 <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                                                     {q.flags.filter((f) => f !== "LOW_COUNT").map((flag) => {
                                                         const Icon = FLAG_ICON[flag] ?? AlertTriangle;
@@ -165,7 +172,9 @@ export default function DistractorReport({ mockTestId, forceOpen }: DistractorRe
                                                     )}
                                                 </div>
                                             </div>
-                                            <ChevronDown size={15} className={`mt-0.5 shrink-0 text-muted-foreground transition-transform ${expanded ? "rotate-180" : ""}`} />
+                                            {/* data-pdf-hide: в PDF задание уже развёрнуто
+                                                (forceOpen), стрелке некуда указывать. */}
+                                            <ChevronDown data-pdf-hide size={15} className={`mt-0.5 shrink-0 text-muted-foreground transition-transform ${expanded ? "rotate-180" : ""}`} />
                                         </button>
 
                                         {expanded && (
@@ -189,9 +198,11 @@ export default function DistractorReport({ mockTestId, forceOpen }: DistractorRe
                                                                 }`}>
                                                                     {o.optionKey}
                                                                 </span>
-                                                                <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
-                                                                    {o.label}
-                                                                </span>
+                                                                <SafeMathText
+                                                                    as="span"
+                                                                    content={o.label}
+                                                                    className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground"
+                                                                />
                                                                 {/* Полоса доли: глазом видно, куда ушла группа. */}
                                                                 <span className="hidden h-1.5 w-24 shrink-0 overflow-hidden rounded-full bg-muted sm:block">
                                                                     <span

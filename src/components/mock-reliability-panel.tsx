@@ -87,7 +87,9 @@ export default function MockReliabilityPanel({ reliability, forceOpen }: MockRel
                         </p>
                     </div>
                 </div>
-                <ChevronDown size={16} className={`shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
+                {/* data-pdf-hide: стрелка сворачивания бессмысленна в статичном
+                    PDF — там нечего разворачивать по клику (pdf-export.ts). */}
+                <ChevronDown data-pdf-hide size={16} className={`shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
             </button>
 
             {open && (

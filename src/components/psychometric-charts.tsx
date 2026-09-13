@@ -163,7 +163,9 @@ export default function PsychometricCharts({ mockTestId, forceOpen }: Psychometr
                         </p>
                     </div>
                 </div>
-                <ChevronDown size={16} className={`shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
+                {/* data-pdf-hide: см. mock-reliability-panel.tsx — стрелка
+                    сворачивания бессмысленна в статичном PDF. */}
+                <ChevronDown data-pdf-hide size={16} className={`shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
             </button>
 
             {open && (

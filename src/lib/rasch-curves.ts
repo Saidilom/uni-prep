@@ -73,6 +73,15 @@ function grid(range: ThetaRange, points = CURVE_RESOLUTION): number[] {
 
 export type IccCurve = {
     difficulty: number;
+    /**
+     * P_i(b) — вероятность в точке перегиба, для отметки на графике.
+     *
+     * Под 3PL это НЕ 0,5. При c > 0 кривая не спускается до нуля, и
+     * P(b) = c + (1−c)/2 = (1+c)/2. На боевом Ona Tili c доходит до 0,26 —
+     * точка на графике, поставленная жёстко на y = 0,5, легла бы на 0,13 ниже
+     * кривой, а не на ней: перегиб перестал бы совпадать с самой линией.
+     */
+    probabilityAtDifficulty: number;
     points: Array<{ theta: number; probability: number }>;
 };
 
@@ -92,6 +101,7 @@ export type IccCurve = {
 export function buildIcc(item: Item3pl, range: ThetaRange, points = CURVE_RESOLUTION): IccCurve {
     return {
         difficulty: item.b,
+        probabilityAtDifficulty: probability3pl(item.b, item),
         points: grid(range, points).map((theta) => ({
             theta,
             probability: probability3pl(theta, item),

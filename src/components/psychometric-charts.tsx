@@ -371,7 +371,7 @@ function TccChart({ tcc, range, tif, t }: {
 // ─────────────────────────── ICC (§D.12) ───────────────────────────
 
 function IccChart({ iccs, range, t }: {
-    iccs: Array<{ difficulty: number; points: Array<{ theta: number; probability: number }> }>;
+    iccs: Array<{ difficulty: number; probabilityAtDifficulty: number; points: Array<{ theta: number; probability: number }> }>;
     range: { min: number; max: number }; t: T;
 }) {
     const scale = makeScale(range.min, range.max, 0, 1);
@@ -405,8 +405,15 @@ function IccChart({ iccs, range, t }: {
                             className="stroke-primary" strokeWidth={1.8} fill="none"
                         />
                         {/* Точка перегиба стоит ровно на b — это и есть смысл
-                            меры сложности. */}
-                        <circle cx={scale.x(icc.difficulty)} cy={scale.y(0.5)} r={2.5} className="fill-primary" />
+                            меры сложности. Y — НЕ 0,5: под 3PL кривая при
+                            угадывании c > 0 не спускается до нуля, и
+                            P(b) = (1+c)/2 может быть заметно выше середины. */}
+                        <circle
+                            cx={scale.x(icc.difficulty)}
+                            cy={scale.y(icc.probabilityAtDifficulty)}
+                            r={2.5}
+                            className="fill-primary"
+                        />
                     </g>
                 ))}
             </Frame>

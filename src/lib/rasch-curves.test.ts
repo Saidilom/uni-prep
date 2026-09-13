@@ -53,6 +53,24 @@ describe("ICC (§D.12) — известные свойства кривой", ()
             expect(p.probability).toBeGreaterThan(hard.points[i].probability);
         });
     });
+
+    it("probabilityAtDifficulty — 0,5 без угадывания, (1+c)/2 с угадыванием", () => {
+        // Регрессия отрисовки: точка перегиба на графике ставилась жёстко на
+        // y = 0,5. На боевом Ona Tili c доходит до 0,26, а P(b) там 0,63 —
+        // точка легла бы на 0,13 ниже кривой, а не на ней.
+        expect(buildIcc({ a: 1.4, b: 0.3, c: 0 }, RANGE).probabilityAtDifficulty).toBeCloseTo(0.5, 12);
+        expect(buildIcc({ a: 0.8, b: -0.5, c: 0.25 }, RANGE).probabilityAtDifficulty).toBeCloseTo(0.625, 12);
+        expect(buildIcc({ a: 1, b: 0, c: 0.26 }, RANGE).probabilityAtDifficulty).toBeCloseTo(0.63, 12);
+    });
+
+    it("probabilityAtDifficulty совпадает со значением кривой в θ = b", () => {
+        // Не отдельная формула — та же probability3pl, что строит саму кривую.
+        const guessy = { a: 0.9, b: 0.4, c: 0.25 };
+        const curve = buildIcc(guessy, RANGE, 401);
+        const nearest = curve.points.reduce((best, p) =>
+            Math.abs(p.theta - guessy.b) < Math.abs(best.theta - guessy.b) ? p : best);
+        expect(curve.probabilityAtDifficulty).toBeCloseTo(nearest.probability, 3);
+    });
 });
 
 describe("TCC (§D.11) — ожидаемый сырой балл", () => {

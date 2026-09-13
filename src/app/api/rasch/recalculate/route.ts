@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createRouteHandlerClient } from "@/lib/supabase/server";
-import { Observation, raschThetaToT, measurementPrecision, itemPrecision, MOCK_SCALE_MAX } from "@/lib/rasch";
+import { Observation, raschThetaToT, thetaSeToScoreSe, LOW_INFORMATION_SE, MOCK_SCALE_MAX } from "@/lib/rasch";
 import { computeSeparation, SeparationResult, RELIABILITY_HIGH_STAKES } from "@/lib/rasch-separation";
 import {
     analyzeQuestion, parseSelection, correctOptionsFor, isClosedQuestion,
     DistractorResponse, QuestionDistractorReport,
 } from "@/lib/distractor-analysis";
-import { estimateTheta3pl, probability3pl } from "@/lib/irt-3pl";
+import { estimateTheta3pl, probability3pl, itemInformation3pl, type Theta3plResult } from "@/lib/irt-3pl";
 import { calibrate3pl, type CalibratedItem } from "@/lib/irt-3pl-calibration";
 import { itemFitReport, personFitReport, FitObservation, FitReport } from "@/lib/rasch-fit";
 import { modelResiduals, standardizedResiduals, q3Analysis, residualPca, Q3Analysis, PcaResult } from "@/lib/rasch-q3";
@@ -27,16 +27,20 @@ export const maxDuration = 300;
 
 // Каким оценщиком и какой моделью получены числа (§109 — метод обязан быть
 // виден в данных, а не только в коде).
-const PERSON_ESTIMATOR = "MLE_NEWTON_3PL";
-const MODEL_VERSION = "3pl-1.0";
+// MAP, а не MLE: θ оценивается апостериорным максимумом с априорным N(0,1) —
+// тем же распределением, по которому идёт квадратура в калибровке. Голый MLE
+// в 3PL около уровня угадывания максимума не имеет, и работы упирались в
+// границу шкалы. Разбор — в шапке estimateTheta3pl.
+const PERSON_ESTIMATOR = "MAP_NEWTON_3PL";
+const MODEL_VERSION = "3pl-1.1";
 
 // ═══ Как помечается смена метода в истории баллов ═══
 //
 // scale_version в ревизии описывает ПРЕЖНЕЕ значение — то, каким способом было
 // получено число, которое ученик видел до пересчёта. reason называет саму
 // правку. Так по строке ревизии видно и откуда, и куда.
-const PREVIOUS_SCALE_VERSION = "v3-cohort/proportion-1pl";
-const REVISION_REASON = "switch_to_3pl";
+const PREVIOUS_SCALE_VERSION = "3pl-1.0/mle-newton";
+const REVISION_REASON = "theta_map_fix";
 
 // Recalibrates the Rasch item difficulties + person abilities for one Mock
 // test, across every attempt that test has on record — a single new
@@ -338,9 +342,18 @@ export async function POST(req: NextRequest) {
     let converged: boolean | null = true;
     let iterations: number | null = 0;
 
-    // Сколько работ WLE не сошлось (§C.4): молча такое проглатывать нельзя,
+    // Оценки θ целиком: кроме самой способности они несут информацию теста и
+    // апостериорную погрешность, и пересчитывать их второй раз другой формулой
+    // нельзя — балл и его точность обязаны быть из одного расчёта.
+    let thetaResults: Theta3plResult[] = [];
+
+    // Сколько работ не сошлось: молча такое проглатывать нельзя,
     // поэтому счётчик уходит в ответ вместе с остальной диагностикой.
     let wleNonConverged = 0;
+    // Сколько работ с крайним баллом (выше потолка или не выше уровня
+    // угадывания). Оценка у них конечна, но правдоподобие о ней почти ничего
+    // не говорит — это надо видеть, а не выводить из тишины.
+    let thetaExtreme = 0;
     // Сколько раз сырой балл не нашёлся в таблице варианта. Должно быть 0;
     // ненулевое значение означает, что ответы и вариант разошлись.
     // Fit-диагностика (модуль F). Пустые массивы у теста без раздела Раша:
@@ -398,11 +411,13 @@ export async function POST(req: NextRequest) {
         // входит со своим весом a_i, поэтому важно, КАКИЕ задания решены. Два
         // ученика с одинаковым числом верных теперь получают разные баллы —
         // тот, кто решил трудные, выше того, кто решил лёгкие.
-        const thetaResults = examResponses.map((row) =>
+        const estimated = examResponses.map((row) =>
             estimateTheta3pl(row.map((correct, item) => ({ correct, item: calibration.items[item] }))),
         );
-        personAbility = thetaResults.map((r) => r.theta);
-        wleNonConverged = thetaResults.filter((r) => r.status === "NON_CONVERGED").length;
+        thetaResults = estimated;
+        personAbility = estimated.map((r) => r.theta);
+        wleNonConverged = estimated.filter((r) => r.status === "NON_CONVERGED").length;
+        thetaExtreme = estimated.filter((r) => r.status === "EXTREME_SCORE").length;
 
         // ═══ Статистика потока ═══
         //
@@ -550,7 +565,13 @@ export async function POST(req: NextRequest) {
         // отброшено, и person_reliability_with_extremes — то же число со всеми.
         const personMeasures = personAbility.map((theta, p) => ({
             measure: theta,
-            se: measurementPrecision(theta, difficultiesByPerson[p]).thetaSe,
+            // Погрешность берётся из ТОЙ ЖЕ оценки, что дала θ. Прежде здесь
+            // стояла measurementPrecision — информация модели Раша, P(1−P) по
+            // одним трудностям. Она игнорирует и дискриминацию, и угадывание,
+            // а под 3PL информация задания равна D²a²(P−c)²(1−P)/((1−c)²P): на
+            // боевой математике это давало SE на треть больше настоящей, и
+            // ровно эта завышенная величина шла в reliability всего теста.
+            se: Number.isFinite(thetaResults[p]?.standardError) ? thetaResults[p].standardError : null,
             // Крайним считается балл относительно тех заданий, до которых
             // ученик дошёл, а не всего варианта (§A.4): не дошедший до
             // половины теста — не то же самое, что не решивший ничего.
@@ -559,9 +580,21 @@ export async function POST(req: NextRequest) {
                 || correctByPerson[p] === 0
                 || correctByPerson[p] === difficultiesByPerson[p].length,
         }));
+        // SE трудности под 3PL. Симметрия «информация о θ = информация о b»
+        // сохраняется и здесь: ∂P/∂b = −∂P/∂θ, поэтому это та же
+        // itemInformation3pl, просуммированная по ученикам, а не по заданиям.
+        // Через measurementPrecision считать нельзя — она не знает ни a, ни c.
+        const itemDifficultySe = (i: number): number | null => {
+            const item = itemParameters[i];
+            if (!item) return null;
+            const information = abilitiesByItem[i]
+                .reduce((sum, theta) => sum + itemInformation3pl(theta, item), 0);
+            return information > 0 ? 1 / Math.sqrt(information) : null;
+        };
+
         const itemMeasures = itemDifficultyByIndex.map((b: number, i: number) => ({
             measure: b,
-            se: itemPrecision(b, abilitiesByItem[i]).thetaSe,
+            se: itemDifficultySe(i),
             // Та же логика для заданий: решённое всеми или никем не калибруется
             // (§165, E.9), и его SE так же назначена, а не измерена.
             extreme: sampleSizeByItem[i] === 0
@@ -696,7 +729,6 @@ export async function POST(req: NextRequest) {
 
         const calibrationRows = questionIds.map((id, i) => {
             const n = sampleSizeByItem[i];
-            const precision = itemPrecision(itemDifficultyByIndex[i], abilitiesByItem[i]);
             const fit = itemFitReports[i];
             const itemStatus = n === 0
                 ? "NO_OBSERVATIONS"
@@ -714,7 +746,7 @@ export async function POST(req: NextRequest) {
                 guessing: itemParameters[i].c,
                 guessing_prior: itemParameters[i].cPrior,
                 option_count: optionCountByItem[i],
-                difficulty_se: precision.thetaSe,
+                difficulty_se: itemDifficultySe(i),
                 item_status: itemStatus,
                 sample_size: n,
                 converged,
@@ -818,12 +850,33 @@ export async function POST(req: NextRequest) {
             //   два раздела  — делим на два, и это ТОЧНО, пока сочинение не
             //                  написано (ноль по таблице даёт ровно 0, без
             //                  оценивания), и НИЖНЯЯ ГРАНИЦА, когда написано.
-            const precision = hasObjectiveSection
-                ? measurementPrecision(personAbility[n], difficultiesByPerson[n])
+            const estimate = hasObjectiveSection ? thetaResults[n] : null;
+            const thetaSe = estimate && Number.isFinite(estimate.standardError)
+                ? estimate.standardError
                 : null;
-            const scoreSe = precision?.scoreSe !== null && precision?.scoreSe !== undefined && sectionCount > 0
-                ? precision.scoreSe / sectionCount
-                : null;
+
+            // ═══ Погрешность балла считается по ТОЙ ЖЕ шкале, что и балл ═══
+            //
+            // T = 50 + 10·(θ − μ)/σ, значит SE(T) = 10·SE(θ)/σ. Прежде здесь
+            // стояло просто SE(θ)·10 — множитель из времён эталонной
+            // популяции, у которой σ равнялась единице по построению. После
+            // перехода на центрирование по потоку σ единицей быть перестала:
+            // на боевой математике она 0,82, и погрешность выходила на 18%
+            // меньше настоящей. При σ, раздутой крайними работами, ошибка была
+            // куда грубее — до трёх раз.
+            //
+            // σ берётся замороженная, если она заморожена: балл посчитан от
+            // неё, и погрешность обязана описывать именно его.
+            const scoreSe = thetaSeToScoreSe(thetaSe, cohort.sigma, sectionCount);
+
+            // Статус измерения — по той же погрешности, что записана рядом.
+            // LOW_INFORMATION_SE задан в логитах (§215), поэтому сравнивается
+            // с SE(θ), а не с баллом.
+            const measurementStatus = !hasObjectiveSection || thetaSe === null
+                ? "INSUFFICIENT_INFORMATION"
+                : thetaSe >= LOW_INFORMATION_SE
+                    ? "LOW_INFORMATION"
+                    : "OK";
 
             return {
                 id,
@@ -841,9 +894,9 @@ export async function POST(req: NextRequest) {
                 // него сотенный балл сравнился бы с порогами из 75, и ученик
                 // с T = 52,5 (это C+) получил бы A+.
                 grade_level: certificate === null ? null : gradeLevelFromScore(certificate, { max: certificateMax }),
-                theta_se: precision?.thetaSe ?? null,
+                theta_se: thetaSe,
                 score_se: scoreSe,
-                test_information: precision?.information ?? null,
+                test_information: estimate?.information ?? null,
                 // Статус измерения, а не молчание: §215 требует различать
                 // «результат существует» и «измерению можно доверять». У теста
                 // из одного сочинения способности по Рашу нет вовсе — это тоже
@@ -853,7 +906,7 @@ export async function POST(req: NextRequest) {
                 // выше), и «OK» рядом с пустым баллом противоречил бы сам себе.
                 measurement_status: cohort.status !== "OK" && hasObjectiveSection
                     ? "INSUFFICIENT_INFORMATION"
-                    : precision?.status ?? "INSUFFICIENT_INFORMATION",
+                    : measurementStatus,
                 // Person-fit (§F.10). На балл и уровень НЕ влияет: §215
                 // требует различать «результат есть» и «результат доверенный»,
                 // а §N.2 прямо запрещает делать из misfit вывод о списывании.
@@ -905,12 +958,53 @@ export async function POST(req: NextRequest) {
         }
     }
 
-    const updateResults = await Promise.all(
-        nextValues.map(({ id, ...payload }) => admin.from("mock_results").update(payload).eq("id", id)),
+    // ═══ Запись баллов: пачками, а не всеми разом ═══
+    //
+    // Строка на ученика, каждая своим UPDATE — иначе никак: значения у всех
+    // разные, а upsert потребовал бы перечислить все NOT NULL-колонки
+    // mock_results и затёр бы то, чего этот расчёт не касается.
+    //
+    // Но Promise.all по всему потоку открывал СТОЛЬКО одновременных запросов,
+    // сколько сдавших: на 300 учениках это 300 параллельных обращений к
+    // PostgREST в один момент. Пул соединений на такое не рассчитан, и отказы
+    // начинаются не у всех, а у случайной части — то есть часть класса
+    // осталась бы со старым баллом.
+    const UPDATE_CONCURRENCY = 20;
+    const writeOnce = (rows: typeof nextValues) => Promise.all(
+        rows.map(({ id, ...payload }) => admin.from("mock_results").update(payload).eq("id", id)
+            .then((r) => (r.error ? id : null))),
     );
-    const failedCount = updateResults.filter((r) => r.error).length;
+
+    const failedIds: string[] = [];
+    for (let offset = 0; offset < nextValues.length; offset += UPDATE_CONCURRENCY) {
+        const chunk = nextValues.slice(offset, offset + UPDATE_CONCURRENCY);
+        const failures = (await writeOnce(chunk)).filter((id): id is string => id !== null);
+        failedIds.push(...failures);
+    }
+
+    // Один повтор по не записавшимся: отказ пула — состояние минутное, а
+    // ученик с чужим баллом на экране остаётся до следующего пересчёта.
+    if (failedIds.length > 0) {
+        const retry = nextValues.filter((row) => failedIds.includes(row.id));
+        const stillFailed = new Set<string>();
+        for (let offset = 0; offset < retry.length; offset += UPDATE_CONCURRENCY) {
+            const chunk = retry.slice(offset, offset + UPDATE_CONCURRENCY);
+            (await writeOnce(chunk)).forEach((id) => { if (id !== null) stillFailed.add(id); });
+        }
+        failedIds.length = 0;
+        failedIds.push(...Array.from(stillFailed));
+    }
+
+    const failedCount = failedIds.length;
     if (failedCount > 0) {
+        // Не «ok» с числом в поле: балл части учеников остался прежним, и
+        // вызывающий (авто-публикация) обязан записать это предупреждением, а
+        // не посчитать пересчёт удавшимся.
         console.error(`[rasch/recalculate] ${failedCount}/${resultIds.length} per-student score updates failed for mock ${mockTestId}`);
+        return NextResponse.json(
+            { error: `Не удалось записать балл ${failedCount} из ${resultIds.length} работ`, failedCount },
+            { status: 500 },
+        );
     }
 
     return NextResponse.json({
@@ -924,6 +1018,7 @@ export async function POST(req: NextRequest) {
         // ушло из калибровки вместо того, чтобы посчитаться нулями (§A.3).
         personEstimator: `${PERSON_ESTIMATOR}/${MODEL_VERSION}`,
         wleNonConverged,
+        thetaExtreme,
         // §R.6: балл взят из таблицы варианта. tableMisses обязан быть 0.
         responseStates: totals,
         // Модуль F: сколько заданий и работ получили флаги. Ноль удалений —

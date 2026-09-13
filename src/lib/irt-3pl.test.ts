@@ -4,6 +4,9 @@ import {
     standardError3pl, estimateTheta3pl, SCALING_D, type Item3pl, type Response3pl,
 } from "./irt-3pl";
 import { calibrate3pl, type CalibrationItemInput } from "./irt-3pl-calibration";
+
+/** Тот же предел шкалы, что зашит в irt-3pl.ts. */
+const THETA_SCALE_BOUND = 8;
 import { probability as raschProbability } from "./rasch";
 
 // Проверка 3PL — та же, что уже сделана для Раша в rasch-cohort.test.ts: мы
@@ -119,13 +122,102 @@ describe("estimateTheta3pl — Ньютон-Рафсон", () => {
         }
     });
 
-    it("балл ниже суммы угадываний не даёт конечной оценки", () => {
+    it("балл ниже суммы угадываний помечается, но оценка остаётся конечной", () => {
         // Особенность 3PL против Раша: ниже Σc правдоподобие монотонно, и
-        // максимума у него нет. Такое помечается, а не выдумывается.
+        // максимума у НЕГО нет. У апостериорной плотности он есть всегда —
+        // это и есть причина, по которой θ оценивается с априорным
+        // распределением, а не голым максимумом правдоподобия.
         const responses: Response3pl[] = items.map((item) => ({ correct: 0 as 0 | 1, item }));
         const result = estimateTheta3pl(responses);
         expect(result.status).toBe("EXTREME_SCORE");
         expect(Number.isFinite(result.theta)).toBe(true);
+        // Главное: не граница шкалы. Прежняя реализация возвращала ровно −8, и
+        // это число уходило в статистику потока как настоящая способность.
+        expect(Math.abs(result.theta)).toBeLessThan(THETA_SCALE_BOUND);
+    });
+
+    it("не отдаёт границу шкалы за оценку у работ около уровня угадывания", () => {
+        // Регрессия боевого случая: Mock Matematika, 36 работ, 55 заданий,
+        // Σc = 7,51. Девять работ из тридцати шести упирались в θ = −8 —
+        // и ученик с 0 верных получал тот же балл, что ученик с 11 верными.
+        const guessy: Item3pl[] = Array.from({ length: 55 }, (_, i) => ({
+            a: 0.5 + (i % 7) * 0.15,
+            b: -0.7 + i * 0.06,
+            c: i % 4 === 0 ? 0 : 0.25,
+        }));
+        const random = mulberry32(2026);
+        // Ученики около и ниже уровня угадывания — те самые, на ком старая
+        // оценка расходилась. По многу на каждый уровень: у одной работы
+        // разброс одной случайной выборки больше, чем шаг между уровнями, и
+        // требовать порядок от единичных оценок было бы требованием к удаче,
+        // а не к модели.
+        const thetas = [-3, -2.25, -1.5];
+        const perLevel = 40;
+        const byLevel = thetas.map((trueTheta) =>
+            Array.from({ length: perLevel }, () => estimateTheta3pl(
+                guessy.map((item) => ({
+                    correct: (random() < probability3pl(trueTheta, item) ? 1 : 0) as 0 | 1,
+                    item,
+                })),
+            )),
+        );
+        const all = byLevel.flat();
+
+        // Ни одна работа не упирается в границу шкалы — это и есть регрессия.
+        for (const e of all) {
+            expect(Number.isFinite(e.theta)).toBe(true);
+            expect(Math.abs(e.theta)).toBeLessThan(THETA_SCALE_BOUND);
+        }
+        // Оценки различаются, а не слипаются в одно число: слипание и было
+        // симптомом — девять работ с разным числом верных получали один балл.
+        const distinct = new Set(all.map((e) => e.theta.toFixed(6)));
+        expect(distinct.size).toBeGreaterThan(all.length * 0.9);
+        // И средняя оценка растёт вместе со способностью.
+        const means = byLevel.map((level) => level.reduce((sum, e) => sum + e.theta, 0) / level.length);
+        for (let i = 1; i < means.length; i++) {
+            expect(means[i]).toBeGreaterThan(means[i - 1]);
+        }
+    });
+
+    it("упор в границу шкалы не считается сходимостью", () => {
+        // Задания, у которых верный ответ практически невозможен ниже шкалы:
+        // Ньютон будет толкать θ вниз до упора. Прежний цикл объявлял это
+        // сходимостью, потому что клэмп обнулял шаг, и работа уходила в базу
+        // со статусом OK.
+        const steep: Item3pl[] = Array.from({ length: 20 }, () => ({ a: 1, b: -6, c: 0 }));
+        const responses: Response3pl[] = steep.map((item) => ({ correct: 0 as 0 | 1, item }));
+        const result = estimateTheta3pl(responses, { mean: 0, sd: 1000 });
+        // Prior здесь намеренно почти плоский: без него апостериорный максимум
+        // конечен и упора не возникает — проверяем именно поведение на упоре.
+        expect(Math.abs(result.theta)).toBe(THETA_SCALE_BOUND);
+        expect(result.status).not.toBe("OK");
+    });
+
+    it("погрешность считается по информации 3PL вместе с априорной", () => {
+        const responses: Response3pl[] = items.map((item, i) => ({ correct: (i % 3 === 0 ? 1 : 0) as 0 | 1, item }));
+        const result = estimateTheta3pl(responses);
+        // information — свойство ТЕСТА, без вклада prior.
+        expect(result.information).toBeCloseTo(testInformation3pl(result.theta, items), 12);
+        // SE — апостериорная: 1/√(I + 1/σ₀²) при σ₀ = 1.
+        expect(result.standardError).toBeCloseTo(1 / Math.sqrt(result.information + 1), 12);
+        // И она строго меньше, чем по одному правдоподобию: априорное знание
+        // тоже информация.
+        expect(result.standardError).toBeLessThan(standardError3pl(result.information));
+    });
+
+    it("априорное распределение не подменяет данные на длинном тесте", () => {
+        // Сдвиг к нулю от prior обязан быть тем меньше, чем больше заданий:
+        // иначе априорное знание перевешивало бы работу ученика.
+        const make = (count: number): Response3pl[] => {
+            const random = mulberry32(11);
+            return Array.from({ length: count }, (_, i) => {
+                const item: Item3pl = { a: 1, b: -2 + (i % 40) * 0.1, c: 0 };
+                return { correct: (random() < probability3pl(1.5, item) ? 1 : 0) as 0 | 1, item };
+            });
+        };
+        const short = estimateTheta3pl(make(10)).theta;
+        const long = estimateTheta3pl(make(120)).theta;
+        expect(Math.abs(long - 1.5)).toBeLessThan(Math.abs(short - 1.5));
     });
 
     it("без ответов возвращает статус, а не ноль", () => {
@@ -219,4 +311,96 @@ describe("calibrate3pl на синтетике с ИЗВЕСТНЫМИ пара�
         expect(Number.isFinite(result.items[0].a)).toBe(true);
         expect(Number.isFinite(result.items[0].b)).toBe(true);
     }, 60000);
+});
+
+describe("поток целиком: θ, статистика потока и балл", () => {
+    // Слепок боевого случая, на котором расчёт сломался: Mock Matematika,
+    // 36 работ, 55 заданий, четыре варианта ответа (c около 0,25), несколько
+    // заданий, которые не решил никто. Проверяется не формула, а то, во что
+    // расчёт складывается ЦЕЛИКОМ — именно на этом уровне и была ошибка:
+    // каждая функция по отдельности выглядела правдоподобно.
+    function simulateCohort(personCount: number) {
+        const random = mulberry32(4242);
+        const gauss = () => {
+            // Бокс-Мюллер: нужен нормальный поток, а не равномерный.
+            const u = Math.max(1e-12, random());
+            return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * random());
+        };
+        const items: Item3pl[] = Array.from({ length: 55 }, (_, i) => ({
+            a: 0.6 + (i % 6) * 0.18,
+            b: -0.8 + i * 0.065,
+            c: i % 5 === 0 ? 0 : 0.25,
+        }));
+        // Поток слабый относительно варианта — как на проде, где средняя доля
+        // верных была около 22%.
+        const trueThetas = Array.from({ length: personCount }, () => -0.6 + gauss());
+        const responses = trueThetas.map((theta) =>
+            items.map((item) => (random() < probability3pl(theta, item) ? 1 : 0) as 0 | 1),
+        );
+        return { items, trueThetas, responses };
+    }
+
+    const { items, trueThetas, responses } = simulateCohort(36);
+    const calibration = calibrate3pl(
+        items.map((_, i) => ({ responses: responses.map((row) => row[i]), optionCount: items[i].c > 0 ? 4 : null })),
+    );
+    const estimates = responses.map((row) =>
+        estimateTheta3pl(row.map((correct, i) => ({ correct, item: calibration.items[i] }))),
+    );
+    const thetas = estimates.map((e) => e.theta);
+    const mu = thetas.reduce((a, b) => a + b, 0) / thetas.length;
+    const sigma = Math.sqrt(thetas.reduce((a, b) => a + (b - mu) ** 2, 0) / (thetas.length - 1));
+
+    it("ни одна работа не оценена границей шкалы", () => {
+        for (const e of estimates) {
+            expect(Number.isFinite(e.theta)).toBe(true);
+            expect(Math.abs(e.theta)).toBeLessThan(THETA_SCALE_BOUND);
+        }
+    });
+
+    it("разброс потока не раздут крайними работами", () => {
+        // ЭТО ГЛАВНАЯ РЕГРЕССИЯ. На проде σ выходила 3,40 вместо 0,99, потому
+        // что девять работ лежали на −8. Балл считается как
+        // T = 50 + 10(θ−μ)/σ, поэтому раздутая σ сжимала баллы ВСЕХ
+        // остальных: лучшая работа получала 62,3 вместо 73,4 — B+ вместо A+.
+        //
+        // Калибровка ведёт θ к N(0,1), поэтому σ обязана быть около единицы.
+        expect(sigma).toBeGreaterThan(0.5);
+        expect(sigma).toBeLessThan(2);
+        expect(Math.abs(mu)).toBeLessThan(1.5);
+    });
+
+    it("оценка следует за истинной способностью", () => {
+        // Корреляция, а не совпадение: 55 заданий и 36 человек точности не
+        // дают, но связь обязана быть сильной — иначе балл не измеряет ничего.
+        const meanTrue = trueThetas.reduce((a, b) => a + b, 0) / trueThetas.length;
+        let cov = 0, varTrue = 0, varEst = 0;
+        for (let n = 0; n < thetas.length; n++) {
+            cov += (trueThetas[n] - meanTrue) * (thetas[n] - mu);
+            varTrue += (trueThetas[n] - meanTrue) ** 2;
+            varEst += (thetas[n] - mu) ** 2;
+        }
+        expect(cov / Math.sqrt(varTrue * varEst)).toBeGreaterThan(0.8);
+    });
+
+    it("балл различает учеников по всей ширине шкалы", () => {
+        // Симптом сломанного расчёта — слипание баллов. Считаем ровно так же,
+        // как роут: T = 50 + 10(θ−μ)/σ, обрезанный шкалой.
+        const scores = thetas.map((theta) => Math.max(0, Math.min(75, 50 + 10 * (theta - mu) / sigma)));
+        const distinct = new Set(scores.map((x) => x.toFixed(2)));
+        expect(distinct.size).toBeGreaterThan(scores.length * 0.9);
+        // И занимает осмысленный диапазон, а не сидит в узкой полосе вокруг 50.
+        expect(Math.max(...scores) - Math.min(...scores)).toBeGreaterThan(25);
+    });
+
+    it("погрешность балла честная, а не сотни баллов", () => {
+        // На проде у прижатых к −8 работ score_se доходила до 1044 баллов на
+        // 75-балльной шкале — число, которое нельзя ни показать, ни усреднить.
+        for (const e of estimates) {
+            const scoreSe = 10 * e.standardError / sigma;
+            expect(Number.isFinite(scoreSe)).toBe(true);
+            expect(scoreSe).toBeGreaterThan(0);
+            expect(scoreSe).toBeLessThan(20);
+        }
+    });
 });

@@ -7,6 +7,7 @@ import {
     scoreConfidenceInterval,
     scoresAreDistinguishable,
     raschThetaToT,
+    thetaSeToScoreSe,
     estimateRasch,
     Observation,
     LOW_INFORMATION_SE,
@@ -251,5 +252,44 @@ describe("thetaConfidenceInterval (D.7)", () => {
     it("без погрешности интервала не существует", () => {
         expect(thetaConfidenceInterval(0, null)).toBeNull();
         expect(thetaConfidenceInterval(Number.NaN, 0.3)).toBeNull();
+    });
+});
+
+describe("thetaSeToScoreSe — погрешность в баллах показанной шкалы", () => {
+    it("делит на разброс потока, а не умножает на десять", () => {
+        // T = 50 + 10(θ−μ)/σ, поэтому одна логита стоит 10/σ баллов.
+        // Регрессия: прежде здесь стояло просто SE(θ)·10 — верно только при
+        // σ = 1, то есть для эталонной популяции, которой в расчёте больше нет.
+        expect(thetaSeToScoreSe(0.4, 1)).toBeCloseTo(4, 12);
+        expect(thetaSeToScoreSe(0.4, 0.8)).toBeCloseTo(5, 12);
+        expect(thetaSeToScoreSe(0.4, 2)).toBeCloseTo(2, 12);
+    });
+
+    it("согласуется с самим переводом θ в балл", () => {
+        // Проверка не формулой, а поведением: сдвиг θ на одну SE обязан
+        // сдвинуть балл ровно на вычисленную погрешность.
+        const mu = -0.588;
+        const sigma = 0.817;
+        const thetaSe = 0.269;
+        const theta = 0.2;
+        const scoreSe = thetaSeToScoreSe(thetaSe, sigma)!;
+        const moved = raschThetaToT(theta + thetaSe, mu, sigma) - raschThetaToT(theta, mu, sigma);
+        expect(moved).toBeCloseTo(scoreSe, 10);
+    });
+
+    it("делится на число разделов итогового балла", () => {
+        // Итог — среднее разделов, и вклад измеряемого раздела в погрешность
+        // итога делится на их число (Baholash_mezoni.pdf стр. 4).
+        expect(thetaSeToScoreSe(0.5, 1, 2)).toBeCloseTo(2.5, 12);
+    });
+
+    it("на испорченном разбросе возвращает отсутствие, а не число", () => {
+        // Поток без разброса — это отсутствие измерения (§215, §233), и ноль
+        // или Infinity здесь читались бы как измеренная точность.
+        expect(thetaSeToScoreSe(0.4, 0)).toBeNull();
+        expect(thetaSeToScoreSe(0.4, Number.NaN)).toBeNull();
+        expect(thetaSeToScoreSe(null, 1)).toBeNull();
+        expect(thetaSeToScoreSe(Number.POSITIVE_INFINITY, 1)).toBeNull();
+        expect(thetaSeToScoreSe(0.4, 1, 0)).toBeNull();
     });
 });

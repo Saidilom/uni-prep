@@ -3,8 +3,8 @@ import { getInternalSecret, internalHeaders } from "@/lib/internal-auth";
 
 // §15: то же, что делает кнопка «Готово» у админа/учителя, но без человека.
 // Порядок шагов не косметический — каждый следующий читает то, что записал
-// предыдущий: балл за эссе должен быть окончательным ДО раскрытия результатов,
-// а уровень A+..C считается уже по раскрытым баллам.
+// предыдущий: балл за эссе обязан быть окончательным до расчёта итога, а сам
+// итог — посчитан до того, как результат покажут ученику.
 //
 // Живёт отдельным модулем, потому что вызывающих два и они непохожи: роут,
 // который дёргает браузер ученика сразу после сдачи, и крон, который проходит
@@ -145,6 +145,17 @@ export async function runAutoFinalize(mockTestId: string, origin: string): Promi
 
   const gradedEssays = await gradeEssays(mockTestId, origin, warnings);
 
+  // ═══ Балл считается ДО раскрытия, а не после ═══
+  //
+  // Раньше порядок был обратный: сначала finalize проставлял revealed_at, и
+  // только потом считался балл. На группе из 36 это мелькало, на 300 окно
+  // между раскрытием и записью балла — секунды, в которые ученик, обновивший
+  // страницу, видит открытый результат без уровня и без балла.
+  //
+  // Эссе проверены выше, поэтому считать уже есть из чего: письменный раздел
+  // входит в итог окончательным.
+  await recalculateLevels(mockTestId, origin, warnings);
+
   const { data: finalizeData, error: finalizeError } = await supabaseServer.rpc(
     "finalize_mock_group_results_system",
     { p_mock_test_id: mockTestId }
@@ -157,6 +168,10 @@ export async function runAutoFinalize(mockTestId: string, origin: string): Promi
   if (result?.alreadyFinalized) return { finalized: false, reason: "already_finalized", gradedEssays };
 
   const revealedCount = result?.revealedCount ?? 0;
+  // Второй заход — ради ЗАМОРОЗКИ точки отсчёта. Пересчёт закрепляет μ и σ
+  // потока в тот момент, когда результат показан хотя бы одному ученику, а на
+  // первом заходе показан не был ещё никому. Числа при этом те же: калибровка
+  // и оценка θ детерминированы, балл не меняется, ревизий не возникает.
   if (revealedCount > 0) await recalculateLevels(mockTestId, origin, warnings);
 
   return {

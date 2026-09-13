@@ -9,17 +9,17 @@ import { gradeLevelDisplay, type GradeLevel } from "@/lib/mock-grade-level";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 import PanelSkeleton from "@/components/panel-skeleton";
 
-// Сравнение моделей: 3PL рядом с действующим баллом.
+// Протокол расчёта балла.
 //
 // ═══ ЗАЧЕМ ЭТОТ ЭКРАН СУЩЕСТВУЕТ ═══
 //
-// Владелец попросил 3PL и прозрачные расчёты — «чтобы не было вопросов,
-// работает она или нет». Ответ нельзя дать словами, поэтому здесь показаны
-// сами числа: параметры каждого задания, оценка каждого ученика и, главное,
-// СКОЛЬКО наблюдений приходится на один оцениваемый параметр.
+// Владелец попросил прозрачные расчёты — «чтобы не было вопросов, работает
+// она или нет». Ответ нельзя дать словами, поэтому здесь показаны сами числа:
+// все три параметра каждого задания, θ и погрешность каждого ученика и,
+// главное, СКОЛЬКО наблюдений приходится на один оцениваемый параметр.
 //
-// Балл ученика этот раздел не меняет: 3PL считается рядом и пишет в свои
-// таблицы (§238 — discrimination и guessing это отдельная модель).
+// С 2026-09-13 балл считает именно 3PL — панель показывает действующую
+// модель, а не вторую рядом.
 
 // Ошибка восстановления ИЗВЕСТНЫХ параметров на синтетике, замерено тестом
 // src/lib/irt-3pl.test.ts (20 заданий, c = 0.25, детерминированный ГПСЧ).
@@ -50,7 +50,7 @@ export default function Irt3plPanel({ mockTestId }: { mockTestId: string }) {
         setRunning(true);
         setError(null);
         try {
-            const response = await fetch("/api/irt/3pl", {
+            const response = await fetch("/api/rasch/recalculate", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ mockTestId }),
@@ -73,14 +73,6 @@ export default function Irt3plPanel({ mockTestId }: { mockTestId: string }) {
     const people = report.people;
     const items = report.items;
     const computed = people.length > 0;
-
-    // Сводка расхождений — то, ради чего экран и открывают.
-    const levelChanged = people.filter((p) => p.level3pl !== p.levelRasch).length;
-    const gaps = people
-        .filter((p) => p.score3pl !== null && p.scoreRasch !== null)
-        .map((p) => Math.abs((p.score3pl as number) - (p.scoreRasch as number)));
-    const meanGap = gaps.length ? gaps.reduce((s, g) => s + g, 0) / gaps.length : 0;
-    const maxGap = gaps.length ? Math.max(...gaps) : 0;
 
     // Наблюдений на параметр: заданий × учеников, делённое на 3·заданий + учеников.
     const perParameter = items.length > 0 && people.length > 0
@@ -154,29 +146,14 @@ export default function Irt3plPanel({ mockTestId }: { mockTestId: string }) {
                         </div>
                     </div>
 
-                    {/* ═══ Сводка расхождений ═══ */}
-                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                        {[
-                            [t("summaryLevelChanged"), `${levelChanged} / ${people.length}`],
-                            [t("summaryMeanGap"), formatScore(meanGap)],
-                            [t("summaryMaxGap"), formatScore(maxGap)],
-                        ].map(([label, value]) => (
-                            <div key={label} className="rounded-xl border border-border p-3">
-                                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
-                                <p className="mt-1 text-xl font-bold tabular-nums">{value}</p>
-                            </div>
-                        ))}
-                    </div>
-
-                    {/* ═══ Ученики: два балла рядом и след вычисления ═══ */}
+                    {/* ═══ Ученики: θ, погрешность и балл ═══ */}
                     <div className="mt-5 overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead className="border-b border-border text-xs uppercase tracking-wider text-muted-foreground">
                                 <tr>
                                     <th className="py-2 text-left font-semibold">{t("columnStudent")}</th>
-                                    <th className="py-2 text-right font-semibold">θ Rasch</th>
-                                    <th className="py-2 text-right font-semibold">θ 3PL</th>
-                                    <th className="py-2 text-right font-semibold">{t("columnScoreRasch")}</th>
+                                    <th className="py-2 text-right font-semibold">θ</th>
+                                    <th className="py-2 text-right font-semibold">SE(θ)</th>
                                     <th className="py-2 text-right font-semibold">{t("columnScore3pl")}</th>
                                     <th className="py-2 text-right font-semibold">{t("columnLevels")}</th>
                                 </tr>
@@ -184,43 +161,34 @@ export default function Irt3plPanel({ mockTestId }: { mockTestId: string }) {
                             <tbody className="divide-y divide-border">
                                 {people
                                     .slice()
-                                    .sort((a, b) => (b.scoreRasch ?? 0) - (a.scoreRasch ?? 0))
-                                    .map((person) => {
-                                        const changed = person.level3pl !== person.levelRasch;
-                                        return (
-                                            <tr key={person.resultId} className={changed ? "bg-amber-50/60 dark:bg-amber-950/20" : ""}>
-                                                <td className="py-2">
-                                                    <button
-                                                        onClick={() => setOpenPerson(openPerson === person.resultId ? null : person.resultId)}
-                                                        className="inline-flex items-center gap-1.5 text-left font-medium hover:text-primary"
-                                                    >
-                                                        <ChevronDown size={13} className={openPerson === person.resultId ? "rotate-180 transition-transform" : "transition-transform"} />
-                                                        {person.name}
-                                                    </button>
-                                                    {openPerson === person.resultId && (
-                                                        <div className="mt-2 rounded-lg bg-muted/50 p-3 text-xs leading-relaxed">
-                                                            <p>θ = {person.theta3pl.toFixed(6)}</p>
-                                                            <p>SE(θ) = {person.thetaSe === null ? "—" : person.thetaSe.toFixed(6)}</p>
-                                                            <p>{t("traceIterations")}: {person.iterations ?? "—"}</p>
-                                                            <p>{t("traceStatus")}: {person.status}</p>
-                                                            <p className="mt-1 text-muted-foreground">{t("traceFormula")}</p>
-                                                        </div>
-                                                    )}
-                                                </td>
-                                                <td className="py-2 text-right tabular-nums">{person.thetaRasch === null ? "—" : person.thetaRasch.toFixed(3)}</td>
-                                                <td className="py-2 text-right tabular-nums">{person.theta3pl.toFixed(3)}</td>
-                                                <td className="py-2 text-right tabular-nums">{formatScore(person.scoreRasch)}</td>
-                                                <td className="py-2 text-right tabular-nums">{formatScore(person.score3pl)}</td>
-                                                <td className="py-2 text-right text-xs">
-                                                    {person.levelRasch ? gradeLevelDisplay(person.levelRasch as GradeLevel, locale) : "—"}
-                                                    {" → "}
-                                                    <span className={changed ? "font-bold text-amber-700 dark:text-amber-400" : ""}>
-                                                        {person.level3pl ? gradeLevelDisplay(person.level3pl as GradeLevel, locale) : "—"}
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
+                                    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+                                    .map((person) => (
+                                        <tr key={person.resultId}>
+                                            <td className="py-2">
+                                                <button
+                                                    onClick={() => setOpenPerson(openPerson === person.resultId ? null : person.resultId)}
+                                                    className="inline-flex items-center gap-1.5 text-left font-medium hover:text-primary"
+                                                >
+                                                    <ChevronDown size={13} className={openPerson === person.resultId ? "rotate-180 transition-transform" : "transition-transform"} />
+                                                    {person.name}
+                                                </button>
+                                                {openPerson === person.resultId && (
+                                                    <div className="mt-2 rounded-lg bg-muted/50 p-3 text-xs leading-relaxed">
+                                                        <p>θ = {person.theta.toFixed(6)}</p>
+                                                        <p>SE(θ) = {person.thetaSe === null ? "—" : person.thetaSe.toFixed(6)}</p>
+                                                        <p>{t("traceStatus")}: {person.status ?? "—"}</p>
+                                                        <p className="mt-1 text-muted-foreground">{t("traceFormula")}</p>
+                                                    </div>
+                                                )}
+                                            </td>
+                                            <td className="py-2 text-right tabular-nums">{Number.isFinite(person.theta) ? person.theta.toFixed(3) : "—"}</td>
+                                            <td className="py-2 text-right tabular-nums">{person.thetaSe === null ? "—" : person.thetaSe.toFixed(3)}</td>
+                                            <td className="py-2 text-right tabular-nums">{formatScore(person.score)}</td>
+                                            <td className="py-2 text-right text-xs">
+                                                {person.level ? gradeLevelDisplay(person.level as GradeLevel, locale) : "—"}
+                                            </td>
+                                        </tr>
+                                    ))}
                             </tbody>
                         </table>
                     </div>

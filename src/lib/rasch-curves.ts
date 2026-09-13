@@ -30,7 +30,7 @@
 // оттуда же. Этот модуль только раскладывает уже существующие функции по сетке
 // значений θ. Ни один балл от него не зависит.
 
-import { probability, itemInformation, testInformation } from "./rasch";
+import { probability3pl, itemInformation3pl, testInformation3pl, type Item3pl } from "./irt-3pl";
 
 /** Границы сетки по умолчанию, если распределений не дали. */
 export const DEFAULT_THETA_MIN = -4;
@@ -79,18 +79,22 @@ export type IccCurve = {
 /**
  * Кривая одного задания: P_i(θ).
  *
- * Читается так: на уровне θ = b вероятность ровно 0.5, левее — падает,
- * правее — растёт. Наклон у всех заданий Раша ОДИНАКОВ (в этом и состоит
- * модель), поэтому кривые различаются только сдвигом. Если бы наклоны
- * различались, это была бы 2PL, и достаточность сырого балла (§B.6) перестала
- * бы действовать.
+ * ═══ ЧТО ИЗМЕНИЛОСЬ С ПЕРЕХОДОМ НА 3PL ═══
+ *
+ * Раньше здесь стояла формула Раша, и у всех кривых был ОДИНАКОВЫЙ наклон —
+ * в этом и состояла модель. Теперь наклон задаёт a, а нижняя асимптота — c:
+ * кривые различаются не только сдвигом, и на графике это сразу видно.
+ *
+ * Заодно перестала действовать достаточность сырого балла (§B.6): у двух
+ * учеников с одинаковым числом верных θ теперь РАЗНАЯ, потому что важно, какие
+ * именно задания решены.
  */
-export function buildIcc(difficulty: number, range: ThetaRange, points = CURVE_RESOLUTION): IccCurve {
+export function buildIcc(item: Item3pl, range: ThetaRange, points = CURVE_RESOLUTION): IccCurve {
     return {
-        difficulty,
+        difficulty: item.b,
         points: grid(range, points).map((theta) => ({
             theta,
-            probability: probability(theta, difficulty),
+            probability: probability3pl(theta, item),
         })),
     };
 }
@@ -110,15 +114,15 @@ export type TccCurve = {
  * переход с 10 на 15 верных стоит других логит, чем с 40 на 45.
  */
 export function buildTcc(
-    difficulties: readonly number[],
+    items: readonly Item3pl[],
     range: ThetaRange,
     points = CURVE_RESOLUTION,
 ): TccCurve {
     return {
-        itemCount: difficulties.length,
+        itemCount: items.length,
         points: grid(range, points).map((theta) => ({
             theta,
-            expectedScore: difficulties.reduce((sum, b) => sum + probability(theta, b), 0),
+            expectedScore: items.reduce((sum, item) => sum + probability3pl(theta, item), 0),
         })),
     };
 }
@@ -184,14 +188,14 @@ function summarize(values: readonly number[]): CohortSummary | null {
  * предположения не делает.
  */
 export function buildTif(
-    difficulties: readonly number[],
+    items: readonly Item3pl[],
     abilities: readonly number[],
     range: ThetaRange,
     points = CURVE_RESOLUTION,
 ): TifCurve {
-    const items = difficulties.filter(Number.isFinite);
+    const usable = items.filter((item) => Number.isFinite(item.b) && Number.isFinite(item.a));
     const curve: TifPoint[] = grid(range, points).map((theta) => {
-        const information = testInformation(theta, items as number[]);
+        const information = testInformation3pl(theta, usable);
         return { theta, information, se: seFor(information) };
     });
 
@@ -213,14 +217,14 @@ export function buildTif(
             if (Math.abs(shift) <= 1) {
                 const step = curve[peakIndex + 1].theta - curve[peakIndex].theta;
                 peakTheta = curve[peakIndex].theta + shift * step;
-                peakInfo = testInformation(peakTheta, items as number[]);
+                peakInfo = testInformation3pl(peakTheta, usable);
             }
         }
     }
 
     const cohort = summarize(abilities);
     const atCohort = cohort === null ? null : (() => {
-        const information = testInformation(cohort.mean, items as number[]);
+        const information = testInformation3pl(cohort.mean, usable);
         return { theta: cohort.mean, information, se: seFor(information) };
     })();
 
@@ -335,12 +339,12 @@ export function buildWrightMap(
 
 /** Информация одного задания по сетке — для подсветки вклада в TIF. */
 export function buildItemInformationCurve(
-    difficulty: number,
+    item: Item3pl,
     range: ThetaRange,
     points = CURVE_RESOLUTION,
 ): Array<{ theta: number; information: number }> {
     return grid(range, points).map((theta) => ({
         theta,
-        information: itemInformation(theta, difficulty),
+        information: itemInformation3pl(theta, item),
     }));
 }

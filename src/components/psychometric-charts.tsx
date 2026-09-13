@@ -121,10 +121,13 @@ export default function PsychometricCharts({ mockTestId }: PsychometricChartsPro
         const range = thetaRangeFor(measures.abilities, measures.difficulties);
         return {
             range,
-            tif: buildTif(measures.difficulties, measures.abilities, range),
-            tcc: buildTcc(measures.difficulties, range),
+            // Кривым нужны все три параметра: под 3PL наклон задаёт a, нижнюю
+            // асимптоту — c. Карте Райта по-прежнему достаточно трудностей: она
+            // расставляет задания и учеников на одной оси, а не рисует кривые.
+            tif: buildTif(measures.items, measures.abilities, range),
+            tcc: buildTcc(measures.items, range),
             wright: buildWrightMap(measures.abilities, measures.difficulties, range),
-            iccs: measures.difficulties.map((b) => buildIcc(b, range, 81)),
+            iccs: measures.items.map((item) => buildIcc(item, range, 81)),
         };
     }, [measures]);
 

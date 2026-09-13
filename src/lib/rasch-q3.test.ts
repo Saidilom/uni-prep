@@ -1,4 +1,11 @@
 import { describe, it, expect } from "vitest";
+
+// Остатки больше не знают модели: ожидание P(θ) приходит матрицей.
+// Здесь она строится по Рашу — той же формулой, что раньше стояла
+// внутри модуля, поэтому проверяемое поведение не изменилось.
+function expectedMatrix(thetas: readonly number[], difficulties: readonly number[]) {
+    return thetas.map((theta) => difficulties.map((b) => 1 / (1 + Math.exp(-(theta - b)))));
+}
 import {
     modelResiduals,
     standardizedResiduals,
@@ -52,19 +59,19 @@ function independentCohort(persons: number, items: number, seed: number) {
 
 describe("остатки модели", () => {
     it("residual = X − P(θ, b)", () => {
-        const residuals = modelResiduals([[1, 0]], [0.5], [0, 1]);
+        const residuals = modelResiduals([[1, 0]], expectedMatrix([0.5], [0, 1]));
         expect(residuals[0][0]!).toBeCloseTo(1 - p(0.5, 0), 12);
         expect(residuals[0][1]!).toBeCloseTo(0 - p(0.5, 1), 12);
     });
 
     it("неотвеченное остаётся null, а не нулём", () => {
         // Ноль означал бы «ответил ровно по ожиданию», а это неправда.
-        const residuals = modelResiduals([[1, null]], [0], [0, 0]);
+        const residuals = modelResiduals([[1, null]], expectedMatrix([0], [0, 0]));
         expect(residuals[0][1]).toBeNull();
     });
 
     it("стандартизованные делятся на √(P(1−P))", () => {
-        const z = standardizedResiduals([[1]], [0], [0])[0][0]!;
+        const z = standardizedResiduals([[1]], expectedMatrix([0], [0]))[0][0]!;
         expect(z).toBeCloseTo((1 - 0.5) / Math.sqrt(0.25), 12);
     });
 });
@@ -86,7 +93,7 @@ describe("базовый уровень (§G.2)", () => {
 
 describe("независимые задания не помечаются", () => {
     const { thetas, difficulties, responses } = independentCohort(600, 20, 4242);
-    const residuals = modelResiduals(responses, thetas, difficulties);
+    const residuals = modelResiduals(responses, expectedMatrix(thetas, difficulties));
     const analysis = q3Analysis(residuals);
 
     it("проверены все пары", () => {
@@ -139,7 +146,7 @@ describe("зависимость внутри testlet-группы находи�
         );
         const estimated = estimateRasch(observations, PERSONS, ITEMS);
         return q3Analysis(
-            modelResiduals(responses, estimated.personAbility, estimated.itemDifficulty),
+            modelResiduals(responses, expectedMatrix(estimated.personAbility, estimated.itemDifficulty)),
             { groupKeys },
         );
     }
@@ -214,7 +221,7 @@ describe("зависимость внутри testlet-группы находи�
 
 describe("порог вынесен в конфиг и работает", () => {
     const { thetas, difficulties, responses } = independentCohort(400, 12, 99);
-    const residuals = modelResiduals(responses, thetas, difficulties);
+    const residuals = modelResiduals(responses, expectedMatrix(thetas, difficulties));
 
     it("более мягкий порог ловит больше пар, более жёсткий — меньше", () => {
         const strict = q3Analysis(residuals, { threshold: 0.5 });
@@ -233,7 +240,7 @@ describe("порог вынесен в конфиг и работает", () => 
 describe("крайние случаи: статус, а не выдуманное число", () => {
     it("мало персон — TOO_FEW_PERSONS, и пара не считается зависимой", () => {
         const { thetas, difficulties, responses } = independentCohort(Q3_MIN_PERSONS - 1, 5, 7);
-        const analysis = q3Analysis(modelResiduals(responses, thetas, difficulties));
+        const analysis = q3Analysis(modelResiduals(responses, expectedMatrix(thetas, difficulties)));
         for (const pair of analysis.pairs) expect(pair.flags).toContain("TOO_FEW_PERSONS");
         expect(analysis.flaggedPairs).toHaveLength(0);
     });
@@ -241,7 +248,7 @@ describe("крайние случаи: статус, а не выдуманно�
     it("нулевая дисперсия остатков — Q3 не существует, а не равен нулю", () => {
         // Все ответили одинаково на оба задания при одинаковой θ: разброса нет.
         const responses: Array<Array<0 | 1 | null>> = Array.from({ length: 30 }, () => [1, 1]);
-        const analysis = q3Analysis(modelResiduals(responses, new Array(30).fill(0), [0, 0]));
+        const analysis = q3Analysis(modelResiduals(responses, expectedMatrix(new Array(30).fill(0), [0, 0])));
         expect(analysis.pairs[0].q3).toBeNull();
         expect(analysis.pairs[0].excess).toBeNull();
     });
@@ -252,7 +259,7 @@ describe("крайние случаи: статус, а не выдуманно�
             ...Array.from({ length: 20 }, () => [1 as 0 | 1, null]),
         ];
         const thetas = new Array(40).fill(0);
-        const analysis = q3Analysis(modelResiduals(responses, thetas, [0, 0]));
+        const analysis = q3Analysis(modelResiduals(responses, expectedMatrix(thetas, [0, 0])));
         expect(analysis.pairs[0].persons).toBe(20);
     });
 
@@ -267,7 +274,7 @@ describe("крайние случаи: статус, а не выдуманно�
 describe("residual PCA (§G.3–G.4)", () => {
     it("на одномерных данных первый контраст мал", () => {
         const { thetas, difficulties, responses } = independentCohort(600, 20, 5150);
-        const pca = residualPca(standardizedResiduals(responses, thetas, difficulties));
+        const pca = residualPca(standardizedResiduals(responses, expectedMatrix(thetas, difficulties)));
         expect(pca.eigenvalues[0]).toBeLessThan(PCA_EIGENVALUE_THRESHOLD);
         expect(pca.flagged).toBe(false);
     });
@@ -284,14 +291,14 @@ describe("residual PCA (§G.3–G.4)", () => {
                 (rand() < p(item < ITEMS / 2 ? theta : theta + second, b) ? 1 : 0) as 0 | 1,
             );
         });
-        const pca = residualPca(standardizedResiduals(responses, thetas, difficulties));
+        const pca = residualPca(standardizedResiduals(responses, expectedMatrix(thetas, difficulties)));
         expect(pca.eigenvalues[0]).toBeGreaterThanOrEqual(PCA_EIGENVALUE_THRESHOLD);
         expect(pca.flagged).toBe(true);
     });
 
     it("собственные значения идут по убыванию", () => {
         const { thetas, difficulties, responses } = independentCohort(400, 15, 11);
-        const pca = residualPca(standardizedResiduals(responses, thetas, difficulties), { contrasts: 3 });
+        const pca = residualPca(standardizedResiduals(responses, expectedMatrix(thetas, difficulties)), { contrasts: 3 });
         expect(pca.eigenvalues).toHaveLength(3);
         for (let i = 1; i < pca.eigenvalues.length; i++) {
             expect(pca.eigenvalues[i]).toBeLessThanOrEqual(pca.eigenvalues[i - 1] + 1e-9);
@@ -300,7 +307,7 @@ describe("residual PCA (§G.3–G.4)", () => {
 
     it("детерминизм: без ГПСЧ в самом разложении (§O.4)", () => {
         const { thetas, difficulties, responses } = independentCohort(300, 12, 3);
-        const z = standardizedResiduals(responses, thetas, difficulties);
+        const z = standardizedResiduals(responses, expectedMatrix(thetas, difficulties));
         expect(residualPca(z).eigenvalues).toEqual(residualPca(z).eigenvalues);
     });
 

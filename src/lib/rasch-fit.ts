@@ -47,41 +47,48 @@
 // удалять молча. Поэтому модуль возвращает ФЛАГИ, и ни одна его функция ничего
 // не исключает из расчёта. Решение принимает человек.
 
-import { standardizedResidual as polytomousResidual } from "./rasch-pcm";
 
 // §F.7: рабочий диапазон MNSQ. Для высоких ставок норма допускает жёстче
 // (0.7–1.3), но задание владельца — 0.5–1.5, и менять это без его решения
 // нельзя: границы решают, какие задания попадут на пересмотр.
+// Ниже этого W наблюдение в fit не берётся: z = (X−P)/√W при W → 0 уходит в
+// бесконечность и один такой ответ перекрывает всю статистику. §O.2 требует
+// зажимать вероятности; здесь это тот же смысл, только на уровне дисперсии.
+const MIN_VARIANCE = 1e-10;
+
 export const MISFIT_LOW = 0.5;
 export const MISFIT_HIGH = 1.5;
-
-// Вероятность ответа по модели Раша. Численно устойчивая форма (§O.1).
-const probability = (theta: number, difficulty: number): number => {
-    const x = theta - difficulty;
-    if (x >= 0) {
-        const e = Math.exp(-x);
-        return 1 / (1 + e);
-    }
-    const e = Math.exp(x);
-    return e / (1 + e);
-};
 
 /**
  * §F.3: стандартизованный остаток z = (X − P)/√(P(1−P)).
  *
- * Считается через политомную формулу с одним порогом, а не своей копией:
- * дихотомическое задание — это PCM с двумя категориями, и там E = P,
- * V = P(1−P) (доказано тестами rasch-pcm). Держать формулу дважды значило бы
- * позволить двум копиям однажды разойтись.
+ * ═══ МОДЕЛЬ СЮДА БОЛЬШЕ НЕ ЗАШИТА ═══
+ *
+ * Раньше вероятность считалась здесь же по формуле Раша. После перехода на
+ * 3PL это стало бы тихой ошибкой: θ приходила бы из одной модели, а ожидание
+ * P — из другой, и остатки считались бы против кривой, которой в расчёте
+ * балла уже нет. Infit и Outfit определены на ОСТАТКАХ, а не на конкретной
+ * IRT-модели, поэтому вероятность теперь передаётся готовой.
+ *
+ * Считает её тот, кто знает действующую модель — /api/rasch/recalculate.
  */
-export function standardizedResidual(correct: 0 | 1, theta: number, difficulty: number): number | null {
-    return polytomousResidual(correct, theta, [difficulty]);
+export function standardizedResidual(correct: 0 | 1, expected: number): number | null {
+    if (!Number.isFinite(expected) || expected <= 0 || expected >= 1) return null;
+    const variance = expected * (1 - expected);
+    if (variance < MIN_VARIANCE) return null;
+    return (correct - expected) / Math.sqrt(variance);
 }
 
 export type FitObservation = {
     correct: 0 | 1;
-    theta: number;
-    difficulty: number;
+    /** P(θ) по ДЕЙСТВУЮЩЕЙ модели. Считает вызывающий. */
+    expected: number;
+    /**
+     * Мера способности отвечавшего. Нужна ТОЛЬКО для point-measure корреляции
+     * задания (§F.11) — сама по себе в infit и outfit не входит. У наблюдений
+     * персоны её можно не передавать.
+     */
+    theta?: number;
 };
 
 export type FitStats = {
@@ -95,11 +102,6 @@ export type FitStats = {
     /** Сколько наблюдений вошло в расчёт. */
     observations: number;
 };
-
-// Ниже этого W наблюдение в fit не берётся: z = (X−P)/√W при W → 0 уходит в
-// бесконечность и один такой ответ перекрывает всю статистику. §O.2 требует
-// зажимать вероятности; здесь это тот же смысл, только на уровне дисперсии.
-const MIN_VARIANCE = 1e-10;
 
 /** §F.9: ZSTD из MNSQ и его дисперсии, преобразование Wilson–Hilferty. */
 export function mnsqToZstd(mnsq: number, variance: number): number | null {
@@ -126,8 +128,8 @@ export function computeFit(observations: ReadonlyArray<FitObservation>): FitStat
     let counted = 0;
 
     for (const o of observations) {
-        if (!Number.isFinite(o.theta) || !Number.isFinite(o.difficulty)) continue;
-        const p = probability(o.theta, o.difficulty);
+        if (!Number.isFinite(o.expected)) continue;
+        const p = o.expected;
         const w = p * (1 - p);
         if (w < MIN_VARIANCE) continue;
         const residual = o.correct - p;
@@ -240,9 +242,10 @@ export type FitReport = FitStats & {
  */
 export function itemFitReport(observations: ReadonlyArray<FitObservation>): FitReport {
     const stats = computeFit(observations);
-    const pointMeasure = pointMeasureCorrelation(
-        observations.map((o) => ({ score: o.correct, theta: o.theta })),
-    );
+    const withTheta = observations.filter((o): o is FitObservation & { theta: number } => Number.isFinite(o.theta));
+    const pointMeasure = withTheta.length === observations.length
+        ? pointMeasureCorrelation(withTheta.map((o) => ({ score: o.correct, theta: o.theta })))
+        : null;
     return { ...stats, pointMeasure, ...classify(stats, pointMeasure) };
 }
 

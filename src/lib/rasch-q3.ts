@@ -74,15 +74,8 @@ export const Q3_MIN_PERSONS = 10;
 /** Матрица остатков: строки — персоны, столбцы — задания. null = не отвечал. */
 export type ResidualMatrix = Array<Array<number | null>>;
 
-const probability = (theta: number, difficulty: number): number => {
-    const x = theta - difficulty;
-    if (x >= 0) {
-        const e = Math.exp(-x);
-        return 1 / (1 + e);
-    }
-    const e = Math.exp(x);
-    return e / (1 + e);
-};
+// Вероятность сюда больше не зашита: её считает вызывающий по действующей
+// модели и передаёт матрицей ожиданий (см. modelResiduals ниже).
 
 /**
  * Остатки модели X − P(θ, b) по матрице ответов.
@@ -92,16 +85,14 @@ const probability = (theta: number, difficulty: number): number => {
  */
 export function modelResiduals(
     responses: ReadonlyArray<ReadonlyArray<0 | 1 | null>>,
-    thetas: ReadonlyArray<number>,
-    difficulties: ReadonlyArray<number>,
+    expected: ReadonlyArray<ReadonlyArray<number | null>>,
 ): ResidualMatrix {
     return responses.map((row, person) =>
         row.map((answer, item) => {
             if (answer === null) return null;
-            const theta = thetas[person];
-            const difficulty = difficulties[item];
-            if (!Number.isFinite(theta) || !Number.isFinite(difficulty)) return null;
-            return answer - probability(theta, difficulty);
+            const p = expected[person]?.[item];
+            if (p === null || p === undefined || !Number.isFinite(p)) return null;
+            return answer - p;
         }),
     );
 }
@@ -115,16 +106,13 @@ export function modelResiduals(
  */
 export function standardizedResiduals(
     responses: ReadonlyArray<ReadonlyArray<0 | 1 | null>>,
-    thetas: ReadonlyArray<number>,
-    difficulties: ReadonlyArray<number>,
+    expected: ReadonlyArray<ReadonlyArray<number | null>>,
 ): ResidualMatrix {
     return responses.map((row, person) =>
         row.map((answer, item) => {
             if (answer === null) return null;
-            const theta = thetas[person];
-            const difficulty = difficulties[item];
-            if (!Number.isFinite(theta) || !Number.isFinite(difficulty)) return null;
-            const p = probability(theta, difficulty);
+            const p = expected[person]?.[item];
+            if (p === null || p === undefined || !Number.isFinite(p)) return null;
             const w = p * (1 - p);
             if (w < 1e-10) return null;
             return (answer - p) / Math.sqrt(w);

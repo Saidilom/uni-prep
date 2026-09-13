@@ -923,8 +923,16 @@ export const fetchDistractorReport = async (mockTestId: string): Promise<Distrac
 // этого теста», а не когорта целиком.
 
 export type MockMeasures = {
-    /** Сложности заданий в логитах. Только откалиброванные. */
+    /** Сложности заданий в логитах (параметр b). Только откалиброванные. */
     difficulties: number[];
+    /**
+     * Полные параметры заданий для кривых. Под 3PL наклон задаёт a, а нижнюю
+     * асимптоту c — по одной трудности кривую не построить.
+     *
+     * У строк, посчитанных до перехода на 3PL, a и c пусты: подставляем a = 1
+     * и c = 0, то есть читаем их как кривую Раша, какой они и были.
+     */
+    items: Array<{ a: number; b: number; c: number }>;
     /** Способности учеников в логитах. */
     abilities: number[];
     /** Когда посчитана калибровка. null — пересчёта ещё не было. */
@@ -934,10 +942,12 @@ export type MockMeasures = {
 export const fetchMockMeasures = async (mockTestId: string): Promise<MockMeasures> =>
     pageCache.fetch(`mockMeasures:${mockTestId}`, async () => {
     const [{ data: calibration }, { data: results }] = await Promise.all([
-        fetchAllRows<{ difficulty: number | null; item_status: string | null; calibrated_at: string | null }>(
+        fetchAllRows<{ difficulty: number | null; discrimination: number | null; guessing: number | null; item_status: string | null; calibrated_at: string | null }>(
             (from, to) => supabase
                 .from("mock_item_calibration")
-                .select("difficulty, item_status, calibrated_at")
+                // Все три параметра: под 3PL кривую задания по одной трудности
+                // не построить.
+                .select("difficulty, discrimination, guessing, item_status, calibrated_at")
                 .eq("mock_test_id", mockTestId)
                 .order("question_id")
                 .range(from, to)),
@@ -959,6 +969,14 @@ export const fetchMockMeasures = async (mockTestId: string): Promise<MockMeasure
             .filter((r) => r.item_status !== "NO_OBSERVATIONS")
             .map((r) => num(r.difficulty))
             .filter((v): v is number => v !== null && Number.isFinite(v)),
+        items: rows
+            .filter((r) => r.item_status !== "NO_OBSERVATIONS")
+            .map((r) => ({
+                a: num(r.discrimination) ?? 1,
+                b: num(r.difficulty) ?? 0,
+                c: num(r.guessing) ?? 0,
+            }))
+            .filter((item) => Number.isFinite(item.b)),
         abilities: (results || [])
             .map((r) => num(r.rasch_score))
             .filter((v): v is number => v !== null && Number.isFinite(v)),
@@ -1978,10 +1996,11 @@ export const setClassAssignmentClosed = async (assignmentId: string, closed: boo
     if (error) throw error;
 };
 
-// ═══ Сравнение моделей: 3PL рядом с действующим баллом ═══
+// ═══ Протокол расчёта: параметры заданий и оценки учеников ═══
 //
-// Ничего не считает — читает то, что записал /api/irt/3pl. Балл ученика этот
-// раздел не трогает и трогать не должен (§238).
+// Ничего не считает — читает то, что записал /api/rasch/recalculate. Панель
+// нужна, чтобы расчёт можно было проверить руками: все три параметра каждого
+// задания и θ каждого ученика рядом с его баллом.
 
 export type Irt3plItem = {
     questionId: string;
@@ -1998,90 +2017,71 @@ export type Irt3plItem = {
 export type Irt3plPerson = {
     resultId: string;
     name: string;
-    theta3pl: number;
+    theta: number;
     thetaSe: number | null;
-    iterations: number | null;
-    status: string;
-    score3pl: number | null;
-    level3pl: string | null;
-    /** Действующие значения — из mock_results, для сравнения. */
-    thetaRasch: number | null;
-    scoreRasch: number | null;
-    levelRasch: string | null;
+    score: number | null;
     scoreMax: number | null;
+    level: string | null;
+    status: string | null;
 };
 
 export type Irt3plReport = {
     items: Irt3plItem[];
     people: Irt3plPerson[];
     computedAt: string | null;
+    method: string | null;
+    estimator: string | null;
 };
 
 export const fetchIrt3plReport = async (mockTestId: string): Promise<Irt3plReport> =>
     pageCache.fetch(`irt3pl:${mockTestId}`, async () => {
         const [{ data: items }, { data: people }] = await Promise.all([
             supabase
-                .from("mock_item_calibration_3pl")
-                .select("question_id, discrimination, difficulty, guessing, guessing_prior, option_count, sample_size, correct_count, item_status, calibrated_at")
+                .from("mock_item_calibration")
+                .select("question_id, discrimination, difficulty, guessing, guessing_prior, option_count, sample_size, item_status, difficulty_method, person_estimator, calibrated_at")
                 .eq("mock_test_id", mockTestId)
                 .order("difficulty"),
             supabase
-                .from("mock_result_3pl")
-                .select("result_id, theta, theta_se, iterations, theta_status, scaled_score, grade_level, computed_at, mock_results(level_score, level_score_max, grade_level, rasch_score, user_id)")
+                .from("mock_results")
+                .select("id, user_id, rasch_score, theta_se, level_score, level_score_max, grade_level, measurement_status")
                 .eq("mock_test_id", mockTestId),
         ]);
 
         const itemRows = (items || []) as Array<Record<string, unknown>>;
         const personRows = (people || []) as Array<Record<string, unknown>>;
 
-        // Имена подтягиваются отдельно: вложенный users через два уровня
-        // PostgREST отдаёт неохотно, а список здесь короткий.
-        const userIds = personRows
-            .map((row) => {
-                const linked = row.mock_results as { user_id?: string } | { user_id?: string }[] | null;
-                return (Array.isArray(linked) ? linked[0]?.user_id : linked?.user_id) ?? null;
-            })
-            .filter((id): id is string => Boolean(id));
+        const userIds = personRows.map((r) => r.user_id as string).filter(Boolean);
         const { data: users } = userIds.length
             ? await supabase.from("users").select("id, name, surname").in("id", userIds)
             : { data: [] as Array<{ id: string; name: string; surname: string | null }> };
         const nameById = new Map((users || []).map((u) => [u.id, `${u.name} ${u.surname || ""}`.trim()]));
 
-        const linkedOf = (row: Record<string, unknown>) => {
-            const linked = row.mock_results as Record<string, unknown> | Record<string, unknown>[] | null;
-            return (Array.isArray(linked) ? linked[0] : linked) ?? null;
-        };
-
         return {
-            computedAt: (personRows[0]?.computed_at as string | undefined) ?? null,
+            computedAt: (itemRows[0]?.calibrated_at as string | undefined) ?? null,
+            method: (itemRows[0]?.difficulty_method as string | undefined) ?? null,
+            estimator: (itemRows[0]?.person_estimator as string | undefined) ?? null,
             items: itemRows.map((row) => ({
                 questionId: row.question_id as string,
-                discrimination: Number(row.discrimination),
-                difficulty: Number(row.difficulty),
-                guessing: Number(row.guessing),
-                guessingPrior: Number(row.guessing_prior),
+                // У строк, посчитанных до перехода на 3PL, a и c пусты: читаем
+                // их как кривую Раша, какой они и были.
+                discrimination: num(row.discrimination) ?? 1,
+                difficulty: num(row.difficulty) ?? 0,
+                guessing: num(row.guessing) ?? 0,
+                guessingPrior: num(row.guessing_prior) ?? 0,
                 optionCount: row.option_count === null ? null : Number(row.option_count),
-                sampleSize: Number(row.sample_size),
-                correctCount: Number(row.correct_count),
-                status: row.item_status as string,
+                sampleSize: Number(row.sample_size ?? 0),
+                correctCount: 0,
+                status: (row.item_status as string) ?? "OK",
             })),
-            people: personRows.map((row) => {
-                const linked = linkedOf(row);
-                const userId = (linked?.user_id as string | undefined) ?? "";
-                return {
-                    resultId: row.result_id as string,
-                    name: nameById.get(userId) || "—",
-                    theta3pl: Number(row.theta),
-                    thetaSe: row.theta_se === null ? null : Number(row.theta_se),
-                    iterations: row.iterations === null ? null : Number(row.iterations),
-                    status: row.theta_status as string,
-                    score3pl: row.scaled_score === null ? null : Number(row.scaled_score),
-                    level3pl: (row.grade_level as string | null) ?? null,
-                    thetaRasch: linked?.rasch_score === null || linked?.rasch_score === undefined ? null : Number(linked.rasch_score),
-                    scoreRasch: linked?.level_score === null || linked?.level_score === undefined ? null : Number(linked.level_score),
-                    levelRasch: (linked?.grade_level as string | null) ?? null,
-                    scoreMax: linked?.level_score_max === null || linked?.level_score_max === undefined ? null : Number(linked.level_score_max),
-                };
-            }),
+            people: personRows.map((row) => ({
+                resultId: row.id as string,
+                name: nameById.get(row.user_id as string) || "—",
+                theta: num(row.rasch_score) ?? NaN,
+                thetaSe: num(row.theta_se),
+                score: num(row.level_score),
+                scoreMax: num(row.level_score_max),
+                level: (row.grade_level as string | null) ?? null,
+                status: (row.measurement_status as string | null) ?? null,
+            })),
         };
     });

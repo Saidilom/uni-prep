@@ -7,13 +7,12 @@ import {
     analyzeQuestion, parseSelection, correctOptionsFor, isClosedQuestion,
     DistractorResponse, QuestionDistractorReport,
 } from "@/lib/distractor-analysis";
-import { estimateThetaWle, WLE_ESTIMATOR, WLE_VERSION } from "@/lib/rasch-wle";
-import { buildScoreTable, lookupScoreRow } from "@/lib/score-table";
+import { estimateTheta3pl, probability3pl } from "@/lib/irt-3pl";
+import { calibrate3pl, type CalibratedItem } from "@/lib/irt-3pl-calibration";
 import { itemFitReport, personFitReport, FitObservation, FitReport } from "@/lib/rasch-fit";
 import { modelResiduals, standardizedResiduals, q3Analysis, residualPca, Q3Analysis, PcaResult } from "@/lib/rasch-q3";
 import { classifyResponses, countStates, responseForModel, ResponseState } from "@/lib/response-status";
-import type { ReferencePopulation } from "@/lib/reference-population";
-import { proportionDifficulties, cohortStatistics, type CohortStatistics } from "@/lib/rasch-proportion";
+import { cohortStatistics, type CohortStatistics } from "@/lib/rasch-proportion";
 import { essayPointsToScore75, combineSectionScores, isNativeCertSubject } from "@/lib/native-cert";
 import { writingPointsToScore } from "@/lib/english-cefr";
 import { certificateMaxForSubject, tScoreToScaleExact } from "@/lib/certificate-scale";
@@ -26,13 +25,18 @@ import { isInternalCall } from "@/lib/internal-auth";
 // сторона делала это «в фоне» и молча глотала сбой.
 export const maxDuration = 300;
 
+// Каким оценщиком и какой моделью получены числа (§109 — метод обязан быть
+// виден в данных, а не только в коде).
+const PERSON_ESTIMATOR = "MLE_NEWTON_3PL";
+const MODEL_VERSION = "3pl-1.0";
+
 // ═══ Как помечается смена метода в истории баллов ═══
 //
 // scale_version в ревизии описывает ПРЕЖНЕЕ значение — то, каким способом было
 // получено число, которое ученик видел до пересчёта. reason называет саму
 // правку. Так по строке ревизии видно и откуда, и куда.
-const PREVIOUS_SCALE_VERSION = "v2-zero/jmle";
-const REVISION_REASON = "cohort_centering_proportion_difficulty";
+const PREVIOUS_SCALE_VERSION = "v3-cohort/proportion-1pl";
+const REVISION_REASON = "switch_to_3pl";
 
 // Recalibrates the Rasch item difficulties + person abilities for one Mock
 // test, across every attempt that test has on record — a single new
@@ -145,6 +149,13 @@ export async function POST(req: NextRequest) {
     const essayQuestions = allQuestions.filter((q) => q.question_type === "essay");
     const objectiveQuestions = allQuestions.filter((q) => q.question_type !== "essay");
     const questionIds = objectiveQuestions.map((q) => q.id);
+    // Сколько вариантов у задания: центр априорного c в 3PL равен 1/k.
+    // У свободного ответа вариантов нет, и угадывание там закрепляется нулём.
+    const optionCountByItem = objectiveQuestions.map((q) => {
+        const options = (q as { options?: Record<string, unknown> | null }).options ?? null;
+        const count = options ? Object.keys(options).length : 0;
+        return count > 1 ? count : null;
+    });
     const essayQuestionIds = new Set(essayQuestions.map((q) => q.id));
     const essayMaxPoints = essayQuestions.reduce((sum, q) => sum + Number(q.points || 0), 0);
 
@@ -304,6 +315,9 @@ export async function POST(req: NextRequest) {
     // Сложности нужны и ниже, при расчёте погрешности каждого балла, поэтому
     // живут снаружи блока, а не только внутри него.
     let itemDifficultyByIndex: number[] = new Array(questionIds.length).fill(0);
+    // Полные параметры заданий (a, b, c). Нужны и погрешности, и fit, и
+    // графикам: под 3PL одной трудности уже недостаточно.
+    let itemParameters: CalibratedItem[] = [];
 
     // ═══ Погрешность балла (ТЗ D.3, D.4, §215, §217) ═══
     //
@@ -329,8 +343,6 @@ export async function POST(req: NextRequest) {
     let wleNonConverged = 0;
     // Сколько раз сырой балл не нашёлся в таблице варианта. Должно быть 0;
     // ненулевое значение означает, что ответы и вариант разошлись.
-    let tableMisses = 0;
-    let scoreTableRows = 0;
     // Fit-диагностика (модуль F). Пустые массивы у теста без раздела Раша:
     // соответствие модели там проверять не на чем.
     let itemFitReports: FitReport[] = [];
@@ -346,139 +358,77 @@ export async function POST(req: NextRequest) {
     let distractorReports: QuestionDistractorReport[] = [];
 
     if (hasObjectiveSection) {
-        // ═══ Шаг 2: сложность задания из доли решивших ═══
+        // ═══ КАЛИБРОВКА ЗАДАНИЙ ПО 3PL ═══
         //
-        //   β = −ln( p / (1 − p) )
+        // Решение владельца от 2026-09-13: модель Раша убрана, балл считает
+        // трёхпараметрическая модель. Прежние способы (JMLE, а затем сложность
+        // из доли решивших) в расчёте балла больше не участвуют.
         //
-        // Совместной калибровки (JMLE) здесь больше нет: решение владельца от
-        // 2026-09-11. Считаем по столбцам матрицы КАЛИБРОВКИ — той самой, из
-        // которой исключены пропуски (§A.3), потому что пропуск не есть попытка.
-        const answeredByItem = new Array(questionIds.length).fill(0);
-        const correctAnswersByItem = new Array(questionIds.length).fill(0);
-        for (const obs of observations) {
-            answeredByItem[obs.item]++;
-            correctAnswersByItem[obs.item] += obs.correct;
+        // Матрица берётся та же, что и раньше, — калибровочная, без пропусков
+        // (§A.3): пропуск не есть попытка, и это решение отдельное от выбора
+        // модели.
+        const calibrationByItem: Array<Array<0 | 1 | null>> = questionIds.map(() => []);
+        for (let person = 0; person < resultIds.length; person++) {
+            stateByPersonItem[person].forEach((state, item) => {
+                calibrationByItem[item].push(responseForModel(state, "CALIBRATION"));
+            });
         }
-        const difficulties = proportionDifficulties(
-            questionIds.map((_, item) => ({ correct: correctAnswersByItem[item], responses: answeredByItem[item] })),
+
+        const calibration = calibrate3pl(
+            questionIds.map((_, item) => ({
+                responses: calibrationByItem[item],
+                optionCount: optionCountByItem[item],
+            })),
         );
-        // Задание, которого никто не видел, сложности не имеет вовсе. В таблицу
-        // варианта нужно конечное число, и ноль здесь — не оценка, а заглушка;
-        // в mock_item_calibration такое задание помечается NO_OBSERVATIONS.
-        itemDifficultyByIndex = difficulties.map((d) => (Number.isFinite(d.difficulty) ? d.difficulty : 0));
-        // Сходимости у этого метода нет: формула замкнутая, итераций ноль.
-        // Писать сюда true значило бы сообщать о сходимости, которой не было.
-        converged = null;
-        iterations = null;
+        itemParameters = calibration.items;
+        itemDifficultyByIndex = calibration.items.map((item) => item.b);
+        converged = calibration.converged;
+        iterations = calibration.iterations;
 
-        // ═══ Балл берётся из ТАБЛИЦЫ варианта (§R.6) ═══
+        // ═══ ОЦЕНКА θ КАЖДОГО УЧЕНИКА ═══
         //
-        // Таблица «сырой балл → θ → балл → уровень» считается ОДИН раз на
-        // вариант, а не на ученика. Это возможно потому, что при полных данных
-        // в уравнение WLE входит только ЧИСЛО верных:
+        // ═══ ТАБЛИЦЫ «СЫРОЙ БАЛЛ → θ» БОЛЬШЕ НЕТ, И ЭТО НЕ ПОТЕРЯ ═══
         //
-        //   U_W(θ) = r − Σ_i P_i(θ) + J(θ)/(2·I(θ)),   r = Σ_i x_i
+        // Она existовала потому, что в модели Раша сырой балл — достаточная
+        // статистика: у всех с одинаковым числом верных θ была одна и та же.
+        // Именно отсюда брались три ученика с одинаковыми 51,67, про которых
+        // спрашивал владелец.
         //
-        // Какие именно задания решены верно, здесь не участвует (§B.6). Значит
-        // у всех, набравших r верных, θ одна и та же — и одинаковый балл у них
-        // не «слипание», а свойство модели Раша.
-        //
-        // Способ оценки θ при этом НЕ меняется: таблица вызывает тот же
-        // estimateThetaWle против тех же сложностей. Побочно уходит разброс в
-        // последнем бите: раньше сумма Σ(x_i − P_i) складывалась в порядке
-        // заданий, и у двоих с одинаковым числом верных θ отличалась на ~1e-16
-        // (на проде это видно как разброс 4e-16). Теперь строка одна на всех
-        // по построению.
-        //
-        // ═══ ТАБЛИЦА СТРОИТСЯ ДВАЖДЫ, И ЭТО НЕ ЛИШНЯЯ РАБОТА ═══
-        //
-        // θ от μ и σ не зависит — от них зависит только T. А μ и σ теперь
-        // берутся из потока, то есть из самих θ. Круг разрывается порядком:
-        // сначала таблица ради одних θ (популяция здесь не участвует и взята
-        // нейтральной), потом статистика потока, потом таблица заново — уже с
-        // ней. Строк в таблице M+1, второй проход стоит доли миллисекунды.
-        const tableOptions = {
-            subjectId,
-            hasSecondSection: hasEssaySection,
-            // Та же шкала, что уйдёт в mock_results: таблица и записанный балл
-            // обязаны быть одним числом, иначе §R.6 перестаёт объяснять балл.
-            scaleMax: certificateMax,
-        };
-        const NEUTRAL: ReferencePopulation = { version: "theta-only", mu: 0, sigma: 1 };
-        const thetaTable = buildScoreTable(itemDifficultyByIndex, NEUTRAL, tableOptions);
+        // В 3PL достаточности нет: в уравнение правдоподобия каждое задание
+        // входит со своим весом a_i, поэтому важно, КАКИЕ задания решены. Два
+        // ученика с одинаковым числом верных теперь получают разные баллы —
+        // тот, кто решил трудные, выше того, кто решил лёгкие.
+        const thetaResults = examResponses.map((row) =>
+            estimateTheta3pl(row.map((correct, item) => ({ correct, item: calibration.items[item] }))),
+        );
+        personAbility = thetaResults.map((r) => r.theta);
+        wleNonConverged = thetaResults.filter((r) => r.status === "NON_CONVERGED").length;
 
-        personAbility = examResponses.map((row) => {
-            const rawScore = row.reduce((sum: number, correct) => sum + correct, 0);
-            const tableRow = lookupScoreRow(thetaTable, rawScore);
-            if (!tableRow) {
-                // §233: строки нет — значит сырой балл вне варианта. Молча
-                // брать соседнюю нельзя, поэтому считаем напрямую и помечаем.
-                tableMisses++;
-                const fallback = estimateThetaWle(row.map((correct, item) => ({
-                    correct, difficulty: itemDifficultyByIndex[item],
-                })));
-                return Number.isFinite(fallback.theta) ? fallback.theta : 0;
-            }
-            if (tableRow.wleStatus === "NON_CONVERGED") wleNonConverged++;
-            return tableRow.theta;
-        });
-
-        // ═══ Шаг 5: статистика потока ═══
+        // ═══ Статистика потока ═══
         //
-        // Замороженная имеет приоритет: как только балл показан ученику, он
-        // больше не должен меняться от того, кто сдаст после него.
+        // Замороженная имеет приоритет: как только балл показан ученику, он не
+        // должен меняться от того, кто сдаст после него.
+        //
+        // ВАЖНО: заморозка, сделанная под прежнюю модель, к 3PL не относится —
+        // θ теперь в другой метрике. Если она стоит, её надо снять вместе с
+        // пересчётом, иначе баллы посчитаются от чужой точки отсчёта.
         cohort = frozenCohort ?? cohortStatistics(personAbility);
-
-        // ═══ Шаг 6: та же таблица, но с точкой отсчёта потока ═══
-        //
-        // При status ≠ OK sigma равна NaN, raschThetaToT вернёт NaN, и балл в
-        // строке окажется пустым. Это верно: у потока из одного человека (или
-        // где все ответили одинаково) балла по этому методу не существует, и
-        // подставлять сюда эталон молча нельзя (§233).
-        const scoreTable = buildScoreTable(
-            itemDifficultyByIndex,
-            { version: `cohort/${cohort.status.toLowerCase()}`, mu: cohort.mu, sigma: cohort.sigma },
-            tableOptions,
-        );
-        scoreTableRows = scoreTable.rows.length;
 
         // Одно время на весь прогон: таблица и калибровка получены из одной и
         // той же матрицы ответов, и разные метки времени врали бы об этом.
         const calibratedAt = new Date().toISOString();
 
-        // Сохраняем таблицу: §R.6 требует, чтобы её можно было показать и
-        // сверить, а §199 — чтобы по строке было видно, каким оценщиком и по
-        // какой точке отсчёта получено число. Ученику она объясняет его балл,
-        // учителю — почему у двоих он одинаковый.
-        // Поток без разброса таблицы не даёт: T в каждой строке была бы NaN, а
-        // section_score в таблице объявлен NOT NULL — вставка падала бы и
-        // обрывала весь пересчёт. Такое бывает у теста с одним сдавшим (на
-        // проде такой есть), и это не сбой, а отсутствие второго человека,
-        // относительно которого считается балл.
-        const lookupRows = cohort.status !== "OK" ? [] : scoreTable.rows.map((r) => ({
-            mock_test_id: mockTestId,
-            raw_score: r.rawScore,
-            theta: r.theta,
-            theta_se: r.thetaSe,
-            test_information: r.information,
-            section_score: r.sectionScore,
-            score: r.score,
-            grade_level: r.level,
-            measurement_status: r.measurementStatus,
-            wle_status: r.wleStatus,
-            estimator: scoreTable.estimator,
-            reference_version: scoreTable.referenceVersion,
-            item_count: scoreTable.itemCount,
-            built_at: calibratedAt,
-        }));
-        const { error: lookupError } = lookupRows.length === 0 ? { error: null } : await admin
-            .from("mock_score_lookup")
-            .upsert(lookupRows, { onConflict: "mock_test_id,raw_score" });
-        if (lookupError) {
-            return NextResponse.json({ error: `Не удалось сохранить таблицу баллов: ${lookupError.message}` }, { status: 500 });
-        }
-
-
+        // ═══ ТАБЛИЦА «СЫРОЙ БАЛЛ → θ» БОЛЬШЕ НЕ ПИШЕТСЯ ═══
+        //
+        // §R.6 требовал её потому, что в модели Раша сырой балл однозначно
+        // задавал θ. В 3PL это неверно: задания входят со своими весами a_i, и
+        // у двух учеников с одинаковым числом верных θ разная. Таблица из 56
+        // строк физически не может описать такой расчёт — вместо неё расчёт
+        // объясняет панель «Модель 3PL» следом итераций по каждому ученику.
+        //
+        // Прежние строки в mock_score_lookup удаляются: оставить их значило бы
+        // показывать учителю объяснение балла, которого больше нет.
+        await admin.from("mock_score_lookup").delete().eq("mock_test_id", mockTestId);
 
         const sampleSizeByItem = new Array(questionIds.length).fill(0);
         // Крайний балл задания: все ответили верно или все неверно. По §165 и
@@ -511,15 +461,20 @@ export async function POST(req: NextRequest) {
         // Берётся политика EXAM, а не CALIBRATION: fit отвечает на вопрос
         // «согласуются ли ФАКТИЧЕСКИЕ ответы с моделью», и пропуск, который
         // ученику зачли нулём, — тоже факт его работы.
+        //
+        // Ожидание P(θ) считается ЗДЕСЬ, по действующей модели, и передаётся
+        // готовым: сам модуль fit модели больше не знает. Иначе остатки
+        // считались бы против кривой Раша, которой в расчёте балла уже нет, —
+        // и расхождение было бы незаметным, потому что числа выходили бы
+        // правдоподобные.
+        const expectedByPersonItem: number[][] = Array.from({ length: resultIds.length }, () => []);
         const fitByItem: FitObservation[][] = Array.from({ length: questionIds.length }, () => []);
         const fitByPerson: FitObservation[][] = Array.from({ length: resultIds.length }, () => []);
         for (let person = 0; person < resultIds.length; person++) {
             examResponses[person].forEach((correct, item) => {
-                const observation: FitObservation = {
-                    correct,
-                    theta: personAbility[person],
-                    difficulty: itemDifficultyByIndex[item],
-                };
+                const expected = probability3pl(personAbility[person], itemParameters[item]);
+                expectedByPersonItem[person][item] = expected;
+                const observation: FitObservation = { correct, expected, theta: personAbility[person] };
                 fitByItem[item].push(observation);
                 fitByPerson[person].push(observation);
             });
@@ -538,10 +493,10 @@ export async function POST(req: NextRequest) {
         const groupKeysByIndex = objectiveQuestions.map((q) => q.group_key ?? null);
         const residualRows = examResponses as Array<Array<0 | 1 | null>>;
         q3 = q3Analysis(
-            modelResiduals(residualRows, personAbility, itemDifficultyByIndex),
+            modelResiduals(residualRows, expectedByPersonItem),
             { groupKeys: groupKeysByIndex },
         );
-        pca = residualPca(standardizedResiduals(residualRows, personAbility, itemDifficultyByIndex));
+        pca = residualPca(standardizedResiduals(residualRows, expectedByPersonItem));
 
         // Помеченные пары Q3. Переписываем набор целиком: пара, переставшая
         // быть зависимой после новых сдач, должна исчезнуть, а не остаться
@@ -751,7 +706,14 @@ export async function POST(req: NextRequest) {
             return {
                 mock_test_id: mockTestId,
                 question_id: id,
-                difficulty: itemDifficultyByIndex[i],
+                // b, a и c — все три параметра 3PL. Одной трудности под этой
+                // моделью недостаточно: без a и c кривую задания не построить,
+                // и ни fit, ни графики не сойдутся с расчётом балла.
+                difficulty: itemParameters[i].b,
+                discrimination: itemParameters[i].a,
+                guessing: itemParameters[i].c,
+                guessing_prior: itemParameters[i].cPrior,
+                option_count: optionCountByItem[i],
                 difficulty_se: precision.thetaSe,
                 item_status: itemStatus,
                 sample_size: n,
@@ -761,11 +723,11 @@ export async function POST(req: NextRequest) {
                 // каким оценщиком — способность (§109: смена метода это новая
                 // версия, и она обязана быть видна в данных).
                 missing_policy: "CALIBRATION",
-                person_estimator: `${WLE_ESTIMATOR}/${WLE_VERSION}`,
+                person_estimator: `${PERSON_ESTIMATOR}/${MODEL_VERSION}`,
                 // Каким методом получена сложность (§109). Без этой пометки
                 // через полгода по строке калибровки нельзя будет сказать,
                 // JMLE её посчитал или доля решивших.
-                difficulty_method: "PROPORTION",
+                difficulty_method: "3PL_MMLE",
                 // Модуль F. Флаги не влияют ни на балл, ни на сложность —
                 // задание остаётся в расчёте, пока человек не решит иначе.
                 infit: fit.infit,
@@ -960,11 +922,9 @@ export async function POST(req: NextRequest) {
         failedCount,
         // Диагностика шага 2: чем оценивали способность и сколько пропусков
         // ушло из калибровки вместо того, чтобы посчитаться нулями (§A.3).
-        personEstimator: `${WLE_ESTIMATOR}/${WLE_VERSION}`,
+        personEstimator: `${PERSON_ESTIMATOR}/${MODEL_VERSION}`,
         wleNonConverged,
         // §R.6: балл взят из таблицы варианта. tableMisses обязан быть 0.
-        scoreTableRows,
-        tableMisses,
         responseStates: totals,
         // Модуль F: сколько заданий и работ получили флаги. Ноль удалений —
         // §224 запрещает удалять автоматически.

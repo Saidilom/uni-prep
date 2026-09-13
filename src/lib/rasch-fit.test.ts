@@ -1,4 +1,9 @@
 import { describe, it, expect } from "vitest";
+
+// Тесты fit писались против модели Раша; сам модуль модели больше не
+// знает и принимает готовое P(θ). Вероятность считается здесь той же
+// формулой, что была внутри, — так проверяемое поведение не изменилось.
+const rasch = (x: number) => 1 / (1 + Math.exp(-x));
 import {
     standardizedResidual,
     computeFit,
@@ -28,7 +33,7 @@ function byModel(difficulty: number, persons: number, seed: number): FitObservat
     const rand = mulberry32(seed);
     return Array.from({ length: persons }, (_, n) => {
         const theta = -3 + (6 * n) / (persons - 1);
-        return { correct: (rand() < p(theta, difficulty) ? 1 : 0) as 0 | 1, theta, difficulty };
+        return { correct: (rand() < p(theta, difficulty) ? 1 : 0) as 0 | 1, expected: p(theta, difficulty), theta };
     });
 }
 
@@ -37,37 +42,37 @@ describe("standardizedResidual (§F.3)", () => {
         for (const [theta, b, x] of [[0, 0, 1], [1, -1, 0], [-2, 1, 1]] as const) {
             const prob = p(theta, b);
             const expected = (x - prob) / Math.sqrt(prob * (1 - prob));
-            expect(standardizedResidual(x as 0 | 1, theta, b)!).toBeCloseTo(expected, 12);
+            expect(standardizedResidual(x as 0 | 1, rasch((theta) - (b)))!).toBeCloseTo(expected, 12);
         }
     });
 
     it("верный ответ на трудное задание даёт большой положительный остаток", () => {
         // θ на две логиты ниже сложности: P ≈ 0.12, и верный ответ неожидан.
-        const z = standardizedResidual(1, -2, 0)!;
+        const z = standardizedResidual(1, rasch((-2) - (0)))!;
         expect(z).toBeGreaterThan(2);
     });
 
     it("неверный ответ на лёгкое — большой отрицательный", () => {
-        expect(standardizedResidual(0, 2, 0)!).toBeLessThan(-2);
+        expect(standardizedResidual(0, rasch((2) - (0)))!).toBeLessThan(-2);
     });
 
     it("ответ ровно по ожиданию даёт остаток около нуля", () => {
         // При θ = b вероятность 0.5, и любой из двух ответов даёт |z| = 1.
-        expect(Math.abs(standardizedResidual(1, 0, 0)!)).toBeCloseTo(1, 12);
-        expect(Math.abs(standardizedResidual(0, 0, 0)!)).toBeCloseTo(1, 12);
+        expect(Math.abs(standardizedResidual(1, rasch((0) - (0)))!)).toBeCloseTo(1, 12);
+        expect(Math.abs(standardizedResidual(0, rasch((0) - (0)))!)).toBeCloseTo(1, 12);
     });
 });
 
 describe("Outfit и Infit (§F.4–F.5)", () => {
     it("считаются точно по своим формулам", () => {
         const obs: FitObservation[] = [
-            { correct: 1, theta: 0, difficulty: 0 },
-            { correct: 0, theta: 1, difficulty: -1 },
-            { correct: 1, theta: -1, difficulty: 1 },
+            { correct: 1, expected: rasch((0) - (0)), theta: 0 },
+            { correct: 0, expected: rasch((1) - (-1)), theta: 1 },
+            { correct: 1, expected: rasch((-1) - (1)), theta: -1 },
         ];
         let sumZ2 = 0, sumRes2 = 0, sumW = 0;
         for (const o of obs) {
-            const prob = p(o.theta, o.difficulty);
+            const prob = o.expected;
             const w = prob * (1 - prob);
             const r = o.correct - prob;
             sumZ2 += (r * r) / w;
@@ -93,7 +98,7 @@ describe("Outfit и Infit (§F.4–F.5)", () => {
         // ученик проваливает лёгкое задание. Outfit обязан подскочить заметно
         // сильнее, потому что там наблюдение входит без веса.
         const clean = byModel(0, 200, 7);
-        const spoiled = [...clean, { correct: 0 as 0 | 1, theta: 5, difficulty: -3 }];
+        const spoiled = [...clean, { correct: 0 as 0 | 1, expected: rasch((5) - (-3)), theta: 5 }];
         const a = computeFit(clean);
         const b = computeFit(spoiled);
         expect(b.outfit! - a.outfit!).toBeGreaterThan(b.infit! - a.infit!);
@@ -104,7 +109,7 @@ describe("Outfit и Infit (§F.4–F.5)", () => {
         // ждёт, нет вовсе. Это §F.8, overfit.
         const obs: FitObservation[] = Array.from({ length: 200 }, (_, n) => {
             const theta = -3 + (6 * n) / 199;
-            return { correct: (theta > 0 ? 1 : 0) as 0 | 1, theta, difficulty: 0 };
+            return { correct: (theta > 0 ? 1 : 0) as 0 | 1, expected: p(theta, 0), theta };
         });
         const fit = computeFit(obs);
         expect(fit.outfit!).toBeLessThan(MISFIT_LOW);
@@ -116,7 +121,7 @@ describe("Outfit и Infit (§F.4–F.5)", () => {
         const rand = mulberry32(99);
         const obs: FitObservation[] = Array.from({ length: 400 }, (_, n) => {
             const theta = -3 + (6 * n) / 399;
-            return { correct: (rand() < 0.5 ? 1 : 0) as 0 | 1, theta, difficulty: 0 };
+            return { correct: (rand() < 0.5 ? 1 : 0) as 0 | 1, expected: p(theta, 0), theta };
         });
         expect(computeFit(obs).outfit!).toBeGreaterThan(MISFIT_HIGH);
     });
@@ -127,7 +132,7 @@ describe("Outfit и Infit (§F.4–F.5)", () => {
         expect(empty.infit).toBeNull();
         expect(empty.observations).toBe(0);
         // Нечисловые входы не превращаются в наблюдения.
-        expect(computeFit([{ correct: 1, theta: Number.NaN, difficulty: 0 }]).observations).toBe(0);
+        expect(computeFit([{ correct: 1, expected: rasch((Number.NaN) - (0)), theta: Number.NaN }]).observations).toBe(0);
     });
 });
 
@@ -217,7 +222,7 @@ describe("флаги: помечаем, но НЕ удаляем (§224)", () =>
         const rand = mulberry32(77);
         const obs: FitObservation[] = Array.from({ length: 400 }, (_, n) => {
             const theta = -3 + (6 * n) / 399;
-            return { correct: (rand() < 0.5 ? 1 : 0) as 0 | 1, theta, difficulty: 0 };
+            return { correct: (rand() < 0.5 ? 1 : 0) as 0 | 1, expected: p(theta, 0), theta };
         });
         const report = itemFitReport(obs);
         expect(report.flags).toContain("MISFIT_UNDERFIT");
@@ -227,7 +232,7 @@ describe("флаги: помечаем, но НЕ удаляем (§224)", () =>
     it("слишком предсказуемое задание помечается MISFIT_OVERFIT", () => {
         const obs: FitObservation[] = Array.from({ length: 200 }, (_, n) => {
             const theta = -3 + (6 * n) / 199;
-            return { correct: (theta > 0 ? 1 : 0) as 0 | 1, theta, difficulty: 0 };
+            return { correct: (theta > 0 ? 1 : 0) as 0 | 1, expected: p(theta, 0), theta };
         });
         const report = itemFitReport(obs);
         expect(report.flags).toContain("MISFIT_OVERFIT");
@@ -237,7 +242,7 @@ describe("флаги: помечаем, но НЕ удаляем (§224)", () =>
     it("перепутанный ключ даёт NEGATIVE_POINT_MEASURE (§221)", () => {
         const obs: FitObservation[] = Array.from({ length: 200 }, (_, n) => {
             const theta = -3 + (6 * n) / 199;
-            return { correct: (theta > 0 ? 0 : 1) as 0 | 1, theta, difficulty: 0 };
+            return { correct: (theta > 0 ? 0 : 1) as 0 | 1, expected: p(theta, 0), theta };
         });
         const report = itemFitReport(obs);
         expect(report.pointMeasure!).toBeLessThan(0);
@@ -278,7 +283,7 @@ describe("флаги: помечаем, но НЕ удаляем (§224)", () =>
                 // при этом чередует их. Блочная раскладка создавала сильную
                 // отрицательную связь ВНУТРИ половины, которая перебивала
                 // разницу МЕЖДУ половинами — на этом тест падал дважды.
-                return { correct: (((posInHalf * share) % 10) < share ? 1 : 0) as 0 | 1, theta, difficulty: 0 };
+                return { correct: (((posInHalf * share) % 10) < share ? 1 : 0) as 0 | 1, expected: p(theta, 0), theta };
             });
         };
 
@@ -299,8 +304,8 @@ describe("персоны: тот же аппарат (§F.10)", () => {
         // Лёгкие неверно, трудные верно — ровно случай из §N.1.
         const theta = 0;
         const obs: FitObservation[] = [
-            ...Array.from({ length: 10 }, (_, i) => ({ correct: 0 as 0 | 1, theta, difficulty: -2 - i * 0.1 })),
-            ...Array.from({ length: 10 }, (_, i) => ({ correct: 1 as 0 | 1, theta, difficulty: 2 + i * 0.1 })),
+            ...Array.from({ length: 10 }, (_, i) => ({ correct: 0 as 0 | 1, expected: p(theta, -2 - i * 0.1), theta })),
+            ...Array.from({ length: 10 }, (_, i) => ({ correct: 1 as 0 | 1, expected: p(theta, 2 + i * 0.1), theta })),
         ];
         const report = personFitReport(obs);
         expect(report.outfit!).toBeGreaterThan(MISFIT_HIGH);
@@ -312,7 +317,7 @@ describe("персоны: тот же аппарат (§F.10)", () => {
         const theta = 0.3;
         const obs: FitObservation[] = Array.from({ length: 40 }, (_, i) => {
             const difficulty = -2 + (4 * i) / 39;
-            return { correct: (rand() < p(theta, difficulty) ? 1 : 0) as 0 | 1, theta, difficulty };
+            return { correct: (rand() < p(theta, difficulty) ? 1 : 0) as 0 | 1, expected: p(theta, difficulty), theta };
         });
         expect(personFitReport(obs).flags).toEqual([]);
     });

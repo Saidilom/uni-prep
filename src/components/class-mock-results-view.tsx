@@ -2,9 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Trophy, TrendingUp, TrendingDown, CheckCircle2, ChevronDown, Circle, ListOrdered, Clock, Download, Loader2 } from "lucide-react";
+import { ArrowLeft, Trophy, TrendingUp, TrendingDown, CheckCircle2, ChevronDown, Circle, ListOrdered, Clock } from "lucide-react";
 import { useToast } from "@/hooks/useToast";
-import { exportBlocksToPdf } from "@/lib/pdf-export";
 import {
     fetchClassMockResults,
     fetchMockAnswerDetails,
@@ -30,7 +29,7 @@ import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 // classId = null — режим «весь тест»: участники берутся из самих результатов,
 // а не из состава класса. Так экран проверки работает и для админского мока,
 // который проходят ученики вне классов.
-export default function ClassMockResultsView({ classId, mockTestId, backHref, readOnly = false }: {
+export default function ClassMockResultsView({ classId, mockTestId, backHref, readOnly = false, forceExpandForExport = false }: {
     classId?: string | null;
     mockTestId: string;
     backHref: string;
@@ -44,6 +43,19 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref, re
      * отклонит сервер.
      */
     readOnly?: boolean;
+    /**
+     * Раскрыть все сворачиваемые панели принудительно и без кнопки внутри
+     * самого экрана.
+     *
+     * Кнопки «Скачать PDF» здесь больше нет (решение владельца от
+     * 2026-09-13): один мок в отдельности не так интересен методисту, как
+     * сводка по всем бесплатным мокам разом. Выгрузка теперь живёт на списке
+     * `/admin/free-mock-results` — он монтирует этот же компонент офскрин,
+     * для каждого мока в списке, с этим флагом, и снимает весь DOM целиком
+     * (через `data-pdf-block`, см. pdf-export.ts): querySelectorAll видит
+     * дерево независимо от того, кто именно его отрендерил.
+     */
+    forceExpandForExport?: boolean;
 }) {
     const router = useRouter();
     const { locale } = useLocale();
@@ -72,49 +84,17 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref, re
     const [onlyPendingStudents, setOnlyPendingStudents] = useState(false);
     const [onlyPendingAnswers, setOnlyPendingAnswers] = useState(true);
 
-    // Выгрузка всей аналитики страницы в один PDF: сводка, надёжность, разбор
-    // дистракторов, психометрические графики, протокол 3PL, рейтинг заданий и
-    // список учеников. exportRef охватывает именно этот набор — не хедер с
-    // кнопкой «назад» и не сам список результатов внутри карточек учеников:
-    // разворачивать ответ каждого ученика значило бы выгружать проверку работ,
-    // а не аналитику по варианту.
+    // Единица раскладки для внешней выгрузки в PDF (`data-pdf-block`, см.
+    // pdf-export.ts) — не сам ref, он больше не читается отсюда: список
+    // `/admin/free-mock-results` монтирует этот компонент офскрин и снимает
+    // его DOM своим собственным querySelectorAll, а этот компонент только
+    // помечает разметку и раскрывает панели по `forceExpandForExport`.
     const exportRef = useRef<HTMLDivElement>(null);
-    const [exportingPdf, setExportingPdf] = useState(false);
     // Панели сами решают, что показывать, по своему internal-состоянию;
-    // forceExpand переопределяет его на время снимка (см. forceOpen у каждой
-    // из них) и возвращается к обычному виду сразу после — иначе разбор
-    // дистракторов на полсотни заданий оставался бы раскрытым у админа
-    // навсегда после одного нажатия «Скачать PDF».
-    const [forceExpand, setForceExpand] = useState(false);
-
-    const downloadPdf = async () => {
-        if (!exportRef.current || !summary) return;
-        setExportingPdf(true);
-        setForceExpand(true);
-        // Класс скрывает всё помеченное data-pdf-hide (globals.css) — стрелки
-        // сворачивания и кнопку «Запустить» 3PL: в статичном файле разворачивать
-        // уже нечего (панели раскрыты forceOpen), а нажать кнопку нельзя.
-        exportRef.current.classList.add("pdf-export-active");
-        try {
-            // Раскрытие панелей — это смена состояния React, а снимать нужно
-            // уже ОТРИСОВАННЫЙ результат: без кадра ожидания html2canvas
-            // получил бы DOM таким, каким он был до клика.
-            await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-            await exportBlocksToPdf(exportRef.current, {
-                // Название теста может быть на кириллице — вычищаем только то,
-                // что ломает имя файла в файловой системе, а не всё, что не
-                // латиница: иначе «Ona Tili Milliy Sertifikat» превратилось бы
-                // в подчёркивания.
-                filename: `${summary.mockTitle}-rezultaty`.replace(/[\\/:*?"<>|]+/g, "_").trim(),
-            });
-        } catch (error) {
-            toast.error(t("pdfExportFailed"), { description: error instanceof Error ? error.message : String(error) });
-        } finally {
-            exportRef.current?.classList.remove("pdf-export-active");
-            setForceExpand(false);
-            setExportingPdf(false);
-        }
-    };
+    // forceExpandForExport переопределяет его, пока идёт снимок офскрин-копии
+    // (см. forceOpen у каждой из них) — на самом экране, который видит
+    // человек, это состояние никогда не включено.
+    const forceExpand = forceExpandForExport;
 
     // Guards against a slower response for a previous classId/mockTestId
     // pair overwriting a faster one's already-rendered state (this effect
@@ -250,8 +230,13 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref, re
         detail.maxPoints === ESSAY_MAX_POINTS && summary?.subjectId === "uzbek";
 
     if (loading || !summary) {
+        // data-panel-skeleton — тем же способом, что и у дочерних панелей
+        // (panel-skeleton.tsx): офскрин-выгрузка PDF со списка мок-тестов
+        // ждёт, пока эта заглушка не исчезнет отовсюду, прежде чем снимать
+        // хоть один канвас. Без метки заглушка снялась бы КАРТИНКОЙ — весь
+        // мок в PDF выглядел бы серым прямоугольником вместо аналитики.
         return (
-            <div className="flex flex-col gap-6">
+            <div data-panel-skeleton className="flex flex-col gap-6">
                 <div className="h-9 w-64 animate-pulse rounded-2xl bg-muted" />
                 <div className="h-40 animate-pulse rounded-2xl border border-border bg-muted" />
             </div>
@@ -286,25 +271,12 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref, re
 
     return (
         <div className="flex flex-col gap-10 py-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <section className="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                    <button onClick={() => router.push(backHref)} className="mb-2 inline-flex items-center gap-1.5 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground">
-                        <ArrowLeft size={14} /> {t("backToClass")}
-                    </button>
-                    <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{summary.mockTitle}</h1>
-                    <p className="mt-2 text-sm text-muted-foreground">{t("resultsSubtitle")}</p>
-                </div>
-                {/* Один файл со всей аналитикой ниже: сводка, надёжность,
-                    разбор дистракторов, психометрические графики, протокол
-                    3PL, рейтинг заданий и список учеников. */}
-                <button
-                    onClick={downloadPdf}
-                    disabled={exportingPdf}
-                    className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-60"
-                >
-                    {exportingPdf ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
-                    {exportingPdf ? t("pdfExporting") : t("pdfExportAction")}
+            <section>
+                <button onClick={() => router.push(backHref)} className="mb-2 inline-flex items-center gap-1.5 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground">
+                    <ArrowLeft size={14} /> {t("backToClass")}
                 </button>
+                <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{summary.mockTitle}</h1>
+                <p className="mt-2 text-sm text-muted-foreground">{t("resultsSubtitle")}</p>
             </section>
 
             {!readOnly && summary.pendingReviewCount > 0 && (

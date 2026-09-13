@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Gift, Users, Calendar, ChevronRight, Download, Loader2 } from "lucide-react";
+import { Gift, Users, Calendar, ChevronRight, Download, Loader2, FileText } from "lucide-react";
 import supabase from "@/lib/supabase/client";
 import { CORE_SUBJECTS, CoreSubject, coreSubjectMatches } from "@/lib/mock-import-schema";
 import { accuracyColor } from "@/lib/status-colors";
@@ -10,6 +10,8 @@ import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { averageCertificateScore, formatScore } from "@/lib/certificate-scale";
 import { fetchClassMockResults, invalidateMockResultCaches } from "@/lib/class-utils";
 import { buildResultsSheet, exportFileName, RESULTS_COLUMN_WIDTHS } from "@/lib/results-export";
+import { exportBlocksToPdf } from "@/lib/pdf-export";
+import ClassMockResultsView from "@/components/class-mock-results-view";
 import { gradeLevelDisplay, GradeLevel } from "@/lib/mock-grade-level";
 import { useToast } from "@/hooks/useToast";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
@@ -38,6 +40,49 @@ export default function AdminFreeMockResultsPage() {
     const [activeSubject, setActiveSubject] = useState<CoreSubject | "all">("all");
     const [exporting, setExporting] = useState<string | null>(null);
     const toast = useToast();
+
+    // ═══ Один PDF по всем бесплатным мокам разом ═══
+    //
+    // Решение владельца от 2026-09-13: скачивать не по одному моку из его
+    // собственной страницы результатов (кнопку там убрали), а отсюда, со
+    // списка, — сразу всё, что внутри каждого мока: сводка, надёжность,
+    // разбор дистракторов, психометрические графики, протокол 3PL, рейтинг
+    // заданий, список учеников.
+    //
+    // pdfExportRows — не просто флаг «идёт выгрузка»: пока он не null, ниже
+    // монтируется офскрин-копия ClassMockResultsView на каждый мок из СЕЙЧАС
+    // видимого списка (с учётом вкладки предмета — что видно на экране, то и
+    // в файле). Сама выгрузка тяжёлая (html2canvas на десятки блоков), поэтому
+    // копия держится в DOM только на время снимка и размонтируется сразу
+    // после — а не постоянно, на случай будущих мок-тестов в этом разделе.
+    const [pdfExportRows, setPdfExportRows] = useState<FreeMockRow[] | null>(null);
+    const [pdfExporting, setPdfExporting] = useState(false);
+    const pdfBundleRef = useRef<HTMLDivElement>(null);
+
+    const downloadAllPdf = async () => {
+        if (visible.length === 0) {
+            toast.info(t("pdfExportEmpty"));
+            return;
+        }
+        setPdfExporting(true);
+        setPdfExportRows(visible);
+        try {
+            // Монтирование офскрин-копии — смена состояния React, а снимать
+            // нужно уже отрисованное дерево. Кадра ожидания мало: каждая
+            // копия сама асинхронно грузит свои данные (панели внутри), и
+            // именно на это дальше ждёт exportBlocksToPdf — по data-panel-skeleton.
+            await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+            if (!pdfBundleRef.current) throw new Error("Контейнер выгрузки не создался");
+            await exportBlocksToPdf(pdfBundleRef.current, {
+                filename: `bepul-mok-natijalari-${new Date().toISOString().slice(0, 10)}`,
+            });
+        } catch (error) {
+            toast.error(t("pdfExportFailed"), { description: error instanceof Error ? error.message : String(error) });
+        } finally {
+            setPdfExportRows(null);
+            setPdfExporting(false);
+        }
+    };
 
     // Выгрузка по одному тесту. Данные по ученикам страница не грузит — они
     // нужны только здесь, и тянуть их для всех тестов сразу значило бы делать
@@ -163,9 +208,23 @@ export default function AdminFreeMockResultsPage() {
 
     return (
         <div className="flex flex-col gap-8">
-            <section>
-                <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{t("title")}</h1>
-                <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base">{t("subtitle")}</p>
+            <section className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{t("title")}</h1>
+                    <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base">{t("subtitle")}</p>
+                </div>
+                {/* Один файл на все бесплатные моки текущей вкладки: сводка,
+                    надёжность, разбор дистракторов, психометрические графики,
+                    протокол 3PL, рейтинг заданий и список учеников — на
+                    каждый мок отдельным разделом. */}
+                <button
+                    onClick={downloadAllPdf}
+                    disabled={pdfExporting || loading}
+                    className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-60"
+                >
+                    {pdfExporting ? <Loader2 size={15} className="animate-spin" /> : <FileText size={15} />}
+                    {pdfExporting ? t("pdfExporting") : t("pdfExportAction")}
+                </button>
             </section>
 
             <section className="flex flex-wrap gap-2">
@@ -254,6 +313,28 @@ export default function AdminFreeMockResultsPage() {
                     </div>
                 )}
             </section>
+
+            {/* Офскрин-копия для выгрузки: реально отрисована (html2canvas
+                снимает раскладку, а не скриншот вьюпорта), но вынесена далеко
+                за левый край — обычный посетитель раздела её не видит и не
+                может случайно на неё нажать. Монтируется только на время
+                самого клика по «Скачать PDF» (см. downloadAllPdf выше), а не
+                постоянно: полный разбор дистракторов и психометрия на
+                каждый мок — не бесплатная по ресурсам вещь. */}
+            {pdfExportRows && (
+                <div
+                    ref={pdfBundleRef}
+                    aria-hidden
+                    className="pointer-events-none fixed left-[-100000px] top-0 z-[-1] flex w-[860px] flex-col gap-12"
+                >
+                    {pdfExportRows.map((row) => (
+                        <div key={row.id} className="flex flex-col gap-6">
+                            <h2 data-pdf-block className="text-2xl font-bold text-foreground">{row.title}</h2>
+                            <ClassMockResultsView classId={null} mockTestId={row.id} backHref="" readOnly forceExpandForExport />
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
     );
 }

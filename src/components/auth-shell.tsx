@@ -27,8 +27,8 @@ export default function AuthShell({ children }: { children: React.ReactNode }) {
                 крупно по центру вместо строки «значок + название» в углу. */}
             <HeroBanner className="relative hidden shrink-0 items-center justify-center overflow-hidden rounded-none bg-none bg-black p-10 lg:flex lg:w-[42%] xl:w-[38%]">
                 <AuthFloatingPaths />
-                <div className="relative z-10 h-48 w-64 xl:h-56 xl:w-72">
-                    <Image src="/registan-logo.png" alt={APP_NAME} fill className="object-contain brightness-0 invert" priority />
+                <div className="relative z-10 h-[26rem] w-[26rem] xl:h-[30rem] xl:w-[30rem]">
+                    <Image src="/registan-astronaut.png" alt={APP_NAME} fill className="object-contain" priority />
                 </div>
             </HeroBanner>
 

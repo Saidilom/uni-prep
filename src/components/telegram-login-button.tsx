@@ -26,7 +26,12 @@ export type TelegramLoginButtonProps = {
     onError?: (message: string) => void;
 };
 
-const BOT_USERNAME = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME;
+// В Telegram на бота обычно ссылаются с "@" (@my_bot) — естественно ввести
+// переменную окружения так же, но виджету нужно имя БЕЗ "@" в самом
+// атрибуте data-telegram-login, иначе он рисует "Username invalid" вместо
+// кнопки. Срезаем здесь, а не полагаемся на то, что значение в Vercel всегда
+// введут без "@".
+const BOT_USERNAME = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME?.replace(/^@/, "").trim();
 
 export default function TelegramLoginButton({ onError }: TelegramLoginButtonProps) {
     const t = useTranslations("auth");

@@ -90,6 +90,12 @@ export default function TelegramLoginButton({ onError }: TelegramLoginButtonProp
         script.async = true;
         script.setAttribute("data-telegram-login", BOT_USERNAME);
         script.setAttribute("data-size", "large");
+        // Когда бота уже авторизовали в этом браузере раньше, виджет сам
+        // рисует "Log in as {Имя}" с фотографией пользователя, торчащей
+        // рядом с кнопкой отдельным кругом — уместно в самом Telegram, но
+        // не в нашей вёрстке. data-userpic="false" убирает именно фото,
+        // текстовая подсказка "Log in as ..." остаётся.
+        script.setAttribute("data-userpic", "false");
         script.setAttribute("data-radius", "12");
         script.setAttribute("data-onauth", `${callbackName}(user)`);
         script.setAttribute("data-request-access", "write");

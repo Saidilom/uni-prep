@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Copy, Check, Mail, Calendar, ShieldCheck, Building2, Settings2, X } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
-import { updateUserProfile } from "@/lib/auth-utils";
+import { updateUserProfile, isSyntheticTelegramEmail } from "@/lib/auth-utils";
 import { fetchBranchOverview } from "@/lib/class-utils";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
@@ -83,7 +83,10 @@ export default function AdminProfileView() {
     const fullName = `${user.name ?? ""} ${user.surname ?? ""}`.trim() || t("noNameYet");
 
     const tiles = [
-        { icon: Mail, label: t("emailLabel"), value: user.email || "—" },
+        // Пришедший через Telegram и повышенный до админа/учителя видел бы
+        // здесь служебный tg_...@telegram.registan.local — плитку не
+        // показываем вовсе, как и в /profile для ученика/учителя.
+        ...(isSyntheticTelegramEmail(user.email) ? [] : [{ icon: Mail, label: t("emailLabel"), value: user.email || "—" }]),
         { icon: ShieldCheck, label: t("roleLabel"), value: roleLabel },
         ...(user.role === "branch_admin"
             ? [{ icon: Building2, label: t("branchLabel"), value: branchName ?? t("branchNotSet") }]

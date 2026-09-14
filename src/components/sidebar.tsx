@@ -8,8 +8,10 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { useSidebarStore } from "@/store/useSidebarStore";
 import { fetchHasReviewAssignments } from "@/lib/class-utils";
 import { APP_NAME } from "@/lib/app-config";
+import { isSyntheticTelegramEmail } from "@/lib/auth-utils";
 import { useTranslations } from "@/lib/i18n/locale-provider";
 import LocaleSwitcher from "@/components/locale-switcher";
+import UserAvatar from "@/components/user-avatar";
 import {
     LayoutDashboard,
     CircleUserRound,
@@ -146,17 +148,22 @@ function Sidebar() {
                         </div>
                     )}
                     <div className={`flex items-center rounded-lg py-2 ${isCollapsed ? "md:justify-center md:px-0 px-3 gap-3" : "px-3 gap-3"}`}>
-                        <div
-                            className="w-7 h-7 rounded-full bg-white text-[hsl(var(--brand-olive-ink))] flex items-center justify-center text-[11px] font-bold flex-shrink-0"
-                            title={isCollapsed ? `${user.name} ${user.surname || ""}` : undefined}
-                        >
-                            {user.name[0].toUpperCase()}
+                        <div title={isCollapsed ? `${user.name} ${user.surname || ""}` : undefined}>
+                            <UserAvatar
+                                name={user.name}
+                                avatarUrl={user.avatar}
+                                sizeClassName="h-7 w-7 text-[11px]"
+                                colorClassName="bg-white text-[hsl(var(--brand-olive-ink))]"
+                            />
                         </div>
                         <div className={`flex-1 min-w-0 ${isCollapsed ? "md:hidden" : ""}`}>
                             <p className="text-[12.5px] font-semibold text-white truncate leading-tight">
                                 {user.name} {user.surname || ""}
                             </p>
-                            <p className="mt-1 text-[11px] font-semibold text-white/60 truncate">{user.email}</p>
+                            {/* Синтетический tg_...@telegram.registan.local — не показываем. */}
+                            {!isSyntheticTelegramEmail(user.email) && (
+                                <p className="mt-1 text-[11px] font-semibold text-white/60 truncate">{user.email}</p>
+                            )}
                         </div>
                     </div>
                 </div>

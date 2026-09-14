@@ -120,6 +120,11 @@ export async function POST(req: NextRequest) {
                     telegram_id: telegramId,
                     full_name: fullName,
                     telegram_username: body.username ?? null,
+                    // avatar_url — тот же ключ, что Google кладёт в свои
+                    // OAuth-метаданные: onboarding (createUserProfile,
+                    // auth-utils.ts) уже читает именно его, отдельного пути
+                    // для Telegram заводить не пришлось.
+                    avatar_url: body.photo_url ?? null,
                 },
             });
             // Гонка (два запроса одновременно создают одного и того же
@@ -131,6 +136,15 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({ error: "Не удалось создать аккаунт" }, { status: 500 });
             }
             email = syntheticEmail;
+        }
+
+        // Фото — на каждый вход, не только при первой регистрации: у
+        // существующего пользователя оно при создании аккаунта попадает
+        // только в raw_user_meta_data, а не в саму строку public.users
+        // (её тогда ещё не существовало), плюс человек мог сменить фото
+        // в Telegram уже после регистрации.
+        if (body.photo_url) {
+            await supabaseServer.from("users").update({ avatar: body.photo_url }).eq("telegram_id", telegramId);
         }
 
         const { data: linkData, error: linkError } = await supabaseServer.auth.admin.generateLink({

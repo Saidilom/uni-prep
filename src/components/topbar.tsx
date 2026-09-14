@@ -6,9 +6,10 @@ import { useRouter } from "next/navigation";
 import { ChevronDown, LogOut, GraduationCap, Menu, Search } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useSidebarStore } from "@/store/useSidebarStore";
-import { logOut } from "@/lib/auth-utils";
+import { logOut, isSyntheticTelegramEmail } from "@/lib/auth-utils";
 import { APP_NAME } from "@/lib/app-config";
 import { useTranslations } from "@/lib/i18n/locale-provider";
+import UserAvatar from "@/components/user-avatar";
 
 type MenuItem = {
     label: string;
@@ -181,9 +182,7 @@ export default function Topbar() {
                         onClick={() => setOpenUser((v) => !v)}
                         className="h-10 pl-3 pr-2 rounded-full border border-border bg-card hover:bg-muted transition-colors inline-flex items-center gap-2"
                     >
-                        <div className="w-7 h-7 rounded-full bg-primary text-primary-foreground text-[11px] font-black flex items-center justify-center">
-                            {(user.name?.[0] || "U").toUpperCase()}
-                        </div>
+                        <UserAvatar name={user.name} avatarUrl={user.avatar} sizeClassName="h-7 w-7 text-[11px]" />
                         <div className="hidden sm:flex flex-col items-start leading-tight">
                             <span className="text-xs font-bold text-foreground">
                                 {user.name} {user.surname || ""}
@@ -195,14 +194,16 @@ export default function Topbar() {
                     {openUser && (
                         <div className="absolute right-0 mt-2 w-72 rounded-2xl border border-border bg-card shadow-lg overflow-hidden z-10 origin-top-right animate-in fade-in-0 zoom-in-95 duration-150">
                             <div className="px-4 py-3.5 flex items-center gap-3 bg-muted/40">
-                                <div className="w-10 h-10 rounded-full bg-primary text-primary-foreground text-sm font-black flex items-center justify-center shrink-0">
-                                    {(user.name?.[0] || "U").toUpperCase()}
-                                </div>
+                                <UserAvatar name={user.name} avatarUrl={user.avatar} sizeClassName="h-10 w-10 text-sm" />
                                 <div className="min-w-0 flex-1">
                                     <div className="text-sm font-bold text-foreground truncate">
                                         {user.name} {user.surname || ""}
                                     </div>
-                                    <div className="text-xs text-muted-foreground truncate">{user.email}</div>
+                                    {/* Синтетический tg_...@telegram.registan.local — не настоящий
+                                        адрес, показывать его как email только путать. */}
+                                    {!isSyntheticTelegramEmail(user.email) && (
+                                        <div className="text-xs text-muted-foreground truncate">{user.email}</div>
+                                    )}
                                 </div>
                                 <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-primary bg-primary/10 rounded-full px-2 py-1">
                                     {roleLabel}

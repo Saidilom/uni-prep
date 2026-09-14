@@ -5,7 +5,7 @@ import QRCode from "qrcode";
 import { useAuthStore } from "@/store/useAuthStore";
 import { Class } from "@/lib/firestore-schema";
 import { fetchStudentClasses } from "@/lib/profile-utils";
-import { updateUserProfile } from "@/lib/auth-utils";
+import { updateUserProfile, isSyntheticTelegramEmail } from "@/lib/auth-utils";
 import { APP_NAME } from "@/lib/app-config";
 import { ShieldCheck, Copy, Check, Settings2, X, Mail, Calendar, GraduationCap } from "lucide-react";
 import HeroBanner from "@/components/hero-banner";
@@ -79,8 +79,11 @@ export default function ProfilePage() {
         : user.isRegistanStudent ? t("roleRegistanStudent")
         : t("roleStudent");
 
+    // Синтетический tg_...@telegram.registan.local — служебный адрес для
+    // входа через Telegram, человек его никогда не вводил и почты по нему
+    // не откроет: плитка "Email" тут только путает, не показываем её вовсе.
     const infoTiles = [
-        { icon: Mail, label: t("emailLabel"), value: user.email },
+        ...(isSyntheticTelegramEmail(user.email) ? [] : [{ icon: Mail, label: t("emailLabel"), value: user.email }]),
         { icon: Calendar, label: t("memberSinceLabel"), value: new Date(user.createdAt).toLocaleDateString(locale === "ru" ? "ru-RU" : "uz-UZ", { day: "numeric", month: "long", year: "numeric" }) },
         { icon: GraduationCap, label: t("statusLabel"), value: statusLabel },
     ];
@@ -100,7 +103,12 @@ export default function ProfilePage() {
                         <div className="flex flex-col items-center gap-4 text-center">
                             <div className="relative h-24 w-24 flex-shrink-0 cursor-pointer group" onClick={() => setIsEditModalOpen(true)}>
                                 <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-2xl border border-border bg-muted text-4xl font-bold text-foreground shadow-sm">
-                                    {user.name[0].toUpperCase()}
+                                    {user.avatar ? (
+                                        // eslint-disable-next-line @next/next/no-img-element -- внешний URL (Google/Telegram CDN)
+                                        <img src={user.avatar} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                                    ) : (
+                                        user.name[0].toUpperCase()
+                                    )}
                                     <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/10 opacity-0 transition-opacity group-hover:opacity-100">
                                         <Settings2 size={24} className="text-white" />
                                     </div>

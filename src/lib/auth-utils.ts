@@ -13,6 +13,13 @@ export interface CreateUserProfileInput {
     isRegistanStudent?: boolean;
 }
 
+// Синтетический email Telegram-аккаунтов (src/app/api/auth/telegram/route.ts)
+// — не настоящий адрес, показывать его как "email" пользователю только
+// путать: он его никогда не вводил и почту с таким адресом не откроет.
+const TELEGRAM_SYNTHETIC_EMAIL_DOMAIN = "@telegram.registan.local";
+export const isSyntheticTelegramEmail = (email: string | null | undefined): boolean =>
+    !!email && email.endsWith(TELEGRAM_SYNTHETIC_EMAIL_DOMAIN);
+
 export const signInWithGoogle = async () => {
     try {
         const redirectTo = typeof window !== "undefined" ? window.location.origin : undefined;

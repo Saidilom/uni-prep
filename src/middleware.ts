@@ -21,7 +21,11 @@ function resolveRedirectTarget(request: NextRequest) {
 // зовёт её со своей стороны), и авторизуется она общим секретом CRON_SECRET
 // внутри самого роута, а не Supabase-сессией. Без этой строки middleware
 // заворачивал её на /login, и роут не отрабатывал никогда.
-const PUBLIC_API_PATHS = ["/api/payments/payme", "/api/payments/click", "/api/cron/auto-finalize"];
+// /api/auth/telegram — тоже без сессии по определению: это и есть точка
+// входа, куда виджет присылает данные ДО того, как у браузера появится
+// Supabase-кука. Роут авторизует вызывающего сам, HMAC-подписью Telegram, а
+// не сессией.
+const PUBLIC_API_PATHS = ["/api/payments/payme", "/api/payments/click", "/api/cron/auto-finalize", "/api/auth/telegram"];
 
 // Роуты, которые авто-публикация (§15) зовёт с сервера общим секретом
 // (x-internal-secret), а не сессией.

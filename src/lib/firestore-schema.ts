@@ -15,7 +15,7 @@
 // повторял /branch/teachers и /admin/placement/results. Снята миграцией 087.
 export type UserRole = "student" | "teacher" | "branch_admin" | "admin";
 
-export type RegisteredVia = "qr" | "google" | "phone" | "admin";
+export type RegisteredVia = "qr" | "google" | "phone" | "admin" | "telegram";
 
 export interface User {
   id: string; // Firebase UID

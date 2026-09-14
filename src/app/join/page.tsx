@@ -9,6 +9,7 @@ import { signInWithGoogle } from "@/lib/auth-utils";
 import { useAuthStore } from "@/store/useAuthStore";
 import type { RegisteredVia } from "@/lib/firestore-schema";
 import AuthShell from "@/components/auth-shell";
+import TelegramLoginButton from "@/components/telegram-login-button";
 import { useTranslations } from "@/lib/i18n/locale-provider";
 
 function JoinPageContent() {
@@ -63,6 +64,14 @@ function JoinPageContent() {
                 <Image src="/google.png" alt="" width={22} height={22} className="shrink-0" />
                 {isLoading ? t("connecting") : t("registerWithGoogle")}
             </button>
+
+            <div className="my-4 flex items-center gap-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                <span className="h-px flex-1 bg-border" />
+                {t("orDivider")}
+                <span className="h-px flex-1 bg-border" />
+            </div>
+
+            <TelegramLoginButton onError={setError} />
 
             <p className="mt-6 text-center text-sm text-muted-foreground">
                 {t("alreadyHaveAccount")}{" "}

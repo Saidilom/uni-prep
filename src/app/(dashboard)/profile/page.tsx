@@ -9,6 +9,7 @@ import { updateUserProfile } from "@/lib/auth-utils";
 import { APP_NAME } from "@/lib/app-config";
 import { ShieldCheck, Copy, Check, Settings2, X, Mail, Calendar, GraduationCap } from "lucide-react";
 import HeroBanner from "@/components/hero-banner";
+import ActiveSessionsPanel from "@/components/active-sessions-panel";
 import { pluralizeRu } from "@/lib/pluralize-ru";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 
@@ -162,6 +163,8 @@ export default function ProfilePage() {
                             ))}
                         </div>
                     </section>
+
+                    <ActiveSessionsPanel />
 
                     {user.role === "student" && (
                         <section>

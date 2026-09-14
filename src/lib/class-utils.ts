@@ -1103,6 +1103,8 @@ export type QuestionErrorStat = {
     wrongCount: number;
     totalCount: number;
     wrongRate: number;
+    /** Сложность задания в логитах (параметр b из mock_item_calibration). null — ещё не откалибровано. */
+    difficulty: number | null;
 };
 
 // Cross-student aggregation for one class's attempt at one mock: how many of
@@ -1125,14 +1127,36 @@ export const fetchMockQuestionErrorStats = async (classId: string | null, mockTe
     // Постранично: 15 учеников × 71 вопрос уже превышают одну страницу. При
     // усечении доли ошибок считались неверно, а вопросы, чьи строки обрезались
     // целиком, вообще исчезали из рейтинга — учитель разбирал не ту тему.
-    const { data: details } = await fetchAllRows<{ question_id: string | null; question_text: string; is_correct: boolean }>(
-        (from, to) => supabase
-            .from("mock_answer_details")
-            .select("question_id, question_text, is_correct")
-            .in("result_id", resultIds)
-            .order("id")
-            .range(from, to)
-    );
+    const [{ data: details }, { data: calibration }] = await Promise.all([
+        fetchAllRows<{ question_id: string | null; question_text: string; is_correct: boolean }>(
+            (from, to) => supabase
+                .from("mock_answer_details")
+                .select("question_id, question_text, is_correct")
+                .in("result_id", resultIds)
+                .order("id")
+                .range(from, to)
+        ),
+        // Своя таблица, не побочный продукт mock_answer_details: сложность —
+        // мера ЗАДАНИЯ по всей когорте, а не по выборке этого класса, и её
+        // считает /api/rasch/recalculate, а не эта агрегация.
+        fetchAllRows<{ question_id: string; difficulty: number | null; item_status: string | null }>(
+            (from, to) => supabase
+                .from("mock_item_calibration")
+                .select("question_id, difficulty, item_status")
+                .eq("mock_test_id", mockTestId)
+                .order("question_id")
+                .range(from, to)
+        ),
+    ]);
+
+    const difficultyByQuestion = new Map<string, number>();
+    (calibration || []).forEach((c) => {
+        // NO_OBSERVATIONS — b не измерен, это дефолтный ноль, а не сложность
+        // (см. fetchMockMeasures выше): показывать его как логит нельзя.
+        if (c.item_status === "NO_OBSERVATIONS") return;
+        const b = num(c.difficulty);
+        if (b !== null && Number.isFinite(b)) difficultyByQuestion.set(c.question_id, b);
+    });
 
     const byQuestion = new Map<string, { questionText: string; wrong: number; total: number }>();
     (details || []).forEach((d) => {
@@ -1151,6 +1175,7 @@ export const fetchMockQuestionErrorStats = async (classId: string | null, mockTe
             wrongCount: wrong,
             totalCount: total,
             wrongRate: total > 0 ? Math.round((wrong / total) * 100) : 0,
+            difficulty: difficultyByQuestion.get(questionId) ?? null,
         }))
         .sort((a, b) => b.wrongRate - a.wrongRate);
 }, TEACHER_CACHE_TTL);

@@ -393,6 +393,18 @@ export default function ClassMockResultsView({ classId, mockTestId, backHref, re
                                 </div>
                                 <div className="flex shrink-0 items-center gap-3">
                                     <span className="text-xs text-muted-foreground">{t("wrongOfTotalTemplate").replace("{wrong}", String(q.wrongCount)).replace("{total}", String(q.totalCount))}</span>
+                                    {/* Логит сложности (b из 3PL) — рядом с долей ошибок:
+                                        доля показывает КАК ученики ответили, логит — что
+                                        говорит об этом сама модель. Не откалибровано —
+                                        не показываем вовсе, а не подставляем 0. */}
+                                    {q.difficulty !== null && (
+                                        <span
+                                            title={t("logitTooltip")}
+                                            className="rounded-xl border border-border bg-muted px-3 py-1.5 text-sm font-extrabold tabular-nums text-muted-foreground"
+                                        >
+                                            b {q.difficulty >= 0 ? "+" : ""}{q.difficulty.toFixed(2)}
+                                        </span>
+                                    )}
                                     <span className={`rounded-xl px-3 py-1.5 text-sm font-extrabold tabular-nums ${q.wrongRate >= 50 ? "bg-red-50 text-red-700 dark:bg-red-950/40" : q.wrongRate >= 25 ? "bg-amber-50 text-amber-700 dark:bg-amber-950/40" : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40"}`}>
                                         {q.wrongRate}%
                                     </span>

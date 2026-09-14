@@ -591,6 +591,7 @@ const uz: typeof ru = {
     questionRankingSubtitle: "Ushbu guruh o'quvchilarining noto'g'ri javob berish ulushi bo'yicha — eng qiyin savollar tepada.",
     noQuestionData: "Hozircha javoblar bo'yicha ma'lumot yo'q.",
     wrongOfTotalTemplate: "{total} tadan {wrong} tasi xato qildi",
+    logitTooltip: "Savol qiyinligi logitlarda (3PL modelining b parametri) — qancha yuqori bo'lsa, o'rtacha qobiliyatli o'quvchi uchun savol shuncha qiyin.",
     essayRubricTitle: "Mezonlar bo'yicha baholash",
     essayRubricSubtitle: "Rasmiy hujjatning 12 mezoni, har biri 0 dan 2 ballgacha 0,5 qadam bilan. Jami — yig'indi, ko'pi bilan 24.",
     essayGroupTask: "Topshiriq talablarining bajarilganligi",

@@ -25,7 +25,7 @@ function resolveRedirectTarget(request: NextRequest) {
 // входа, куда виджет присылает данные ДО того, как у браузера появится
 // Supabase-кука. Роут авторизует вызывающего сам, HMAC-подписью Telegram, а
 // не сессией.
-const PUBLIC_API_PATHS = ["/api/payments/payme", "/api/payments/click", "/api/cron/auto-finalize", "/api/auth/telegram"];
+const PUBLIC_API_PATHS = ["/api/payments/payme", "/api/payments/click", "/api/cron/auto-finalize", "/api/auth/telegram", "/api/auth/telegram/bot-id"];
 
 // Роуты, которые авто-публикация (§15) зовёт с сервера общим секретом
 // (x-internal-secret), а не сессией.

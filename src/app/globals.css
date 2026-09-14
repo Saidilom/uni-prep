@@ -17,6 +17,38 @@
   display: none !important;
 }
 
+/* Плавные линии на левой панели входа/регистрации (auth-floating-paths.tsx).
+   stroke-dasharray/-offset вместо framer-motion — течение по одной SVG-паре
+   свойств, без библиотеки анимации ради одного декоративного узла. */
+.auth-floating-path {
+  stroke-dasharray: 1400;
+  stroke-dashoffset: 1400;
+  opacity: 0.12;
+  animation-name: auth-path-flow;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+@keyframes auth-path-flow {
+  0% {
+    stroke-dashoffset: 1400;
+    opacity: 0.08;
+  }
+  50% {
+    opacity: 0.22;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0.08;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-floating-path {
+    animation: none;
+    stroke-dashoffset: 0;
+    opacity: 0.1;
+  }
+}
+
 
 
 @layer base {

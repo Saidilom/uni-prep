@@ -1,46 +1,69 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
+import { ChevronLeft } from "lucide-react";
 import { APP_NAME } from "@/lib/app-config";
 import HeroBanner from "@/components/hero-banner";
+import AuthFloatingPaths from "@/components/auth-floating-paths";
+import { useTranslations } from "@/lib/i18n/locale-provider";
 
+// Экран во весь рост, разбит пополам на lg+ — раньше форма была карточкой
+// по центру страницы; макет владельца просил ровно эту раскладку (тёмная
+// брендовая панель слева на весь рост, форма справа), адаптированную под
+// наши токены, а не под чужой набор shadcn-примитивов: проект не на shadcn
+// (нет /components/ui, CVA, Radix Slot) — заводить их ради одной страницы
+// значило бы завести вторую систему кнопок рядом с уже принятой в проекте.
+//
+// Flex, не CSS Grid: на flex-контейнере обе колонки растягиваются на всю
+// высоту сами (align-items: stretch по умолчанию), без отдельного
+// подгона высоты каждой колонки под содержимое соседней.
 export default function AuthShell({ children }: { children: React.ReactNode }) {
+    const t = useTranslations("auth");
+
     return (
-        <div className="relative flex min-h-dvh flex-col overflow-hidden bg-background text-foreground">
-            <div className="absolute inset-x-0 top-0 z-20 h-1 bg-[hsl(var(--brand-olive))]" />
-            <div
-                aria-hidden
-                className="pointer-events-none absolute inset-0"
-                style={{
-                    backgroundImage: "radial-gradient(circle, rgb(212 212 212) 1px, transparent 1px)",
-                    backgroundSize: "22px 22px",
-                    maskImage: "radial-gradient(ellipse 55% 50% at 50% 38%, black 35%, transparent 100%)",
-                    WebkitMaskImage: "radial-gradient(ellipse 55% 50% at 50% 38%, black 35%, transparent 100%)",
-                }}
-            />
-            <div className="relative z-10 flex flex-1 items-center justify-center px-4 py-10 sm:py-16">
-                <div className="flex w-full max-w-4xl overflow-hidden rounded-3xl border border-border bg-card shadow-xl shadow-foreground/[0.06]">
-                    {/* Decorative left panel — hidden on mobile */}
-                    <HeroBanner className="hidden w-[300px] shrink-0 items-center justify-center rounded-none bg-none bg-[hsl(var(--brand-olive))] p-10 md:flex">
-                        <div className="relative h-40 w-52">
-                            <Image
-                                src="/registan-logo.png"
-                                alt={APP_NAME}
-                                fill
-                                className="object-contain brightness-0 invert"
-                                priority
-                            />
-                        </div>
-                    </HeroBanner>
-
-                    {/* Form panel */}
-                    <div className="flex-1 px-6 py-10 sm:px-10 sm:py-12">
-                        <div className="relative mx-auto mb-8 h-14 w-40 md:hidden">
-                            <Image src="/registan-logo.png" alt={APP_NAME} fill className="object-contain" priority />
-                        </div>
-
-                        {children}
+        <div className="relative flex min-h-dvh flex-col lg:flex-row">
+            {/* Левая панель — только на lg+, тот же приём, что уже был
+                (HeroBanner + --brand-olive + точечный паттерн), растянутый
+                на весь рост и с текущими линиями поверх вместо статичного
+                логотипа по центру. */}
+            <HeroBanner className="relative hidden shrink-0 flex-col overflow-hidden rounded-none bg-none bg-[hsl(var(--brand-olive))] p-10 lg:flex lg:w-[42%] xl:w-[38%]">
+                <AuthFloatingPaths />
+                <div className="relative z-10 flex items-center gap-2.5">
+                    <div className="relative h-8 w-8 shrink-0">
+                        <Image src="/registan-logo.png" alt="" fill className="object-contain brightness-0 invert" priority />
                     </div>
+                    <span className="text-lg font-bold tracking-tight text-white">{APP_NAME}</span>
+                </div>
+            </HeroBanner>
+
+            {/* Правая панель — форма */}
+            <div className="relative flex flex-1 flex-col justify-center bg-background px-4 py-10 text-foreground sm:px-8">
+                <div
+                    aria-hidden
+                    className="pointer-events-none absolute inset-0"
+                    style={{
+                        backgroundImage: "radial-gradient(circle, rgb(212 212 212) 1px, transparent 1px)",
+                        backgroundSize: "22px 22px",
+                        maskImage: "radial-gradient(ellipse 60% 55% at 50% 35%, black 30%, transparent 100%)",
+                        WebkitMaskImage: "radial-gradient(ellipse 60% 55% at 50% 35%, black 30%, transparent 100%)",
+                    }}
+                />
+
+                <Link
+                    href="/"
+                    className="absolute left-5 top-6 z-10 inline-flex items-center gap-1.5 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground sm:left-8 sm:top-7"
+                >
+                    <ChevronLeft size={16} />
+                    {t("backHome")}
+                </Link>
+
+                <div className="relative z-10 mx-auto w-full max-w-sm">
+                    <div className="relative mx-auto mb-8 h-12 w-36 lg:hidden">
+                        <Image src="/registan-logo.png" alt={APP_NAME} fill className="object-contain" priority />
+                    </div>
+
+                    {children}
                 </div>
             </div>
         </div>

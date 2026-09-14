@@ -170,6 +170,7 @@ const uz: typeof ru = {
     login: "Kirish",
     googleLoginError: "Google orqali kirishda xatolik yuz berdi",
     loadingEllipsis: "Yuklanmoqda…",
+    backHome: "Bosh sahifaga",
     loginWithTelegram: "Telegram orqali kirish",
     registerWithTelegram: "Telegram orqali ro'yxatdan o'tish",
     telegramLoginError: "Telegram orqali kirishda xatolik yuz berdi",

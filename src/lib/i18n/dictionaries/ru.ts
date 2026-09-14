@@ -168,6 +168,7 @@ const ru = {
     login: "Войти",
     googleLoginError: "Ошибка при входе через Google",
     loadingEllipsis: "Загрузка…",
+    backHome: "На главную",
     loginWithTelegram: "Войти через Telegram",
     registerWithTelegram: "Зарегистрироваться через Telegram",
     telegramLoginError: "Ошибка при входе через Telegram",

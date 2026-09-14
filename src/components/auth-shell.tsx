@@ -23,17 +23,12 @@ export default function AuthShell({ children }: { children: React.ReactNode }) {
 
     return (
         <div className="relative flex min-h-dvh flex-col lg:flex-row">
-            {/* Левая панель — только на lg+, тот же приём, что уже был
-                (HeroBanner + --brand-olive + точечный паттерн), растянутый
-                на весь рост и с текущими линиями поверх вместо статичного
-                логотипа по центру. */}
-            <HeroBanner className="relative hidden shrink-0 flex-col overflow-hidden rounded-none bg-none bg-[hsl(var(--brand-olive))] p-10 lg:flex lg:w-[42%] xl:w-[38%]">
+            {/* Левая панель — только на lg+. Чёрный фон вместо оливы, лого
+                крупно по центру вместо строки «значок + название» в углу. */}
+            <HeroBanner className="relative hidden shrink-0 items-center justify-center overflow-hidden rounded-none bg-none bg-black p-10 lg:flex lg:w-[42%] xl:w-[38%]">
                 <AuthFloatingPaths />
-                <div className="relative z-10 flex items-center gap-2.5">
-                    <div className="relative h-8 w-8 shrink-0">
-                        <Image src="/registan-logo.png" alt="" fill className="object-contain brightness-0 invert" priority />
-                    </div>
-                    <span className="text-lg font-bold tracking-tight text-white">{APP_NAME}</span>
+                <div className="relative z-10 h-48 w-64 xl:h-56 xl:w-72">
+                    <Image src="/registan-logo.png" alt={APP_NAME} fill className="object-contain brightness-0 invert" priority />
                 </div>
             </HeroBanner>
 

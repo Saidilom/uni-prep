@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import supabase from "@/lib/supabase/client";
+import { REGISTERED_VIA_KEY } from "@/lib/app-config";
 import { useTranslations } from "@/lib/i18n/locale-provider";
 
 // Своя кнопка вместо встроенного iframe-виджета Telegram.
@@ -49,7 +50,7 @@ let scriptLoad: Promise<void> | null = null;
 function loadTelegramScript(): Promise<void> {
     if (typeof window !== "undefined" && window.Telegram?.Login) return Promise.resolve();
     if (scriptLoad) return scriptLoad;
-    scriptLoad = new Promise((resolve, reject) => {
+    scriptLoad = new Promise<void>((resolve, reject) => {
         const existing = document.querySelector<HTMLScriptElement>('script[data-telegram-auth-script="1"]');
         if (existing) {
             existing.addEventListener("load", () => resolve());
@@ -63,6 +64,14 @@ function loadTelegramScript(): Promise<void> {
         script.onload = () => resolve();
         script.onerror = () => reject(new Error("telegram-widget.js load failed"));
         document.head.appendChild(script);
+    }).catch((err) => {
+        // Без сброса один неудачный запрос «отравляет» кеш навсегда: любой
+        // следующий клик по кнопке мгновенно получает тот же отклонённый
+        // промис и больше никогда не пробует загрузить скрипт заново — кнопка
+        // остаётся сломанной до полной перезагрузки страницы, даже если сеть
+        // уже восстановилась.
+        scriptLoad = null;
+        throw err;
     });
     return scriptLoad;
 }
@@ -70,12 +79,29 @@ function loadTelegramScript(): Promise<void> {
 export default function TelegramLoginButton({ onError }: TelegramLoginButtonProps) {
     const t = useTranslations("auth");
     const firedRef = useRef(false);
+    // firedRef защищает только от повторного КЛИКА по кнопке (disabled+ref
+    // до начала запроса). Сам callback, переданный в Telegram.Login.auth(),
+    // ничем не защищён — если виджет вызовет его дважды на один auth(),
+    // обе итерации независимо уйдут на /api/auth/telegram и verifyOtp,
+    // создав две разные сессии на одного пользователя (ровно так раньше
+    // получались тройные записи в auth.sessions с одного логина).
+    // callbackHandledRef — отдельный флаг именно на тело callback'а,
+    // сбрасывается перед каждым новым auth() и не связан с состоянием кнопки.
+    const callbackHandledRef = useRef(false);
     const [connecting, setConnecting] = useState(false);
 
     const handleClick = async () => {
         if (firedRef.current) return;
         firedRef.current = true;
         setConnecting(true);
+        // Тот же ключ, что join/page.tsx пишет перед Google-входом — его же
+        // читает /onboarding при первом заполнении профиля. Без этого
+        // /onboarding подставлял дефолт "google" (см. константу ниже), и
+        // registeredVia в public.users у ВСЕХ Telegram-аккаунтов тихо
+        // перезаписывался на "google" сразу после онбординга — телефона у
+        // Telegram-пользователей никогда нет, так что через /onboarding
+        // проходит буквально каждый.
+        sessionStorage.setItem(REGISTERED_VIA_KEY, "telegram");
         try {
             const [, botIdRes] = await Promise.all([
                 loadTelegramScript(),
@@ -86,7 +112,10 @@ export default function TelegramLoginButton({ onError }: TelegramLoginButtonProp
                 throw new Error(t("telegramLoginError"));
             }
 
+            callbackHandledRef.current = false;
             window.Telegram.Login.auth({ bot_id: botId, request_access: true }, (tgUser) => {
+                if (callbackHandledRef.current) return;
+                callbackHandledRef.current = true;
                 void (async () => {
                     if (!tgUser) {
                         // Пользователь закрыл попап сам — не ошибка, тихо

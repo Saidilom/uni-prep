@@ -23,8 +23,9 @@ export default function AuthShell({ children }: { children: React.ReactNode }) {
 
     return (
         <div className="relative flex min-h-dvh flex-col lg:flex-row">
-            {/* Левая панель — только на lg+. Чёрный фон вместо оливы, лого
-                крупно по центру вместо строки «значок + название» в углу. */}
+            {/* Чёрная панель с космонавтом — только на lg+ (слева, во всю
+                высоту). На мобильном/планшете её нет вообще — вместо неё
+                рамка вокруг самого контента формы ниже. */}
             <HeroBanner className="relative hidden shrink-0 items-center justify-center overflow-hidden rounded-none bg-none bg-black p-10 lg:flex lg:w-[42%] xl:w-[38%]">
                 <AuthFloatingPaths />
                 <div className="relative z-10 h-[26rem] w-[26rem] xl:h-[30rem] xl:w-[30rem]">
@@ -32,8 +33,8 @@ export default function AuthShell({ children }: { children: React.ReactNode }) {
                 </div>
             </HeroBanner>
 
-            {/* Правая панель — форма */}
-            <div className="relative flex flex-1 flex-col justify-center bg-background px-4 py-10 text-foreground sm:px-8">
+            {/* Белая панель — форма */}
+            <div className="relative flex flex-1 flex-col justify-center bg-background px-4 py-8 text-foreground sm:px-8 sm:py-10">
                 <div
                     aria-hidden
                     className="pointer-events-none absolute inset-0"
@@ -53,11 +54,10 @@ export default function AuthShell({ children }: { children: React.ReactNode }) {
                     {t("backHome")}
                 </Link>
 
-                <div className="relative z-10 mx-auto w-full max-w-sm">
-                    <div className="relative mx-auto mb-8 h-12 w-36 lg:hidden">
-                        <Image src="/registan-logo.png" alt={APP_NAME} fill className="object-contain" priority />
-                    </div>
-
+                {/* На мобильном/планшете панели с космонавтом нет — рамка
+                    вокруг самой формы держит композицию вместо неё. На lg+
+                    рамка убирается: там уже есть чёрная панель слева. */}
+                <div className="relative z-10 mx-auto w-full max-w-sm rounded-2xl border border-border p-6 shadow-sm sm:p-8 lg:rounded-none lg:border-none lg:p-0 lg:shadow-none">
                     {children}
                 </div>
             </div>

@@ -6,53 +6,35 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signInWithGoogle } from "@/lib/auth-utils";
 import { useAuthStore } from "@/store/useAuthStore";
-import supabase from "@/lib/supabase/client";
 import AuthShell from "@/components/auth-shell";
 import TelegramLoginButton from "@/components/telegram-login-button";
 import { useTranslations } from "@/lib/i18n/locale-provider";
 
 export default function LoginPage() {
     const [error, setError] = useState<string | null>(null);
-    const { isLoading } = useAuthStore();
+    const { isLoading, user } = useAuthStore();
     const router = useRouter();
     const searchParams = useSearchParams();
     const t = useTranslations("auth");
 
+    // Раньше здесь была собственная подписка на supabase.auth.onAuthStateChange,
+    // редиректившая на target СРАЗУ по появлению session?.user — не дожидаясь,
+    // есть ли у профиля телефон. auth-provider.tsx решает это же асинхронно
+    // (после fetchProfileWithRetry), и у него другой ответ для нового
+    // Telegram-пользователя без телефона — /onboarding, а не target. Два
+    // источника редиректа гонялись: своя подписка почти всегда "выигрывала"
+    // первой (синхронный goToTarget против retry-цикла), и страница на
+    // секунду мелькала на "/" перед тем, как auth-provider.tsx уводил на
+    // /onboarding. Теперь редирект здесь — один, и только когда
+    // auth-provider.tsx уже решил, что профиль полный (isLoading=false,
+    // user.phone есть): читаем это из useAuthStore вместо повторного похода
+    // за сессией самим компонентом.
     useEffect(() => {
+        if (isLoading || !user?.phone) return;
         const redirectTarget = searchParams.get("redirectTo");
         const target = redirectTarget ? decodeURIComponent(redirectTarget) : "/";
-
-        const goToTarget = () => {
-            if (target && target !== "/login") {
-                router.replace(target);
-            } else {
-                router.replace("/");
-            }
-        };
-
-        let active = true;
-        const initialize = async () => {
-            const { data } = await supabase.auth.getSession();
-            if (!active) return;
-            if (data.session) {
-                goToTarget();
-            }
-        };
-
-        void initialize();
-
-        const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-            if (!active) return;
-            if (session?.user) {
-                goToTarget();
-            }
-        });
-
-        return () => {
-            active = false;
-            authListener.subscription.unsubscribe();
-        };
-    }, [router, searchParams]);
+        router.replace(target && target !== "/login" ? target : "/");
+    }, [isLoading, user, router, searchParams]);
 
     const handleLogin = async () => {
         try {

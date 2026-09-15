@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Phone, Mail, Calendar, UserCheck, IdCard, Trash2, Loader2 } from "lucide-react";
+import { Phone, Mail, Calendar, UserCheck, IdCard, Trash2, Loader2, Send } from "lucide-react";
 import { User as UserType } from "@/lib/firestore-schema";
 import supabase from "@/lib/supabase/client";
+import { isSyntheticTelegramEmail } from "@/lib/auth-utils";
 import { fetchBranches, setUserRole, Branch } from "@/lib/class-utils";
 import { useToast } from "@/hooks/useToast";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
@@ -78,7 +79,11 @@ export default function AdminUsersPage() {
     // каскадом уходят его работы и членство в группах, а у учителя — сами
     // группы, поэтому предупреждаем об этом прямо в подтверждении.
     const removeUser = async (u: AdminUser) => {
-        const fullName = `${u.name} ${u.surname || ""}`.trim() || u.email || u.id;
+        // Синтетический email (tg_<id>@telegram.registan.local) в диалог
+        // подтверждения не подставляем — он не значит ничего человеку,
+        // который читает "точно ли я удаляю нужного".
+        const fullName = `${u.name} ${u.surname || ""}`.trim()
+            || (u.email && !isSyntheticTelegramEmail(u.email) ? u.email : "") || u.id;
         const warning = u.role === "teacher"
             ? t("confirmDeleteTeacher").replace("{name}", fullName)
             : t("confirmDeleteUser").replace("{name}", fullName);
@@ -196,7 +201,11 @@ export default function AdminUsersPage() {
                                         </p>
                                         <div className="mt-0.5 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                                             {studentId(u) && <span className="flex items-center gap-1 font-mono font-semibold"><IdCard size={12} />{studentId(u)}</span>}
-                                            {u.email && <span className="flex items-center gap-1"><Mail size={12} />{u.email}</span>}
+                                            {u.email && isSyntheticTelegramEmail(u.email) ? (
+                                                <span className="flex items-center gap-1 font-medium text-[#26A5E4]"><Send size={12} />Telegram</span>
+                                            ) : (
+                                                u.email && <span className="flex items-center gap-1"><Mail size={12} />{u.email}</span>
+                                            )}
                                             {u.phone && <span className="flex items-center gap-1"><Phone size={12} />{u.phone}</span>}
                                             <span className="flex items-center gap-1"><Calendar size={12} />{new Date(u.createdAt).toLocaleDateString(locale === "ru" ? "ru-RU" : "uz-UZ")}</span>
                                         </div>

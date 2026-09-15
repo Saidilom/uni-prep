@@ -105,7 +105,8 @@ export default function ActiveSessionsPanel() {
                     </button>
                 )}
             </div>
-            <p className="mb-4 text-sm text-muted-foreground">{t("sessionsSubtitle")}</p>
+            <p className="mb-1 text-sm text-muted-foreground">{t("sessionsSubtitle")}</p>
+            <p className="mb-4 text-xs text-muted-foreground/70">{t("sessionRevokeCaveat")}</p>
 
             {error && (
                 <div role="alert" className="mb-4 rounded-xl bg-destructive/10 px-4 py-3 text-sm text-destructive">

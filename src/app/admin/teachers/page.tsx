@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Search, Mail, Phone, Users, Trophy, ChevronDown, ChevronRight } from "lucide-react";
+import { Search, Mail, Phone, Users, Trophy, ChevronDown, ChevronRight, Send } from "lucide-react";
 import supabase from "@/lib/supabase/client";
 import { User as UserType } from "@/lib/firestore-schema";
+import { isSyntheticTelegramEmail } from "@/lib/auth-utils";
 import { pluralizeRu } from "@/lib/pluralize-ru";
 import { fetchAdminTeachersOverview, fetchAdminClassesOverview, AdminClassSummary, prefetchClassDetail} from "@/lib/class-utils";
 import { accuracyColor } from "@/lib/status-colors";
@@ -114,7 +115,11 @@ export default function AdminTeachersPage() {
                                     <div className="min-w-0">
                                         <p className="truncate font-semibold text-foreground">{teacher.name} {teacher.surname || ""}</p>
                                         <div className="mt-0.5 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                                            {teacher.email && <span className="flex items-center gap-1"><Mail size={12} />{teacher.email}</span>}
+                                            {teacher.email && isSyntheticTelegramEmail(teacher.email) ? (
+                                                <span className="flex items-center gap-1 font-medium text-[#26A5E4]"><Send size={12} />Telegram</span>
+                                            ) : (
+                                                teacher.email && <span className="flex items-center gap-1"><Mail size={12} />{teacher.email}</span>
+                                            )}
                                             {teacher.phone && <span className="flex items-center gap-1"><Phone size={12} />{teacher.phone}</span>}
                                         </div>
                                     </div>

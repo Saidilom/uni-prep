@@ -10,7 +10,7 @@ Supabase Postgres. Миграции — `supabase/migrations/001_init.sql` … `
 
 ## Пользователи и роли
 
-- **`users`** (001, 003, 005, 006, 007) — `id` (text, = `auth.users.id`), `shortid` (Student ID, формат `STU-XXXXXX`, `UNIQUE`, генерируется с retry на конфликт), `role` (`student`/`teacher`/`admin`, только admin может менять — см. `protect_user_privileged_fields` trigger), `isregistanstudent`, `registeredvia`. Создаётся автоматически триггером `handle_new_user()` на `auth.users` при регистрации, всегда с `role = 'student'`.
+- **`users`** (001, 003, 005, 006, 007, 119) — `id` (text, = `auth.users.id`), `shortid` (Student ID, формат `STU-XXXXXX`, `UNIQUE`, генерируется с retry на конфликт — retry «умный» с миграции 123, ретраит только при коллизии именно shortid, не любой unique_violation), `role` (`student`/`teacher`/`admin`, только admin может менять — см. `protect_user_privileged_fields` trigger), `isregistanstudent`, `registeredvia` (`google`/`telegram`/`qr`/`phone`/`admin`), `telegram_id` (bigint, nullable, частичный уникальный индекс `idx_users_telegram_id_unique` — второй способ входа, см. ARCHITECTURE.md#вход-через-telegram; колонка недоступна на `UPDATE` роли `authenticated`, пишет только `service_role`). Создаётся автоматически триггером `handle_new_user()` на `auth.users` при регистрации, всегда с `role = 'student'`.
 
 ## Placement (Диагностика)
 

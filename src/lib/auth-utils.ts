@@ -110,13 +110,25 @@ export const createUserProfile = async (supabaseUser: SupabaseUserProfile, input
     try {
         const resolvedPhone = phone || "";
         const now = new Date().toISOString();
+
+        // Не берём avatar только из auth-метаданных: для Telegram-аккаунтов
+        // /api/auth/telegram/route.ts держит public.users.avatar свежим на
+        // КАЖДЫЙ вход отдельным UPDATE, а user_metadata.avatar_url — снимок
+        // на момент СОЗДАНИЯ аккаунта, который потом уже никто не обновляет.
+        // Если человек сменил фото в Telegram между первым входом и
+        // завершением онбординга (нужно ввести телефон), full upsert ниже
+        // без этой проверки затирал бы уже более свежее значение из БД
+        // устаревшим значением из метаданных.
+        const { data: existingRow } = await supabase.from("users").select("avatar").eq("id", uid).maybeSingle();
+        const existingAvatar = (existingRow as { avatar?: string } | null)?.avatar;
+
         const baseUserData = {
             id: uid,
             email: supabaseUser.email || "",
             phone: resolvedPhone,
             name: (name || supabaseUser.user_metadata?.full_name || "Ученик").trim(),
             surname: (surname || "").trim(),
-            avatar: supabaseUser.user_metadata?.avatar_url || "",
+            avatar: existingAvatar || supabaseUser.user_metadata?.avatar_url || "",
             role,
             subjects,
             isregistanstudent: isRegistanStudent,

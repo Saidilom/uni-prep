@@ -28,6 +28,7 @@ SUPABASE_SERVICE_ROLE_KEY=...        # server-only, для /api/upload и /api/r
 GEMINI_API_KEY=...                   # server-only, никогда не добавлять NEXT_PUBLIC_
 GEMINI_MODEL=gemini-3.6-flash        # необязательно, это текущий default импорта
 GEMINI_IMPORT_MAX_TOKENS=50000       # необязательно
+TELEGRAM_BOT_TOKEN=...                # server-only, вход через Telegram — см. ARCHITECTURE.md#auth
 ```
 
 PDF загружается напрямую в приватный Supabase Storage через одноразовый signed upload URL, после чего сервер передаёт его в Gemini Files API. Миграция `017_pdf_first_mock_tests.sql` создаёт bucket и универсальную схему тестов; `018_mock_manual_review.sql` добавляет ручную проверку writing/расширенных ответов.

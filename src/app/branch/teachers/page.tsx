@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { GraduationCap, Mail, Phone, Users, Search, UserPlus, Loader2, ChevronDown, ChevronRight } from "lucide-react";
+import { GraduationCap, Mail, Phone, Users, Search, UserPlus, Loader2, ChevronDown, ChevronRight, Send } from "lucide-react";
 import supabase from "@/lib/supabase/client";
 import { User as UserType } from "@/lib/firestore-schema";
+import { isSyntheticTelegramEmail } from "@/lib/auth-utils";
 import {
     fetchAdminTeachersOverview,
     searchBranchTeacherCandidates,
@@ -228,7 +229,11 @@ export default function BranchTeachersPage() {
                                     <div className="min-w-0">
                                         <p className="truncate font-semibold text-foreground">{teacher.name} {teacher.surname || ""}</p>
                                         <div className="mt-0.5 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                                            {teacher.email && <span className="flex items-center gap-1"><Mail size={12} />{teacher.email}</span>}
+                                            {teacher.email && isSyntheticTelegramEmail(teacher.email) ? (
+                                                <span className="flex items-center gap-1 font-medium text-[#26A5E4]"><Send size={12} />Telegram</span>
+                                            ) : (
+                                                teacher.email && <span className="flex items-center gap-1"><Mail size={12} />{teacher.email}</span>
+                                            )}
                                             {teacher.phone && <span className="flex items-center gap-1"><Phone size={12} />{teacher.phone}</span>}
                                         </div>
                                     </div>

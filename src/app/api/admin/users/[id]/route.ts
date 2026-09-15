@@ -38,7 +38,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 
   const { data: target } = await supabaseServer
     .from("users")
-    .select("email, name, surname, role")
+    .select("email, name, surname, role, telegram_id")
     .eq("id", targetId)
     .maybeSingle();
 
@@ -53,7 +53,19 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   // аудита (миграция 084) видит auth.uid() и запишет, КТО удалил.
   const { error: profileError } = await client.from("users").delete().eq("id", targetId);
   if (profileError) {
-    return NextResponse.json({ error: `Вход удалён, но профиль остался: ${profileError.message}` }, { status: 500 });
+    // Для Telegram-аккаунта это не просто «остался мусор» — telegram_id
+    // держит уникальный индекс (idx_users_telegram_id_unique, миграция 119),
+    // и пока эта строка жива, тот же Telegram-аккаунт не сможет войти заново
+    // (handle_new_user упадёт на unique_violation). Для email такой блокировки
+    // нет — почта не уникальна на public.users. Админу нужно увидеть это
+    // сразу, а не когда пользователь напишет «не могу войти».
+    const telegramWarning = target?.telegram_id
+      ? ` Telegram-аккаунт (telegram_id ${target.telegram_id}) не сможет войти заново, пока эта запись не будет удалена вручную — нажмите «Удалить» ещё раз.`
+      : "";
+    return NextResponse.json(
+      { error: `Вход удалён, но профиль остался: ${profileError.message}.${telegramWarning}` },
+      { status: 500 },
+    );
   }
 
   return NextResponse.json({ ok: true, email: target?.email ?? null });

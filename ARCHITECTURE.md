@@ -14,6 +14,36 @@ Supabase Auth (Google OAuth) через `@supabase/ssr`'s `createBrowserClient` 
 
 `handle_new_user()` (Postgres-триггер на `auth.users`, миграция 002) создаёт строку в `public.users` с `role = 'student'` всегда — выбора роли при регистрации нет и не должно быть: роль `teacher`/`admin` назначается только Super Admin постфактум через `/admin/users` или `/admin/teachers`.
 
+### Вход через Telegram
+
+У Supabase Auth нет встроенного провайдера Telegram, поэтому подключение —
+мост, а не отдельная auth-система: `POST /api/auth/telegram` (`runtime =
+"nodejs"`, нужен `node:crypto`) проверяет HMAC-подпись данных от
+`window.Telegram.Login.auth()` (`crypto.timingSafeEqual`, окно `auth_date` —
+60 секунд против replay), находит-или-создаёт пользователя через
+`supabaseServer.auth.admin.createUser()`/`generateLink({type:"magiclink"})` и
+отдаёт браузеру `token_hash`; клиент (`telegram-login-button.tsx`) сам вызывает
+`supabase.auth.verifyOtp({token_hash, type:"magiclink"})` и получает настоящую
+Supabase-сессию — дальше `auth-provider.tsx` и `handle_new_user()` работают с
+ней ровно так же, как с Google.
+
+Регистрация полностью самостоятельная (осознанное решение владельца,
+2026-09-14, см. `PLAN-REGISTAN-V3.md`): у Telegram нет email, поэтому аккаунт,
+заведённый через Telegram, никак не сверяется с уже существующим
+Google-аккаунтом того же человека — это два разных `id`. Email на такой
+аккаунт ставится синтетический, `tg_<telegram_id>@telegram.registan.local`
+(`isSyntheticTelegramEmail()` в `src/lib/auth-utils.ts` — им скрывается везде
+в UI), а `public.users.telegram_id` — второй уникальный идентификатор рядом с
+`id`, колоночно защищённый от переписывания клиентом
+(`REVOKE UPDATE (telegram_id) ... FROM authenticated`, миграция 119) — иначе
+залогиненный пользователь мог бы `update({telegram_id: чужой})` и застолбить
+чужой Telegram-аккаунт раньше его настоящего владельца.
+
+Кнопка (`window.Telegram.Login.auth()`, не встроенный iframe-виджет) вместо
+`username` бота использует числовой `bot_id`, отдаваемый `GET
+/api/auth/telegram/bot-id` — так подпись/размер кнопки полностью в вёрстке
+проекта, а не в том, что рисует сам Telegram.
+
 ## RLS + RPC — как скрыт `correct_answer`
 
 Студент никогда не может напрямую `SELECT` из `placement_questions`/`mock_questions` (RLS на этих таблицах — только admin). Вопросы для прохождения теста отдаются через `SECURITY DEFINER` RPC (`get_placement_questions`, `get_mock_questions`), у которых `RETURNS TABLE(...)` явно не включает `correct_answer`. Проверка и подсчёт результата — тоже RPC (`submit_placement`, `submit_mock`), которые читают вопросы напрямую (внутри функции RLS не действует) и сравнивают ответ ученика с `correct_answer` на сервере — правильный ответ никогда не уходит в браузер до завершения теста.

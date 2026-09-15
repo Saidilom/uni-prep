@@ -297,6 +297,7 @@ const uz: typeof ru = {
     save: "Saqlash",
     sessionsSection: "Faol sessiyalar",
     sessionsSubtitle: "Hisobingiz hozir ochiq bo'lgan qurilmalar.",
+    sessionRevokeCaveat: "Bekor qilish qurilmadan yangi kirishni darhol bloklaydi, lekin u yerda allaqachon ochiq sessiya biroz vaqt ishlashda davom etishi mumkin — bu Supabase'ning o'zi shunday ishlaydi.",
     sessionsEmpty: "Faol sessiyalar topilmadi.",
     sessionsError: "Sessiyalarni yuklab bo'lmadi",
     sessionThisDevice: "Bu qurilma",
@@ -672,7 +673,7 @@ const uz: typeof ru = {
     cohortNote: "Ishonchlilik testga ham, guruhga ham bog'liq: bir xil variant bir jinsli guruhda pastroq natija beradi.",
   },
   psychometricCharts: {
-    title: "Psixometrik grafiklar",
+    title: "Test axborotlilik va aniqlik profili",
     headlineMismatch: "{total} topshiriqdan {above} tasi guruhning eng kuchli o'quvchisidan ham qiyin · kogorta markazi test optimumidan {gap} logit uzoqda",
     headlineOk: "Test guruhga mo'ljallangan: kogorta markazi optimumdan {gap} logit uzoqda",
     axisInformation: "I(θ)",

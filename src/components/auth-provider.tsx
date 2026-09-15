@@ -130,12 +130,6 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
                     if (isLocale(profile.locale) && profile.locale !== localeRef.current) {
                         setLocaleRef.current(profile.locale);
                     }
-                    // Уведомление о входе — fire-and-forget, не блокирует
-                    // редирект ниже. Роут сам решает, есть ли куда слать
-                    // (у Google-only пользователей канала пока нет).
-                    if (isFreshSignIn) {
-                        void fetch("/api/auth/notify-login", { method: "POST" }).catch(() => {});
-                    }
                     if (profile.phone && (currentPathname === "/login" || currentPathname === "/onboarding")) {
                         router.replace(sanitizeRedirectTarget(redirectTarget ? decodeURIComponent(redirectTarget) : null));
                     } else if (!profile.phone && currentPathname !== "/onboarding" && isFreshSignIn) {

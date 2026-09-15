@@ -1,7 +1,7 @@
-import crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
 import { checkRateLimit, requestIp } from "@/lib/rate-limit";
+import { isValidTelegramPayload, verifyTelegramSignature, isTelegramAuthDateFresh } from "@/lib/telegram-auth";
 
 // nodejs, не edge: нужен встроенный node:crypto для HMAC-проверки подписи
 // Telegram-виджета — в edge-рантайме его нет.
@@ -22,42 +22,7 @@ export const dynamic = "force-dynamic";
 // можно завести аккаунт только через Telegram, без Google. Один и тот же
 // человек, пришедший через оба провайдера, получит два разных аккаунта —
 // принятый компромисс, Telegram не отдаёт email, сверить личность не с чем.
-type TelegramAuthPayload = {
-    id: number;
-    first_name: string;
-    last_name?: string;
-    username?: string;
-    photo_url?: string;
-    auth_date: number;
-    hash: string;
-};
-
 const AUTH_DATE_MAX_AGE_SECONDS = 60;
-
-function isValidPayload(body: unknown): body is TelegramAuthPayload {
-    if (!body || typeof body !== "object") return false;
-    const b = body as Record<string, unknown>;
-    return typeof b.id === "number" && typeof b.first_name === "string"
-        && typeof b.auth_date === "number" && typeof b.hash === "string";
-}
-
-// Официальный алгоритм проверки подписи Telegram Login Widget: строка
-// key=value по всем полям кроме hash, отсортированным по ключу, через \n;
-// секрет — sha256 от токена бота; итог — hmac-sha256 этим секретом.
-function verifyTelegramSignature(payload: TelegramAuthPayload, botToken: string): boolean {
-    const { hash, ...rest } = payload;
-    const dataCheckString = Object.keys(rest)
-        .sort()
-        .map((key) => `${key}=${(rest as Record<string, unknown>)[key]}`)
-        .join("\n");
-    const secretKey = crypto.createHash("sha256").update(botToken).digest();
-    const hmac = crypto.createHmac("sha256", secretKey).update(dataCheckString).digest("hex");
-
-    const received = Buffer.from(hash, "hex");
-    const expected = Buffer.from(hmac, "hex");
-    if (received.length !== expected.length) return false;
-    return crypto.timingSafeEqual(received, expected);
-}
 
 export async function POST(req: NextRequest) {
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
@@ -81,7 +46,7 @@ export async function POST(req: NextRequest) {
     } catch {
         return NextResponse.json({ error: "Некорректный запрос" }, { status: 400 });
     }
-    if (!isValidPayload(body)) {
+    if (!isValidTelegramPayload(body)) {
         return NextResponse.json({ error: "Некорректный запрос" }, { status: 400 });
     }
 
@@ -90,7 +55,7 @@ export async function POST(req: NextRequest) {
     }
 
     const nowSeconds = Math.floor(Date.now() / 1000);
-    if (nowSeconds - body.auth_date > AUTH_DATE_MAX_AGE_SECONDS) {
+    if (!isTelegramAuthDateFresh(body.auth_date, nowSeconds, AUTH_DATE_MAX_AGE_SECONDS)) {
         return NextResponse.json({ error: "Запрос устарел, попробуйте снова" }, { status: 401 });
     }
 

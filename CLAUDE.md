@@ -47,7 +47,9 @@ RLS-политики, сравнивающие `auth.uid()` (uuid) напрям�
 Там единственный источник правды по измерению: норма (**ТЗ v1.0 от 2026-09-08,
 часть I** — она главнее спецификации v4.0 в части II), что ей уже
 соответствует и что нет, решения владельца и порядок правок. Логика размазана
-по `src/lib/rasch.ts`, `certificate-scale.ts`, `native-cert.ts`,
+по `src/lib/rasch.ts`, `irt-3pl.ts`, `irt-3pl-calibration.ts`,
+`irt-model-selection.ts` (с 2026-09-17 — какая из трёх моделей вообще
+применяется, по числу сдавших), `certificate-scale.ts`, `native-cert.ts`,
 `mock-grade-level.ts`, `english-cefr.ts` и `/api/rasch/recalculate` — по одному
 файлу картину не собрать, а цена ошибки здесь это баллы живых учеников.
 

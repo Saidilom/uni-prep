@@ -7,8 +7,11 @@ import {
     analyzeQuestion, parseSelection, correctOptionsFor, isClosedQuestion,
     DistractorResponse, QuestionDistractorReport,
 } from "@/lib/distractor-analysis";
-import { estimateTheta3pl, probability3pl, itemInformation3pl, type Theta3plResult } from "@/lib/irt-3pl";
-import { calibrate3pl, type CalibratedItem } from "@/lib/irt-3pl-calibration";
+import { type Theta3plResult } from "@/lib/irt-3pl";
+import { type CalibratedItem } from "@/lib/irt-3pl-calibration";
+import {
+    selectModel, calibrateModel, MODEL_VERSION, DIFFICULTY_METHOD, PERSON_ESTIMATOR, type ModelType,
+} from "@/lib/irt-model-selection";
 import { itemFitReport, personFitReport, FitObservation, FitReport } from "@/lib/rasch-fit";
 import { modelResiduals, standardizedResiduals, q3Analysis, residualPca, Q3Analysis, PcaResult } from "@/lib/rasch-q3";
 import { classifyResponses, countStates, responseForModel, ResponseState } from "@/lib/response-status";
@@ -26,21 +29,25 @@ import { isInternalCall } from "@/lib/internal-auth";
 export const maxDuration = 300;
 
 // Каким оценщиком и какой моделью получены числа (§109 — метод обязан быть
-// виден в данных, а не только в коде).
-// MAP, а не MLE: θ оценивается апостериорным максимумом с априорным N(0,1) —
-// тем же распределением, по которому идёт квадратура в калибровке. Голый MLE
-// в 3PL около уровня угадывания максимума не имеет, и работы упирались в
-// границу шкалы. Разбор — в шапке estimateTheta3pl.
-const PERSON_ESTIMATOR = "MAP_NEWTON_3PL";
-const MODEL_VERSION = "3pl-1.1";
+// виден в данных, а не только в коде). С 2026-09-17 модель не одна на всех —
+// выбирается по числу сдавших (src/lib/irt-model-selection.ts), поэтому
+// PERSON_ESTIMATOR/MODEL_VERSION/DIFFICULTY_METHOD там же, таблицами по
+// ModelType, а не константами здесь.
 
 // ═══ Как помечается смена метода в истории баллов ═══
 //
 // scale_version в ревизии описывает ПРЕЖНЕЕ значение — то, каким способом было
 // получено число, которое ученик видел до пересчёта. reason называет саму
 // правку. Так по строке ревизии видно и откуда, и куда.
+//
+// PREVIOUS_SCALE_VERSION — фолбэк ТОЛЬКО для строк без собственного провенанса
+// (посчитанных до миграции 124, у которых mock_results.model_type пуст).
+// У строк с провенансом scale_version собирается из их же model_type/model_version.
 const PREVIOUS_SCALE_VERSION = "3pl-1.0/mle-newton";
-const REVISION_REASON = "theta_map_fix";
+// Причина рутинной ревизии — просто новая сдача сдвинула балл, модель та же.
+// Если модель сменилась, причина точнее: "model_upgraded_by_cohort_size".
+const ROUTINE_REVISION_REASON = "theta_map_fix";
+const MODEL_UPGRADE_REVISION_REASON = "model_upgraded_by_cohort_size";
 
 // Recalibrates the Rasch item difficulties + person abilities for one Mock
 // test, across every attempt that test has on record — a single new
@@ -77,7 +84,7 @@ export async function POST(req: NextRequest) {
     const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
 
     const { data: test } = await admin.from("mock_tests")
-        .select("subject_id, certificate_scale_max, cohort_mu, cohort_sigma, cohort_n, cohort_frozen_at")
+        .select("subject_id, certificate_scale_max, cohort_mu, cohort_sigma, cohort_n, cohort_frozen_at, model_type")
         .eq("id", mockTestId).single();
     const subjectId = (test?.subject_id as string | null) ?? null;
     // Шкала показа ЗАКРЕПЛЕНА за тестом (миграция 112), а не выводится из
@@ -167,11 +174,12 @@ export async function POST(req: NextRequest) {
     // перезаписи (§239), а revealed_at отвечает на вопрос, видел ли ученик
     // это число вообще.
     const { data: results } = await admin.from("mock_results")
-        .select("id, level_score, level_score_max, grade_level, rasch_score, revealed_at")
+        .select("id, level_score, level_score_max, grade_level, rasch_score, revealed_at, model_type, model_version")
         .eq("mock_test_id", mockTestId);
     const resultRows = (results || []) as Array<{
         id: string; level_score: number | null; level_score_max: number | null;
         grade_level: string | null; rasch_score: number | null; revealed_at: string | null;
+        model_type: string | null; model_version: string | null;
     }>;
     const resultIds = resultRows.map((r) => r.id);
     if (resultIds.length === 0) {
@@ -288,6 +296,18 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true, itemCount: 0, personCount: 0 });
     }
 
+    // ═══ Выбор модели по числу сдавших (решение владельца от 2026-09-17) ═══
+    //
+    // N считается ДО калибровки — число РАЗНЫХ людей, у которых есть хотя бы
+    // один объективный ответ с политикой CALIBRATION (не resultIds.length —
+    // там и пустые попытки; не cohort.count — тот доступен только ПОСЛЕ
+    // оценки θ, циклическая зависимость). Пороги и обоснование —
+    // design/RASCH.md, «ДЕЙСТВУЮЩИЙ РАСЧЁТ» пункт 3.
+    const cohortN = new Set(observations.map((o) => o.person)).size;
+    const previousModelType = (test?.model_type as ModelType | null) ?? null;
+    const modelType: ModelType = selectModel(cohortN, previousModelType);
+    const modelChanged = previousModelType !== null && previousModelType !== modelType;
+
     // ═══ Z-стандартизация ПО ПОТОКУ (шаги 5–6 документа владельца) ═══
     //
     // Решение владельца от 2026-09-11. μ и σ берутся у сдавших этот самый тест,
@@ -303,7 +323,13 @@ export async function POST(req: NextRequest) {
     // одному ученику: роут пересчитывает весь тест после каждой сдачи, и без
     // заморозки каждая новая работа двигала бы баллы всем остальным. Документ
     // этого и не требует — расчёт в нём идёт один раз, после закрытия теста.
-    const frozenCohort: CohortStatistics | null = test?.cohort_frozen_at && test?.cohort_sigma !== null && test?.cohort_sigma !== undefined
+    //
+    // Если модель сменилась (когорта доросла до следующего порога) —
+    // заморозка недействительна: θ теперь в другой метрике (1PL/2PL/3PL — три
+    // разные шкалы логитов), и старые μ/σ стали бы чужой точкой отсчёта. Тот
+    // же приём уже дважды применялся вручную при смене модели (миграции 117,
+    // 118) — здесь он становится постоянной логикой, а не разовой правкой.
+    const frozenCohort: CohortStatistics | null = !modelChanged && test?.cohort_frozen_at && test?.cohort_sigma !== null && test?.cohort_sigma !== undefined
         ? {
             mu: Number(test.cohort_mu),
             sigma: Number(test.cohort_sigma),
@@ -371,11 +397,14 @@ export async function POST(req: NextRequest) {
     let distractorReports: QuestionDistractorReport[] = [];
 
     if (hasObjectiveSection) {
-        // ═══ КАЛИБРОВКА ЗАДАНИЙ ПО 3PL ═══
+        // ═══ КАЛИБРОВКА ЗАДАНИЙ ═══
         //
-        // Решение владельца от 2026-09-13: модель Раша убрана, балл считает
-        // трёхпараметрическая модель. Прежние способы (JMLE, а затем сложность
-        // из доли решивших) в расчёте балла больше не участвуют.
+        // Модель выбрана по числу сдавших (modelType, см. выше) — решение
+        // владельца от 2026-09-17 (design/RASCH.md, «ДЕЙСТВУЮЩИЙ РАСЧЁТ»,
+        // пункт 3). Раньше здесь была жёстко 3PL (решение от 2026-09-13);
+        // калибровка и оценка θ теперь идут через единый интерфейс
+        // src/lib/irt-model-selection.ts, который и знает, как получить 1PL
+        // и 2PL почти без нового кода (см. шапку того файла).
         //
         // Матрица берётся та же, что и раньше, — калибровочная, без пропусков
         // (§A.3): пропуск не есть попытка, и это решение отдельное от выбора
@@ -387,33 +416,33 @@ export async function POST(req: NextRequest) {
             });
         }
 
-        const calibration = calibrate3pl(
+        const model = calibrateModel(
+            modelType,
             questionIds.map((_, item) => ({
                 responses: calibrationByItem[item],
                 optionCount: optionCountByItem[item],
             })),
         );
-        itemParameters = calibration.items;
-        itemDifficultyByIndex = calibration.items.map((item) => item.b);
-        converged = calibration.converged;
-        iterations = calibration.iterations;
+        itemParameters = model.items;
+        itemDifficultyByIndex = model.items.map((item) => item.b);
+        converged = model.converged;
+        iterations = model.iterations;
 
         // ═══ ОЦЕНКА θ КАЖДОГО УЧЕНИКА ═══
         //
         // ═══ ТАБЛИЦЫ «СЫРОЙ БАЛЛ → θ» БОЛЬШЕ НЕТ, И ЭТО НЕ ПОТЕРЯ ═══
         //
-        // Она existовала потому, что в модели Раша сырой балл — достаточная
-        // статистика: у всех с одинаковым числом верных θ была одна и та же.
-        // Именно отсюда брались три ученика с одинаковыми 51,67, про которых
-        // спрашивал владелец.
+        // У классического Раша (1PL) сырой балл был бы достаточной
+        // статистикой — но модель одного теста со временем меняется по мере
+        // роста когорты (см. modelType выше), и таблица под одну модель стала
+        // бы неверной после следующего порога. Единая оценка через
+        // model.estimateTheta для всех трёх моделей проще и надёжнее, чем
+        // таблица, которую нужно было бы перестраивать на каждый переход.
         //
-        // В 3PL достаточности нет: в уравнение правдоподобия каждое задание
-        // входит со своим весом a_i, поэтому важно, КАКИЕ задания решены. Два
-        // ученика с одинаковым числом верных теперь получают разные баллы —
-        // тот, кто решил трудные, выше того, кто решил лёгкие.
-        const estimated = examResponses.map((row) =>
-            estimateTheta3pl(row.map((correct, item) => ({ correct, item: calibration.items[item] }))),
-        );
+        // В 2PL/3PL достаточности нет и не было: в уравнение правдоподобия
+        // каждое задание входит со своим весом a_i, поэтому важно, КАКИЕ
+        // задания решены, а не только сколько.
+        const estimated = examResponses.map((row) => model.estimateTheta(row));
         thetaResults = estimated;
         personAbility = estimated.map((r) => r.theta);
         wleNonConverged = estimated.filter((r) => r.status === "NON_CONVERGED").length;
@@ -422,11 +451,9 @@ export async function POST(req: NextRequest) {
         // ═══ Статистика потока ═══
         //
         // Замороженная имеет приоритет: как только балл показан ученику, он не
-        // должен меняться от того, кто сдаст после него.
-        //
-        // ВАЖНО: заморозка, сделанная под прежнюю модель, к 3PL не относится —
-        // θ теперь в другой метрике. Если она стоит, её надо снять вместе с
-        // пересчётом, иначе баллы посчитаются от чужой точки отсчёта.
+        // должен меняться от того, кто сдаст после него. frozenCohort уже
+        // учла modelChanged выше (null при смене модели) — здесь просто её
+        // читаем.
         cohort = frozenCohort ?? cohortStatistics(personAbility);
 
         // Одно время на весь прогон: таблица и калибровка получены из одной и
@@ -487,7 +514,7 @@ export async function POST(req: NextRequest) {
         const fitByPerson: FitObservation[][] = Array.from({ length: resultIds.length }, () => []);
         for (let person = 0; person < resultIds.length; person++) {
             examResponses[person].forEach((correct, item) => {
-                const expected = probability3pl(personAbility[person], itemParameters[item]);
+                const expected = model.probability(personAbility[person], item);
                 expectedByPersonItem[person][item] = expected;
                 const observation: FitObservation = { correct, expected, theta: personAbility[person] };
                 fitByItem[item].push(observation);
@@ -580,15 +607,16 @@ export async function POST(req: NextRequest) {
                 || correctByPerson[p] === 0
                 || correctByPerson[p] === difficultiesByPerson[p].length,
         }));
-        // SE трудности под 3PL. Симметрия «информация о θ = информация о b»
-        // сохраняется и здесь: ∂P/∂b = −∂P/∂θ, поэтому это та же
-        // itemInformation3pl, просуммированная по ученикам, а не по заданиям.
-        // Через measurementPrecision считать нельзя — она не знает ни a, ни c.
+        // SE трудности. Симметрия «информация о θ = информация о b»
+        // сохраняется под любой моделью: ∂P/∂b = −∂P/∂θ, поэтому это та же
+        // model.itemInformation, просуммированная по ученикам, а не по
+        // заданиям. Через measurementPrecision считать нельзя — она не знает
+        // ни a, ни c (и под 1PL здесь тоже a=1/1.702, не 1 — см. модель выше).
         const itemDifficultySe = (i: number): number | null => {
             const item = itemParameters[i];
             if (!item) return null;
             const information = abilitiesByItem[i]
-                .reduce((sum, theta) => sum + itemInformation3pl(theta, item), 0);
+                .reduce((sum, theta) => sum + model.itemInformation(theta, i), 0);
             return information > 0 ? 1 / Math.sqrt(information) : null;
         };
 
@@ -680,8 +708,21 @@ export async function POST(req: NextRequest) {
             cohort_mu: dbNumber(cohort.mu),
             cohort_sigma: dbNumber(cohort.sigma),
             cohort_n: cohort.count,
-            cohort_frozen_at: test?.cohort_frozen_at
+            // modelChanged ⇒ заморозка не наследуется (θ уже в другой
+            // метрике) — заново замораживаем немедленно, если результаты уже
+            // показаны, тем же приёмом, что и ниже (anyRevealed).
+            cohort_frozen_at: (modelChanged ? null : test?.cohort_frozen_at)
                 ?? (anyRevealed && cohort.status === "OK" ? calibratedAt : null),
+            // ═══ Провенанс модели (§109, §186, §231-232) ═══
+            //
+            // Не только discrimination/guessing на mock_item_calibration —
+            // сам факт «какой моделью посчитан ЭТОТ тест» нужен на уровне
+            // теста тоже: без него узнать это можно было только читая первую
+            // попавшуюся строку калибровки.
+            model_type: modelType,
+            model_version: MODEL_VERSION[modelType],
+            model_sample_size: cohortN,
+            model_selected_at: calibratedAt,
             q3_pairs_checked: q3?.pairs.filter((pair) => pair.excess !== null).length ?? null,
             q3_pairs_flagged: q3?.flaggedPairs.length ?? null,
             q3_max_excess: q3?.maxExcess ?? null,
@@ -738,9 +779,9 @@ export async function POST(req: NextRequest) {
             return {
                 mock_test_id: mockTestId,
                 question_id: id,
-                // b, a и c — все три параметра 3PL. Одной трудности под этой
-                // моделью недостаточно: без a и c кривую задания не построить,
-                // и ни fit, ни графики не сойдутся с расчётом балла.
+                // b, a и c — a/c под 1PL/2PL технические (см. irt-model-
+                // selection.ts), но всегда заполнены: без них кривую задания
+                // не построить, и ни fit, ни графики не сойдутся с расчётом.
                 difficulty: itemParameters[i].b,
                 discrimination: itemParameters[i].a,
                 guessing: itemParameters[i].c,
@@ -751,15 +792,16 @@ export async function POST(req: NextRequest) {
                 sample_size: n,
                 converged,
                 iterations,
-                // Какой политикой пропусков посчитаны эти сложности (§A.3) и
-                // каким оценщиком — способность (§109: смена метода это новая
-                // версия, и она обязана быть видна в данных).
+                // Какой политикой пропусков посчитаны эти сложности (§A.3),
+                // какой моделью (§186) и каким оценщиком способности (§109:
+                // смена метода — новая версия, обязана быть видна в данных).
                 missing_policy: "CALIBRATION",
-                person_estimator: `${PERSON_ESTIMATOR}/${MODEL_VERSION}`,
+                model_type: modelType,
+                person_estimator: `${PERSON_ESTIMATOR[modelType]}/${MODEL_VERSION[modelType]}`,
                 // Каким методом получена сложность (§109). Без этой пометки
                 // через полгода по строке калибровки нельзя будет сказать,
-                // JMLE её посчитал или доля решивших.
-                difficulty_method: "3PL_MMLE",
+                // JMLE её посчитал, MMLE или доля решивших.
+                difficulty_method: DIFFICULTY_METHOD[modelType],
                 // Модуль F. Флаги не влияют ни на балл, ни на сложность —
                 // задание остаётся в расчёте, пока человек не решит иначе.
                 infit: fit.infit,
@@ -915,6 +957,12 @@ export async function POST(req: NextRequest) {
                 person_infit_zstd: personFitReports[n]?.infitZstd ?? null,
                 person_outfit_zstd: personFitReports[n]?.outfitZstd ?? null,
                 person_fit_flags: personFitReports[n]?.flags ?? null,
+                // Провенанс на уровне ОТДЕЛЬНОГО результата: у одного теста
+                // результаты со временем пересчитываются под РАЗНЫМИ моделями
+                // по мере роста когорты — исторический балл обязан оставаться
+                // воспроизводимым тем, чем он реально посчитан (§109, §231-232).
+                model_type: hasObjectiveSection ? modelType : null,
+                model_version: hasObjectiveSection ? MODEL_VERSION[modelType] : null,
             };
     });
 
@@ -951,15 +999,33 @@ export async function POST(req: NextRequest) {
         );
         const levelMoved = (previous.grade_level ?? null) !== (next.grade_level ?? null);
         if (!scoreMoved && !levelMoved) return [];
+        // Причина точнее, если это не рутинный пересчёт, а смена модели у
+        // ЭТОЙ конкретной строки (previous.model_type — то, чем строка была
+        // посчитана раньше, могло смениться даже если modelChanged в целом
+        // false — например, при первом пересчёте после включения автовыбора,
+        // когда у строки ещё нет провенанса вовсе).
+        const previousModel = previous.model_type as ModelType | null;
+        const reason = previousModel && previousModel !== modelType
+            ? MODEL_UPGRADE_REVISION_REASON
+            : ROUTINE_REVISION_REASON;
+        // scale_version — версия ПРЕЖНЕГО расчёта. Для строк с собственным
+        // провенансом (после миграции 124) собирается из него; для более
+        // старых строк без provenance — честный фолбэк на последнюю известную
+        // модель до автовыбора (всегда была 3PL).
+        const scaleVersion = previousModel
+            ? `${previousModel}/${previous.model_version ?? "unknown"}`
+            : PREVIOUS_SCALE_VERSION;
         return [{
             result_id: next.id,
             revised_at: new Date().toISOString(),
-            reason: REVISION_REASON,
+            reason,
             level_score: previous.level_score,
             level_score_max: previous.level_score_max,
             grade_level: previous.grade_level,
             rasch_score: previous.rasch_score,
-            scale_version: PREVIOUS_SCALE_VERSION,
+            scale_version: scaleVersion,
+            model_type: previousModel,
+            model_version: previous.model_version,
         }];
     });
     if (revisions.length > 0) {
@@ -1032,7 +1098,8 @@ export async function POST(req: NextRequest) {
         failedCount,
         // Диагностика шага 2: чем оценивали способность и сколько пропусков
         // ушло из калибровки вместо того, чтобы посчитаться нулями (§A.3).
-        personEstimator: `${PERSON_ESTIMATOR}/${MODEL_VERSION}`,
+        modelType,
+        personEstimator: `${PERSON_ESTIMATOR[modelType]}/${MODEL_VERSION[modelType]}`,
         wleNonConverged,
         thetaExtreme,
         // §R.6: балл взят из таблицы варианта. tableMisses обязан быть 0.

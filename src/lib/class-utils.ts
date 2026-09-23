@@ -2061,6 +2061,10 @@ export type Irt3plReport = {
     modelType: ModelType | null;
     modelSampleSize: number | null;
     modelSelectedAt: string | null;
+    // Прежние значения из ревизий ПОСЛЕДНЕГО прогона (revised_at ≥
+    // model_selected_at: ревизии пишутся после сводки теста в том же прогоне).
+    // RLS отдаёт их только админу — у остальных массив пуст.
+    lastRunRevisions: Array<{ resultId: string; score: number | null; level: string | null; modelType: ModelType | null }>;
 };
 
 export const fetchIrt3plReport = async (mockTestId: string): Promise<Irt3plReport> =>
@@ -2094,7 +2098,27 @@ export const fetchIrt3plReport = async (mockTestId: string): Promise<Irt3plRepor
             : { data: [] as Array<{ id: string; name: string; surname: string | null }> };
         const nameById = new Map((users || []).map((u) => [u.id, `${u.name} ${u.surname || ""}`.trim()]));
 
+        const resultIds = personRows.map((r) => r.id as string);
+        const { data: revisions } = testRow?.model_selected_at && resultIds.length
+            ? await supabase
+                .from("mock_result_revisions")
+                .select("result_id, level_score, grade_level, model_type, revised_at")
+                .in("result_id", resultIds)
+                .gte("revised_at", testRow.model_selected_at)
+                .order("revised_at", { ascending: false })
+            : { data: [] };
+        const revisionByResult = new Map<string, Record<string, unknown>>();
+        for (const row of (revisions || []) as Array<Record<string, unknown>>) {
+            if (!revisionByResult.has(row.result_id as string)) revisionByResult.set(row.result_id as string, row);
+        }
+
         return {
+            lastRunRevisions: Array.from(revisionByResult.values()).map((row) => ({
+                resultId: row.result_id as string,
+                score: num(row.level_score),
+                level: (row.grade_level as string | null) ?? null,
+                modelType: (row.model_type as ModelType | null) ?? null,
+            })),
             computedAt: (itemRows[0]?.calibrated_at as string | undefined) ?? null,
             method: (itemRows[0]?.difficulty_method as string | undefined) ?? null,
             estimator: (itemRows[0]?.person_estimator as string | undefined) ?? null,

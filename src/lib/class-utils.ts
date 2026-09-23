@@ -6,6 +6,7 @@ import { fetchAllRows } from "./supabase/fetch-all";
 import { formatCorrectAnswer, formatStudentAnswer } from "./answer-display";
 import { scoreOnCertificateScale, roundScore } from "./certificate-scale";
 import type { DistributionClass } from "./oylik-distribution";
+import type { ModelType } from "./irt-model-selection";
 
 // Same reasoning as registan-utils.ts's STUDENT_CACHE_TTL — short enough
 // that a just-created class/assignment shows up on its own, long enough that
@@ -2035,7 +2036,6 @@ export type Irt3plItem = {
     guessingPrior: number;
     optionCount: number | null;
     sampleSize: number;
-    correctCount: number;
     status: string;
 };
 
@@ -2056,11 +2056,16 @@ export type Irt3plReport = {
     computedAt: string | null;
     method: string | null;
     estimator: string | null;
+    // Чем посчитан тест (миграция 124). sampleSize = null при непустой модели —
+    // пометка бэкфилла, а не выбор по N: модель будет выбрана при пересчёте.
+    modelType: ModelType | null;
+    modelSampleSize: number | null;
+    modelSelectedAt: string | null;
 };
 
 export const fetchIrt3plReport = async (mockTestId: string): Promise<Irt3plReport> =>
     pageCache.fetch(`irt3pl:${mockTestId}`, async () => {
-        const [{ data: items }, { data: people }] = await Promise.all([
+        const [{ data: items }, { data: people }, { data: test }] = await Promise.all([
             supabase
                 .from("mock_item_calibration")
                 .select("question_id, discrimination, difficulty, guessing, guessing_prior, option_count, sample_size, item_status, difficulty_method, person_estimator, calibrated_at")
@@ -2070,7 +2075,15 @@ export const fetchIrt3plReport = async (mockTestId: string): Promise<Irt3plRepor
                 .from("mock_results")
                 .select("id, user_id, rasch_score, theta_se, level_score, level_score_max, grade_level, measurement_status")
                 .eq("mock_test_id", mockTestId),
+            supabase
+                .from("mock_tests")
+                .select("model_type, model_sample_size, model_selected_at")
+                .eq("id", mockTestId)
+                .maybeSingle(),
         ]);
+        const testRow = (test || null) as {
+            model_type: string | null; model_sample_size: number | null; model_selected_at: string | null;
+        } | null;
 
         const itemRows = (items || []) as Array<Record<string, unknown>>;
         const personRows = (people || []) as Array<Record<string, unknown>>;
@@ -2085,6 +2098,9 @@ export const fetchIrt3plReport = async (mockTestId: string): Promise<Irt3plRepor
             computedAt: (itemRows[0]?.calibrated_at as string | undefined) ?? null,
             method: (itemRows[0]?.difficulty_method as string | undefined) ?? null,
             estimator: (itemRows[0]?.person_estimator as string | undefined) ?? null,
+            modelType: (testRow?.model_type as ModelType | null) ?? null,
+            modelSampleSize: num(testRow?.model_sample_size),
+            modelSelectedAt: testRow?.model_selected_at ?? null,
             items: itemRows.map((row) => ({
                 questionId: row.question_id as string,
                 // У строк, посчитанных до перехода на 3PL, a и c пусты: читаем
@@ -2095,7 +2111,6 @@ export const fetchIrt3plReport = async (mockTestId: string): Promise<Irt3plRepor
                 guessingPrior: num(row.guessing_prior) ?? 0,
                 optionCount: row.option_count === null ? null : Number(row.option_count),
                 sampleSize: Number(row.sample_size ?? 0),
-                correctCount: 0,
                 status: (row.item_status as string) ?? "OK",
             })),
             people: personRows.map((row) => ({

@@ -8,6 +8,15 @@ import { formatScore } from "@/lib/certificate-scale";
 import { gradeLevelDisplay, type GradeLevel } from "@/lib/mock-grade-level";
 import { useLocale, useTranslations } from "@/lib/i18n/locale-provider";
 import PanelSkeleton from "@/components/panel-skeleton";
+import type { ModelType } from "@/lib/irt-model-selection";
+
+const MODEL_LABEL: Record<ModelType, string> = {
+    RASCH_1PL: "1PL (Rasch)",
+    IRT_2PL: "2PL",
+    IRT_3PL: "3PL",
+};
+
+const PARAMS_PER_ITEM: Record<ModelType, number> = { RASCH_1PL: 1, IRT_2PL: 2, IRT_3PL: 3 };
 
 // Протокол расчёта балла.
 //
@@ -18,8 +27,10 @@ import PanelSkeleton from "@/components/panel-skeleton";
 // все три параметра каждого задания, θ и погрешность каждого ученика и,
 // главное, СКОЛЬКО наблюдений приходится на один оцениваемый параметр.
 //
-// С 2026-09-13 балл считает именно 3PL — панель показывает действующую
-// модель, а не вторую рядом.
+// С 2026-09-17 модель выбирается по числу сдавших (1PL/2PL/3PL,
+// src/lib/irt-model-selection.ts) — панель показывает действующую модель
+// теста, а не вторую рядом. У 1PL a и c технические (a = 1/1.702, c = 0), у
+// 2PL c закреплён нулём — такие колонки не показываются как оценённые.
 
 // Ошибка восстановления ИЗВЕСТНЫХ параметров на синтетике, замерено тестом
 // src/lib/irt-3pl.test.ts (20 заданий, c = 0.25, детерминированный ГПСЧ).
@@ -74,9 +85,16 @@ export default function Irt3plPanel({ mockTestId }: { mockTestId: string }) {
     const items = report.items;
     const computed = people.length > 0;
 
-    // Наблюдений на параметр: заданий × учеников, делённое на 3·заданий + учеников.
+    // Без модели на тесте — расчёт до миграции 124, а тогда считала только 3PL.
+    const modelType: ModelType = report.modelType ?? "IRT_3PL";
+    const modelLabel = MODEL_LABEL[modelType];
+    const perItem = PARAMS_PER_ITEM[modelType];
+    const showA = modelType !== "RASCH_1PL";
+    const showC = modelType === "IRT_3PL";
+
+    // Наблюдений на параметр: заданий × учеников, делённое на (параметров·заданий + учеников).
     const perParameter = items.length > 0 && people.length > 0
-        ? (people.length * items.length) / (items.length * 3 + people.length)
+        ? (people.length * items.length) / (items.length * perItem + people.length)
         : 0;
 
     const undetermined = items.filter((i) => i.status === "NONE_CORRECT" || i.status === "ALL_CORRECT" || i.status === "NO_RESPONSES").length;
@@ -87,6 +105,13 @@ export default function Irt3plPanel({ mockTestId }: { mockTestId: string }) {
                 <div>
                     <h3 className="text-lg font-bold">{t("title")}</h3>
                     <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{t("subtitle")}</p>
+                    {report.modelType && (
+                        <p className="mt-2 text-sm font-semibold">
+                            {report.modelSampleSize !== null
+                                ? t("modelLine").replace("{model}", modelLabel).replace("{n}", String(report.modelSampleSize))
+                                : t("modelPending").replace("{model}", modelLabel)}
+                        </p>
+                    )}
                 </div>
                 {/* data-pdf-hide: запуск пересчёта — действие, а не данные;
                     кнопке, которую нельзя нажать в файле, там не место. */}
@@ -118,7 +143,9 @@ export default function Irt3plPanel({ mockTestId }: { mockTestId: string }) {
                             {t("sampleBody")
                                 .replace("{items}", String(items.length))
                                 .replace("{people}", String(people.length))
-                                .replace("{params}", String(items.length * 3 + people.length))
+                                .replace("{model}", modelLabel)
+                                .replace("{perItem}", String(perItem))
+                                .replace("{params}", String(items.length * perItem + people.length))
                                 .replace("{perParam}", perParameter.toFixed(1))}
                         </p>
                         {undetermined > 0 && (
@@ -126,7 +153,8 @@ export default function Irt3plPanel({ mockTestId }: { mockTestId: string }) {
                                 {t("undetermined").replace("{count}", String(undetermined))}
                             </p>
                         )}
-                        <div className="mt-3 overflow-x-auto">
+                        {/* Замерено на синтетике 3PL — к 1PL/2PL эти ошибки не относятся. */}
+                        {modelType === "IRT_3PL" && <div className="mt-3 overflow-x-auto">
                             <table className="w-full text-xs">
                                 <thead className="text-muted-foreground">
                                     <tr>
@@ -146,7 +174,7 @@ export default function Irt3plPanel({ mockTestId }: { mockTestId: string }) {
                                 </tbody>
                             </table>
                             <p className="mt-2 text-[11px] leading-relaxed text-amber-900/70 dark:text-amber-300/60">{t("recoveryNote")}</p>
-                        </div>
+                        </div>}
                     </div>
 
                     {/* ═══ Ученики: θ, погрешность и балл ═══ */}
@@ -203,10 +231,10 @@ export default function Irt3plPanel({ mockTestId }: { mockTestId: string }) {
                             <table className="w-full text-xs">
                                 <thead className="border-b border-border uppercase tracking-wider text-muted-foreground">
                                     <tr>
-                                        <th className="py-1.5 text-right font-semibold">a</th>
+                                        {showA && <th className="py-1.5 text-right font-semibold">a</th>}
                                         <th className="py-1.5 text-right font-semibold">b</th>
-                                        <th className="py-1.5 text-right font-semibold">c</th>
-                                        <th className="py-1.5 text-right font-semibold">{t("itemsPrior")}</th>
+                                        {showC && <th className="py-1.5 text-right font-semibold">c</th>}
+                                        {showC && <th className="py-1.5 text-right font-semibold">{t("itemsPrior")}</th>}
                                         <th className="py-1.5 text-right font-semibold">{t("itemsSample")}</th>
                                         <th className="py-1.5 text-left font-semibold">{t("itemsStatus")}</th>
                                     </tr>
@@ -214,11 +242,11 @@ export default function Irt3plPanel({ mockTestId }: { mockTestId: string }) {
                                 <tbody className="divide-y divide-border tabular-nums">
                                     {items.map((item) => (
                                         <tr key={item.questionId}>
-                                            <td className="py-1 text-right">{item.discrimination.toFixed(3)}</td>
+                                            {showA && <td className="py-1 text-right">{item.discrimination.toFixed(3)}</td>}
                                             <td className="py-1 text-right">{item.difficulty.toFixed(3)}</td>
-                                            <td className="py-1 text-right">{item.guessing.toFixed(3)}</td>
-                                            <td className="py-1 text-right text-muted-foreground">{item.guessingPrior.toFixed(3)}</td>
-                                            <td className="py-1 text-right">{item.correctCount}/{item.sampleSize}</td>
+                                            {showC && <td className="py-1 text-right">{item.guessing.toFixed(3)}</td>}
+                                            {showC && <td className="py-1 text-right text-muted-foreground">{item.guessingPrior.toFixed(3)}</td>}
+                                            <td className="py-1 text-right">{item.sampleSize}</td>
                                             <td className="py-1 text-left">
                                                 <span className={item.status === "OK" ? "text-muted-foreground" : "font-semibold text-amber-700 dark:text-amber-400"}>
                                                     {item.status}

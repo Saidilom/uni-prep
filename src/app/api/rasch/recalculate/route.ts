@@ -10,7 +10,7 @@ import {
 import { type Theta3plResult } from "@/lib/irt-3pl";
 import { type CalibratedItem } from "@/lib/irt-3pl-calibration";
 import {
-    selectModel, calibrateModel, MODEL_VERSION, DIFFICULTY_METHOD, PERSON_ESTIMATOR, type ModelType,
+    selectModelForTest, modelTransition, calibrateModel, MODEL_VERSION, DIFFICULTY_METHOD, PERSON_ESTIMATOR, type ModelType,
 } from "@/lib/irt-model-selection";
 import { itemFitReport, personFitReport, FitObservation, FitReport } from "@/lib/rasch-fit";
 import { modelResiduals, standardizedResiduals, q3Analysis, residualPca, Q3Analysis, PcaResult } from "@/lib/rasch-q3";
@@ -48,6 +48,11 @@ const PREVIOUS_SCALE_VERSION = "3pl-1.0/mle-newton";
 // Если модель сменилась, причина точнее: "model_upgraded_by_cohort_size".
 const ROUTINE_REVISION_REASON = "theta_map_fix";
 const MODEL_UPGRADE_REVISION_REASON = "model_upgraded_by_cohort_size";
+// Любая другая смена модели — первый выбор по N после бэкфилла миграции 124,
+// в том числе вниз с 3PL на 1PL. «upgraded» здесь было бы неправдой.
+const MODEL_SELECTED_REVISION_REASON = "model_selected_by_cohort_size";
+// Модель строк, посчитанных до миграции 124: единственная, что тогда считала балл.
+const PRE_PROVENANCE_MODEL: ModelType = "IRT_3PL";
 
 // Recalibrates the Rasch item difficulties + person abilities for one Mock
 // test, across every attempt that test has on record — a single new
@@ -84,7 +89,7 @@ export async function POST(req: NextRequest) {
     const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
 
     const { data: test } = await admin.from("mock_tests")
-        .select("subject_id, certificate_scale_max, cohort_mu, cohort_sigma, cohort_n, cohort_frozen_at, model_type")
+        .select("subject_id, certificate_scale_max, cohort_mu, cohort_sigma, cohort_n, cohort_frozen_at, model_type, model_sample_size")
         .eq("id", mockTestId).single();
     const subjectId = (test?.subject_id as string | null) ?? null;
     // Шкала показа ЗАКРЕПЛЕНА за тестом (миграция 112), а не выводится из
@@ -304,9 +309,14 @@ export async function POST(req: NextRequest) {
     // оценки θ, циклическая зависимость). Пороги и обоснование —
     // design/RASCH.md, «ДЕЙСТВУЮЩИЙ РАСЧЁТ» пункт 3.
     const cohortN = new Set(observations.map((o) => o.person)).size;
-    const previousModelType = (test?.model_type as ModelType | null) ?? null;
-    const modelType: ModelType = selectModel(cohortN, previousModelType);
-    const modelChanged = previousModelType !== null && previousModelType !== modelType;
+    // Храповик — только от модели, выбранной диспетчером; бэкфилл миграции 124
+    // (model_sample_size пуст) его не включает. См. selectModelForTest.
+    const { modelType, modelChanged } = selectModelForTest(cohortN, {
+        modelType: (test?.model_type as ModelType | null) ?? null,
+        sampleSize: test?.model_sample_size === null || test?.model_sample_size === undefined
+            ? null
+            : Number(test.model_sample_size),
+    });
 
     // ═══ Z-стандартизация ПО ПОТОКУ (шаги 5–6 документа владельца) ═══
     //
@@ -1004,16 +1014,22 @@ export async function POST(req: NextRequest) {
         // посчитана раньше, могло смениться даже если modelChanged в целом
         // false — например, при первом пересчёте после включения автовыбора,
         // когда у строки ещё нет провенанса вовсе).
-        const previousModel = previous.model_type as ModelType | null;
-        const reason = previousModel && previousModel !== modelType
+        const ownModel = previous.model_type as ModelType | null;
+        // Строка без провенанса, но с баллом — посчитана до миграции 124, то
+        // есть 3PL. Без этого первая смена модели записалась бы рутиной.
+        const previousModel = ownModel ?? (previous.rasch_score !== null ? PRE_PROVENANCE_MODEL : null);
+        const transition = modelTransition(previousModel, modelType);
+        const reason = transition === "UPGRADE"
             ? MODEL_UPGRADE_REVISION_REASON
-            : ROUTINE_REVISION_REASON;
+            : transition === "SELECTED"
+                ? MODEL_SELECTED_REVISION_REASON
+                : ROUTINE_REVISION_REASON;
         // scale_version — версия ПРЕЖНЕГО расчёта. Для строк с собственным
         // провенансом (после миграции 124) собирается из него; для более
         // старых строк без provenance — честный фолбэк на последнюю известную
         // модель до автовыбора (всегда была 3PL).
-        const scaleVersion = previousModel
-            ? `${previousModel}/${previous.model_version ?? "unknown"}`
+        const scaleVersion = ownModel
+            ? `${ownModel}/${previous.model_version ?? "unknown"}`
             : PREVIOUS_SCALE_VERSION;
         return [{
             result_id: next.id,

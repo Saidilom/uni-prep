@@ -87,6 +87,42 @@ export function selectModel(n: number, previousModelType: ModelType | null): Mod
     return naive;
 }
 
+/**
+ * Выбор модели для теста с учётом того, ОТКУДА взялась сохранённая модель.
+ *
+ * Храповик держит только модель, которую выбрал этот диспетчер (у неё
+ * записан model_sample_size). Модель, проставленная бэкфиллом миграции 124
+ * (model_type = 'IRT_3PL', model_sample_size = NULL), — не решение по N, а
+ * пометка «чем считали до автовыбора»: удерживай её храповик, тесты с 36–54
+ * сдавшими навсегда остались бы на 3PL вопреки порогам.
+ *
+ * modelChanged сравнивает с сохранённой моделью независимо от её
+ * происхождения: θ в любом случае переходит в другую метрику, и заморозку
+ * μ/σ надо снять.
+ */
+export function selectModelForTest(
+    n: number,
+    stored: { modelType: ModelType | null; sampleSize: number | null },
+): { modelType: ModelType; previousModelType: ModelType | null; modelChanged: boolean } {
+    const ratchetFrom = stored.sampleSize !== null ? stored.modelType : null;
+    const modelType = selectModel(n, ratchetFrom);
+    return {
+        modelType,
+        previousModelType: stored.modelType,
+        modelChanged: stored.modelType !== null && stored.modelType !== modelType,
+    };
+}
+
+/**
+ * Направление смены модели для причины ревизии: UPGRADE — выше по ступени,
+ * SELECTED — любая другая смена (первый выбор после бэкфилла, в том числе
+ * вниз с 3PL), null — модель та же.
+ */
+export function modelTransition(previous: ModelType | null, next: ModelType): "UPGRADE" | "SELECTED" | null {
+    if (previous === null || previous === next) return null;
+    return TIER_ORDER[next] > TIER_ORDER[previous] ? "UPGRADE" : "SELECTED";
+}
+
 export type ModelCalibration = {
     modelType: ModelType;
     /** Те же поля, что у 3PL-калибровки (a,b,c,cPrior,sampleSize,...) — единый формат для записи в БД независимо от модели. */

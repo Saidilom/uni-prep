@@ -3,7 +3,7 @@ import { estimateRasch, probability as raschProbability, type Observation } from
 import { calibrate3pl, type CalibrationItemInput } from "./irt-3pl-calibration";
 import { probability3pl, itemInformation3pl } from "./irt-3pl";
 import {
-    tierForN, selectModel, calibrateModel, RASCH_EQUIVALENT_A,
+    tierForN, selectModel, selectModelForTest, modelTransition, calibrateModel, RASCH_EQUIVALENT_A,
     MIN_N_FOR_2PL, MIN_N_FOR_3PL, type ModelType,
 } from "./irt-model-selection";
 
@@ -40,6 +40,38 @@ describe("selectModel — храповик", () => {
     it("без истории (новый тест) выбирает по N без ограничений", () => {
         expect(selectModel(50, null)).toBe("RASCH_1PL");
         expect(selectModel(5000, null)).toBe("IRT_3PL");
+    });
+});
+
+describe("selectModelForTest — бэкфилл миграции 124 не запускает храповик", () => {
+    it("3PL из бэкфилла (sampleSize = null) при N=54 уходит в 1PL, и это смена модели", () => {
+        expect(selectModelForTest(54, { modelType: "IRT_3PL", sampleSize: null })).toEqual({
+            modelType: "RASCH_1PL", previousModelType: "IRT_3PL", modelChanged: true,
+        });
+    });
+    it("модель, выбранная диспетчером, при падении N не понижается", () => {
+        expect(selectModelForTest(250, { modelType: "IRT_2PL", sampleSize: 310 })).toEqual({
+            modelType: "IRT_2PL", previousModelType: "IRT_2PL", modelChanged: false,
+        });
+    });
+    it("повышение на пороге 300 работает как раньше", () => {
+        expect(selectModelForTest(300, { modelType: "RASCH_1PL", sampleSize: 299 })).toEqual({
+            modelType: "IRT_2PL", previousModelType: "RASCH_1PL", modelChanged: true,
+        });
+    });
+    it("новый тест без модели — выбор по N, не смена", () => {
+        expect(selectModelForTest(36, { modelType: null, sampleSize: null })).toEqual({
+            modelType: "RASCH_1PL", previousModelType: null, modelChanged: false,
+        });
+    });
+});
+
+describe("modelTransition — причина ревизии", () => {
+    it("выше по ступени — UPGRADE", () => expect(modelTransition("RASCH_1PL", "IRT_2PL")).toBe("UPGRADE"));
+    it("вниз с бэкфилла 3PL — SELECTED", () => expect(modelTransition("IRT_3PL", "RASCH_1PL")).toBe("SELECTED"));
+    it("та же модель или нет истории — null", () => {
+        expect(modelTransition("IRT_3PL", "IRT_3PL")).toBeNull();
+        expect(modelTransition(null, "RASCH_1PL")).toBeNull();
     });
 });
 

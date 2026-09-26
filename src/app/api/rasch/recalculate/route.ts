@@ -18,7 +18,8 @@ import { classifyResponses, countStates, responseForModel, ResponseState } from 
 import { cohortStatistics, type CohortStatistics } from "@/lib/rasch-proportion";
 import { essayPointsToScore75, combineSectionScores, isNativeCertSubject } from "@/lib/native-cert";
 import { writingPointsToScore } from "@/lib/english-cefr";
-import { certificateMaxForSubject, tScoreToScaleExact, scoreMovedForRevision } from "@/lib/certificate-scale";
+import { certificateMaxForSubject, tScoreToScaleExact, scoreMovedForRevision, roundScore } from "@/lib/certificate-scale";
+import { separateDisplayedScores } from "@/lib/score-separation";
 import { gradeLevelFromScore } from "@/lib/mock-grade-level";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { isInternalCall } from "@/lib/internal-auth";
@@ -57,6 +58,9 @@ const MODEL_METHOD_REVISION_REASON = "oplm_difficulty_weights";
 // Модель та же, но сменилась версия расчёта (MODEL_VERSION) — например,
 // целые веса OPLM 1/2/3 → дробные 1..3.
 const MODEL_VERSION_REVISION_REASON = "model_version_changed";
+// Первый пересчёт с разведением показанных баллов (2026-09-26): прежний балл
+// лежал неокруглённым, новый — на сетке показа.
+const TIE_SEPARATION_REVISION_REASON = "display_tie_separation";
 // Модель строк, посчитанных до миграции 124: единственная, что тогда считала балл.
 const PRE_PROVENANCE_MODEL: ModelType = "IRT_3PL";
 
@@ -885,26 +889,35 @@ export async function POST(req: NextRequest) {
     // погрешность итога делится на их число.
     const sectionCount = (hasObjectiveSection ? 1 : 0) + (hasEssaySection ? 1 : 0);
 
+    // ═══ Разные наборы ответов — разный показанный балл ═══
+    //
+    // Решение владельца от 2026-09-26 (design/RASCH.md, «ДЕЙСТВУЮЩИЙ РАСЧЁТ»):
+    // точные баллы у разных наборов разные, но округление показа склеивало
+    // соседей ближе шага сетки. Каждый различный набор получает свою ячейку,
+    // порядок по точному баллу сохраняется. Одинаковые наборы (и одинаковый
+    // балл за сочинение) делят одну ячейку.
+    const exactCertificates = tScores.map((t) => (t === null ? null : tScoreToScaleExact(t, certificateMax)));
+    const scoredIndexes = exactCertificates.flatMap((value, n) => (value === null ? [] : [n]));
+    const separated = separateDisplayedScores(
+        scoredIndexes.map((n) => ({
+            exact: exactCertificates[n] as number,
+            patternKey: `${(examResponses[n] ?? []).join("")}|${hasEssaySection ? essayEarnedByPerson[n] : ""}`,
+        })),
+        certificateMax,
+    );
+    const displayedCertificates: Array<number | null> = exactCertificates.map(() => null);
+    scoredIndexes.forEach((n, k) => { displayedCertificates[n] = separated[k]; });
+
     // Полезная нагрузка считается ОТДЕЛЬНО от записи: между ними надо успеть
     // положить в ревизии прежние значения (§239).
     const nextValues = resultIds.map((id, n) => {
-            const t = tScores[n];
-            // Балл НЕ округляется — ни для полосы уровня, ни для записи.
-            //
-            // §202–203: внутренние вычисления идут в полной точности, а
-            // округление стоит один раз и только на выводе. Хранить
-            // округлённое значило бы округлить В СЕРЕДИНЕ цепочки: этот балл
-            // потом усредняется по группе, филиалу и учителю, и в каждое
-            // среднее уходила бы уже срезанная точность.
-            //
-            // Показ по-прежнему с двумя знаками (§L.8 — правило округления
-            // отчётного балла), но это делает formatScore на экране, а не
-            // расчёт. Различимость от этого не страдает: на реальном варианте
-            // математики различных баллов 49 из 56 и у точных, и у округлённых
-            // до 0,1 — округление показа не склеивает ни одной пары.
+            // Записывается показанный (разведённый) балл, уже на сетке показа:
+            // именно его видит ученик, от него буква, его усредняют по группе.
+            // Отличие от точного — не больше долей шага сетки у соседей.
+            // Точный балл восстановим из rasch_score и μ/σ теста.
             // По закреплённой шкале теста, а не по предметной: см.
             // certificateMax выше.
-            const certificate = t === null ? null : tScoreToScaleExact(t, certificateMax);
+            const certificate = displayedCertificates[n];
 
             // Погрешность есть только у Раш-раздела: у сочинения балл берётся
             // из таблицы документа, а не оценивается моделью, и своей ошибки у
@@ -949,9 +962,9 @@ export async function POST(req: NextRequest) {
                 rasch_score: hasObjectiveSection ? personAbility[n] : null,
                 level_score: certificate,
                 level_score_max: certificateMax,
-                // Буква — от того же точного балла, а он получен из раш-меры θ
+                // Буква — от показанного балла, чтобы число и буква на экране
+                // не противоречили друг другу; сам балл получен из раш-меры θ
                 // (raschThetaToT), а не из взвешенной суммы баллов за задания.
-                // Веса заданий в измерение не входят вовсе.
                 // Максимум передаётся ОБЯЗАТЕЛЬНО: пороги заданы на шкале 75,
                 // а balls показывается из 100 у всех, кроме английского. Без
                 // него сотенный балл сравнился бы с порогами из 75, и ученик
@@ -1038,7 +1051,9 @@ export async function POST(req: NextRequest) {
                     ? MODEL_SELECTED_REVISION_REASON
                     : ownModel === modelType && previous.model_version !== MODEL_VERSION[modelType]
                         ? MODEL_VERSION_REVISION_REASON
-                        : ROUTINE_REVISION_REASON;
+                        : previous.level_score !== null && roundScore(Number(previous.level_score)) !== Number(previous.level_score)
+                            ? TIE_SEPARATION_REVISION_REASON
+                            : ROUTINE_REVISION_REASON;
         // scale_version — версия ПРЕЖНЕГО расчёта. Для строк с собственным
         // провенансом (после миграции 124) собирается из него; для более
         // старых строк без provenance — честный фолбэк на последнюю известную

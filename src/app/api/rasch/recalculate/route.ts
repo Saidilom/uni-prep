@@ -54,6 +54,9 @@ const MODEL_SELECTED_REVISION_REASON = "model_selected_by_cohort_size";
 // Смена модели внутри ступени: классический Раш → OPLM с весами по сложности
 // (решение владельца от 2026-09-26). N тут ни при чём.
 const MODEL_METHOD_REVISION_REASON = "oplm_difficulty_weights";
+// Модель та же, но сменилась версия расчёта (MODEL_VERSION) — например,
+// целые веса OPLM 1/2/3 → дробные 1..3.
+const MODEL_VERSION_REVISION_REASON = "model_version_changed";
 // Модель строк, посчитанных до миграции 124: единственная, что тогда считала балл.
 const PRE_PROVENANCE_MODEL: ModelType = "IRT_3PL";
 
@@ -92,7 +95,7 @@ export async function POST(req: NextRequest) {
     const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
 
     const { data: test } = await admin.from("mock_tests")
-        .select("subject_id, certificate_scale_max, cohort_mu, cohort_sigma, cohort_n, cohort_frozen_at, model_type, model_sample_size")
+        .select("subject_id, certificate_scale_max, cohort_mu, cohort_sigma, cohort_n, cohort_frozen_at, model_type, model_version, model_sample_size")
         .eq("id", mockTestId).single();
     const subjectId = (test?.subject_id as string | null) ?? null;
     // Шкала показа ЗАКРЕПЛЕНА за тестом (миграция 112), а не выводится из
@@ -342,7 +345,10 @@ export async function POST(req: NextRequest) {
     // разные шкалы логитов), и старые μ/σ стали бы чужой точкой отсчёта. Тот
     // же приём уже дважды применялся вручную при смене модели (миграции 117,
     // 118) — здесь он становится постоянной логикой, а не разовой правкой.
-    const frozenCohort: CohortStatistics | null = !modelChanged && test?.cohort_frozen_at && test?.cohort_sigma !== null && test?.cohort_sigma !== undefined
+    // Смена версии той же модели (другие веса OPLM) тоже меняет метрику θ.
+    const metricChanged = modelChanged
+        || (test?.model_type === modelType && test?.model_version !== MODEL_VERSION[modelType]);
+    const frozenCohort: CohortStatistics | null = !metricChanged && test?.cohort_frozen_at && test?.cohort_sigma !== null && test?.cohort_sigma !== undefined
         ? {
             mu: Number(test.cohort_mu),
             sigma: Number(test.cohort_sigma),
@@ -465,7 +471,7 @@ export async function POST(req: NextRequest) {
         //
         // Замороженная имеет приоритет: как только балл показан ученику, он не
         // должен меняться от того, кто сдаст после него. frozenCohort уже
-        // учла modelChanged выше (null при смене модели) — здесь просто её
+        // учла metricChanged выше (null при смене модели) — здесь просто её
         // читаем.
         cohort = frozenCohort ?? cohortStatistics(personAbility);
 
@@ -721,10 +727,10 @@ export async function POST(req: NextRequest) {
             cohort_mu: dbNumber(cohort.mu),
             cohort_sigma: dbNumber(cohort.sigma),
             cohort_n: cohort.count,
-            // modelChanged ⇒ заморозка не наследуется (θ уже в другой
+            // metricChanged ⇒ заморозка не наследуется (θ уже в другой
             // метрике) — заново замораживаем немедленно, если результаты уже
             // показаны, тем же приёмом, что и ниже (anyRevealed).
-            cohort_frozen_at: (modelChanged ? null : test?.cohort_frozen_at)
+            cohort_frozen_at: (metricChanged ? null : test?.cohort_frozen_at)
                 ?? (anyRevealed && cohort.status === "OK" ? calibratedAt : null),
             // ═══ Провенанс модели (§109, §186, §231-232) ═══
             //
@@ -799,7 +805,7 @@ export async function POST(req: NextRequest) {
                 discrimination: itemParameters[i].a,
                 guessing: itemParameters[i].c,
                 guessing_prior: itemParameters[i].cPrior,
-                // Вес OPLM (1/2/3); null у остальных моделей.
+                // Вес OPLM (1..3, дробный); null у остальных моделей.
                 item_weight: itemParameters[i].weight,
                 option_count: optionCountByItem[i],
                 difficulty_se: itemDifficultySe(i),
@@ -1030,7 +1036,9 @@ export async function POST(req: NextRequest) {
                 ? MODEL_METHOD_REVISION_REASON
                 : transition === "SELECTED"
                     ? MODEL_SELECTED_REVISION_REASON
-                    : ROUTINE_REVISION_REASON;
+                    : ownModel === modelType && previous.model_version !== MODEL_VERSION[modelType]
+                        ? MODEL_VERSION_REVISION_REASON
+                        : ROUTINE_REVISION_REASON;
         // scale_version — версия ПРЕЖНЕГО расчёта. Для строк с собственным
         // провенансом (после миграции 124) собирается из него; для более
         // старых строк без provenance — честный фолбэк на последнюю известную

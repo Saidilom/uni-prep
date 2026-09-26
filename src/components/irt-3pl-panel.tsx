@@ -20,7 +20,7 @@ import { summarizeChanges, type ChangeSummary, type ScorePair } from "@/lib/reca
 // С 2026-09-17 модель выбирается по числу сдавших (1PL/2PL/3PL,
 // src/lib/irt-model-selection.ts). У 1PL a и c технические (a = 1/1.702,
 // c = 0), у 2PL c закреплён нулём — такие колонки не показываются. У OPLM
-// вместо a показан вес задания 1/2/3 (a = w/1.702).
+// вместо a показан вес задания от 1 до 3 (a = w/1.702).
 
 const MODEL_LABEL: Record<ModelType, string> = {
     RASCH_1PL: "1PL (Rasch)",
@@ -316,7 +316,7 @@ export default function Irt3plPanel({ mockTestId }: { mockTestId: string }) {
                                 <tbody className="divide-y divide-border tabular-nums">
                                     {items.map((item) => (
                                         <tr key={item.questionId}>
-                                            {isOplm && <td className="py-1 text-right font-semibold">{item.weight ?? "—"}</td>}
+                                            {isOplm && <td className="py-1 text-right font-semibold">{item.weight === null ? "—" : item.weight.toFixed(2)}</td>}
                                             {showA && <td className="py-1 text-right">{item.discrimination.toFixed(3)}</td>}
                                             <td className="py-1 text-right">{item.difficulty.toFixed(3)}</td>
                                             {showC && <td className="py-1 text-right">{item.guessing.toFixed(3)}</td>}

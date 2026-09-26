@@ -30,7 +30,7 @@ import { calibrate3pl, type CalibrationItemInput, type CalibratedItem } from "./
 import { estimateTheta3pl, probability3pl, itemInformation3pl, SCALING_D, type Item3pl, type Theta3plResult } from "./irt-3pl";
 
 // OPLM_1PL — действующая модель нижней ступени с 2026-09-26: Раш с
-// фиксированными целыми весами заданий 1/2/3 по третям сложности (решение
+// фиксированными весами заданий от 1 до 3 линейно по сложности (решение
 // владельца, design/RASCH.md «ДЕЙСТВУЮЩИЙ РАСЧЁТ» п. 3). RASCH_1PL остаётся
 // историческим значением у уже посчитанных строк и в калибровочных тестах.
 export type ModelType = "RASCH_1PL" | "OPLM_1PL" | "IRT_2PL" | "IRT_3PL";
@@ -44,7 +44,7 @@ export const RASCH_EQUIVALENT_A = 1 / SCALING_D;
 
 export const MODEL_VERSION: Record<ModelType, string> = {
     RASCH_1PL: "1pl-jmle-1.0",
-    OPLM_1PL: "oplm-b3-1.0",
+    OPLM_1PL: "oplm-lin-1.1",
     IRT_2PL: "2pl-map-1.0",
     IRT_3PL: "3pl-map-1.1",
 };
@@ -82,11 +82,17 @@ export function tierForN(n: number): ModelType {
     return "OPLM_1PL";
 }
 
+export const OPLM_MIN_WEIGHT = 1;
+export const OPLM_MAX_WEIGHT = 3;
+
 /**
- * Веса OPLM по сложности: трети по b среди заданий со статусом OK — лёгкая
- * треть 1, средняя 2, трудная 3. NONE_CORRECT (никто не решил) — 3,
- * ALL_CORRECT — 1, NO_RESPONSES — 1: информации о θ они не несут, но вес
- * записывается у каждого задания.
+ * Веса OPLM по сложности: линейно по b среди заданий со статусом OK — от 1 у
+ * самого лёгкого до 3 у самого трудного, без округления. NONE_CORRECT (никто
+ * не решил) — 3, ALL_CORRECT и NO_RESPONSES — 1: информации о θ они не несут,
+ * но вес записывается у каждого задания.
+ *
+ * Дробные, а не целые 1/2/3: у целых весов разные наборы ответов часто дают
+ * одну сумму весов, а сумма — достаточная статистика, то есть один балл.
  *
  * Политика владельца (2026-09-26), не оценка по данным: в классическом OPLM
  * вес отражает дискриминацию. Отклонение записано в design/RASCH.md.
@@ -95,19 +101,14 @@ export function difficultyWeights(
     b: readonly number[],
     status: readonly CalibratedItem["status"][],
 ): number[] {
-    const ok = b.map((value, i) => ({ value, i })).filter((x) => status[x.i] === "OK");
-    const sorted = ok.map((x) => x.value).sort((x, y) => x - y);
-    // Граница трети — значение на позиции k/3; равные b по одну сторону
-    // границы, чтобы одинаково трудные задания не получили разные веса.
-    const cut = (fraction: number) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))];
-    const low = sorted.length > 0 ? cut(1 / 3) : 0;
-    const high = sorted.length > 0 ? cut(2 / 3) : 0;
+    const okB = b.filter((_, i) => status[i] === "OK");
+    const min = okB.length > 0 ? Math.min(...okB) : 0;
+    const max = okB.length > 0 ? Math.max(...okB) : 0;
+    const span = OPLM_MAX_WEIGHT - OPLM_MIN_WEIGHT;
     return b.map((value, i) => {
-        if (status[i] === "NONE_CORRECT") return 3;
-        if (status[i] !== "OK") return 1;
-        if (value < low) return 1;
-        if (value < high) return 2;
-        return 3;
+        if (status[i] === "NONE_CORRECT") return OPLM_MAX_WEIGHT;
+        if (status[i] !== "OK" || max === min) return OPLM_MIN_WEIGHT;
+        return OPLM_MIN_WEIGHT + (span * (value - min)) / (max - min);
     });
 }
 
@@ -166,7 +167,7 @@ export type ModelCalibration = {
     modelType: ModelType;
     /**
      * Те же поля, что у 3PL-калибровки (a,b,c,cPrior,sampleSize,...) — единый
-     * формат для записи в БД независимо от модели. weight — вес OPLM (1/2/3),
+     * формат для записи в БД независимо от модели. weight — вес OPLM (1..3),
      * у остальных моделей null.
      */
     items: Array<CalibratedItem & { weight: number | null }>;

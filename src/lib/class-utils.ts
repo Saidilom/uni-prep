@@ -2037,7 +2037,7 @@ export type Irt3plItem = {
     optionCount: number | null;
     sampleSize: number;
     status: string;
-    /** Вес OPLM (1/2/3); null у остальных моделей. */
+    /** Вес OPLM (1..3, дробный); null у остальных моделей. */
     weight: number | null;
 };
 

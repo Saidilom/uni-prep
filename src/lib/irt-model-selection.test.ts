@@ -74,21 +74,24 @@ describe("selectModelForTest — бэкфилл миграции 124 не зап
     });
 });
 
-describe("difficultyWeights — трети по сложности", () => {
-    it("лёгкая треть 1, средняя 2, трудная 3", () => {
-        const b = [-2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2];
+describe("difficultyWeights — линейно по сложности от 1 до 3", () => {
+    it("самое лёгкое 1, самое трудное 3, между ними пропорционально b", () => {
+        const b = [-2, -1, 0, 1, 2];
         const status = b.map(() => "OK" as const);
-        expect(difficultyWeights(b, status)).toEqual([1, 1, 1, 2, 2, 2, 3, 3, 3]);
+        expect(difficultyWeights(b, status)).toEqual([1, 1.5, 2, 2.5, 3]);
     });
     it("порядок заданий не важен — вес по значению b", () => {
-        const b = [2, -2, 0, 1.5, -1.5, 0.5, 1, -1, -0.5];
+        const b = [2, -2, 0.5];
         const status = b.map(() => "OK" as const);
-        expect(difficultyWeights(b, status)).toEqual([3, 1, 2, 3, 1, 2, 3, 1, 2]);
+        expect(difficultyWeights(b, status)).toEqual([3, 1, 2.25]);
     });
-    it("крайние задания: никто не решил — 3, решили все или нет ответов — 1; в трети не входят", () => {
+    it("крайние задания: никто не решил — 3, решили все или нет ответов — 1; в размах не входят", () => {
         const b = [-1, 0, 1, 8, -8, 0];
         const status = ["OK", "OK", "OK", "NONE_CORRECT", "ALL_CORRECT", "NO_RESPONSES"] as const;
         expect(difficultyWeights(b, [...status])).toEqual([1, 2, 3, 3, 1, 1]);
+    });
+    it("все b равны — вес 1 у всех", () => {
+        expect(difficultyWeights([0.3, 0.3], ["OK", "OK"])).toEqual([1, 1]);
     });
 });
 
@@ -232,14 +235,38 @@ describe("calibrateModel — OPLM_1PL: веса по сложности вход
     const oplm = calibrateModel("OPLM_1PL", items);
     const rasch = calibrateModel("RASCH_1PL", items);
 
-    it("у каждого задания вес 1/2/3, a = w/D, c = 0; у Раша веса нет", () => {
+    it("у каждого задания вес в [1, 3], a = w/D, c = 0; у Раша веса нет", () => {
         for (const item of oplm.items) {
-            expect([1, 2, 3]).toContain(item.weight);
+            expect(item.weight).toBeGreaterThanOrEqual(1);
+            expect(item.weight).toBeLessThanOrEqual(3);
             expect(item.a).toBeCloseTo((item.weight as number) / 1.702, 12);
             expect(item.c).toBe(0);
         }
         expect(rasch.items.every((item) => item.weight === null)).toBe(true);
-        expect(oplm.items.filter((i) => i.weight === 3).length).toBeGreaterThan(0);
+        expect(Math.max(...oplm.items.map((i) => i.weight as number))).toBe(3);
+        expect(Math.min(...oplm.items.map((i) => i.weight as number))).toBe(1);
+    });
+
+    it("неравномерные сложности: разные наборы с одинаковым числом верных дают разные θ", () => {
+        const r = mulberry32(5);
+        const irregularB = Array.from({ length: itemCount }, () => (r() - 0.5) * 4);
+        const model = calibrateModel("OPLM_1PL", irregularB.map((b) => ({
+            responses: Array.from({ length: people }, (_, p) => {
+                const theta = (p - (people - 1) / 2) * 0.05;
+                return (r() < 1 / (1 + Math.exp(-(theta - b))) ? 1 : 0) as 0 | 1;
+            }),
+            optionCount: 4,
+        })));
+        let rows = 0;
+        const thetas = new Set<string>();
+        for (let mask = 0; mask < 1 << itemCount && rows < 60; mask++) {
+            let count = 0;
+            for (let k = 0; k < itemCount; k++) if (mask & (1 << k)) count++;
+            if (count !== 6) continue;
+            rows++;
+            thetas.add(model.estimateTheta(Array.from({ length: itemCount }, (_, k) => ((mask >> k) & 1) as 0 | 1)).theta.toFixed(6));
+        }
+        expect(thetas.size).toBe(rows);
     });
 
     it("одинаковое число верных: у Раша одна θ, у OPLM выше тот, кто решил трудные", () => {

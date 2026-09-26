@@ -82,10 +82,14 @@ export function estimateRasch(
     observations: Observation[],
     personCount: number,
     itemCount: number,
-    opts: { maxIterations?: number; tolerance?: number } = {}
+    // weights — фиксированные целые веса заданий OPLM: P = logistic(w·(θ−b)).
+    // Без них (все 1) расчёт совпадает с классическим Рашем до бита. С ними
+    // достаточная статистика ученика — взвешенная сумма Σ w·x, а не счёт.
+    opts: { maxIterations?: number; tolerance?: number; weights?: readonly number[] } = {}
 ): RaschResult {
     const maxIterations = opts.maxIterations ?? 200;
     const tolerance = opts.tolerance ?? 0.02;
+    const weight = (item: number) => opts.weights?.[item] ?? 1;
 
     const personScore = new Array(personCount).fill(0);
     const personMax = new Array(personCount).fill(0);
@@ -95,8 +99,9 @@ export function estimateRasch(
     const byItem: Observation[][] = Array.from({ length: itemCount }, () => []);
 
     for (const obs of observations) {
-        personScore[obs.person] += obs.correct;
-        personMax[obs.person] += 1;
+        const w = weight(obs.item);
+        personScore[obs.person] += w * obs.correct;
+        personMax[obs.person] += w;
         itemScore[obs.item] += obs.correct;
         itemMax[obs.item] += 1;
         byPerson[obs.person].push(obs);
@@ -126,15 +131,16 @@ export function estimateRasch(
 
         // Pass 1: item difficulties, using the current abilities.
         for (let i = 0; i < itemCount; i++) {
+            const w = weight(i);
             let expected = 0;
             let info = 0;
             for (const obs of byItem[i]) {
-                const p = probability(theta[obs.person], b[i]);
+                const p = probability(w * theta[obs.person], w * b[i]);
                 expected += p;
                 info += p * (1 - p);
             }
             if (info <= 1e-8) continue;
-            const delta = (itemTarget[i] - expected) / info;
+            const delta = (itemTarget[i] - expected) / (w * info);
             const nextB = clamp(b[i] - dampStep(delta, stepScale), -PARAM_CLAMP, PARAM_CLAMP);
             maxDelta = Math.max(maxDelta, Math.abs(nextB - b[i]));
             b[i] = nextB;
@@ -146,9 +152,10 @@ export function estimateRasch(
             let expected = 0;
             let info = 0;
             for (const obs of byPerson[n]) {
-                const p = probability(theta[n], b[obs.item]);
-                expected += p;
-                info += p * (1 - p);
+                const w = weight(obs.item);
+                const p = probability(w * theta[n], w * b[obs.item]);
+                expected += w * p;
+                info += w * w * p * (1 - p);
             }
             if (info <= 1e-8) continue;
             const delta = (expected - personTarget[n]) / info;

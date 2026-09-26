@@ -3,7 +3,7 @@ import { estimateRasch, probability as raschProbability, type Observation } from
 import { calibrate3pl, type CalibrationItemInput } from "./irt-3pl-calibration";
 import { probability3pl, itemInformation3pl } from "./irt-3pl";
 import {
-    tierForN, selectModel, selectModelForTest, modelTransition, calibrateModel, RASCH_EQUIVALENT_A,
+    tierForN, selectModel, selectModelForTest, modelTransition, difficultyWeights, calibrateModel, RASCH_EQUIVALENT_A,
     MIN_N_FOR_2PL, MIN_N_FOR_3PL, type ModelType,
 } from "./irt-model-selection";
 
@@ -18,7 +18,7 @@ function mulberry32(seed: number) {
 }
 
 describe("tierForN — пороги", () => {
-    it("299 сдавших — ещё 1PL", () => expect(tierForN(299)).toBe("RASCH_1PL"));
+    it("299 сдавших — ещё 1PL (OPLM)", () => expect(tierForN(299)).toBe("OPLM_1PL"));
     it("300 сдавших — уже 2PL", () => expect(tierForN(300)).toBe("IRT_2PL"));
     it("999 сдавших — ещё 2PL", () => expect(tierForN(999)).toBe("IRT_2PL"));
     it("1000 сдавших — уже 3PL", () => expect(tierForN(1000)).toBe("IRT_3PL"));
@@ -38,15 +38,18 @@ describe("selectModel — храповик", () => {
         expect(selectModel(500, "RASCH_1PL")).toBe("IRT_2PL");
     });
     it("без истории (новый тест) выбирает по N без ограничений", () => {
-        expect(selectModel(50, null)).toBe("RASCH_1PL");
+        expect(selectModel(50, null)).toBe("OPLM_1PL");
         expect(selectModel(5000, null)).toBe("IRT_3PL");
+    });
+    it("RASCH_1PL — та же ступень: храповик не держит, переходит в OPLM", () => {
+        expect(selectModel(36, "RASCH_1PL")).toBe("OPLM_1PL");
     });
 });
 
 describe("selectModelForTest — бэкфилл миграции 124 не запускает храповик", () => {
     it("3PL из бэкфилла (sampleSize = null) при N=54 уходит в 1PL, и это смена модели", () => {
         expect(selectModelForTest(54, { modelType: "IRT_3PL", sampleSize: null })).toEqual({
-            modelType: "RASCH_1PL", previousModelType: "IRT_3PL", modelChanged: true,
+            modelType: "OPLM_1PL", previousModelType: "IRT_3PL", modelChanged: true,
         });
     });
     it("модель, выбранная диспетчером, при падении N не понижается", () => {
@@ -61,14 +64,38 @@ describe("selectModelForTest — бэкфилл миграции 124 не зап
     });
     it("новый тест без модели — выбор по N, не смена", () => {
         expect(selectModelForTest(36, { modelType: null, sampleSize: null })).toEqual({
-            modelType: "RASCH_1PL", previousModelType: null, modelChanged: false,
+            modelType: "OPLM_1PL", previousModelType: null, modelChanged: false,
         });
+    });
+    it("тест, уже посчитанный Рашем по N, переходит на OPLM — это смена модели", () => {
+        expect(selectModelForTest(36, { modelType: "RASCH_1PL", sampleSize: 36 })).toEqual({
+            modelType: "OPLM_1PL", previousModelType: "RASCH_1PL", modelChanged: true,
+        });
+    });
+});
+
+describe("difficultyWeights — трети по сложности", () => {
+    it("лёгкая треть 1, средняя 2, трудная 3", () => {
+        const b = [-2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2];
+        const status = b.map(() => "OK" as const);
+        expect(difficultyWeights(b, status)).toEqual([1, 1, 1, 2, 2, 2, 3, 3, 3]);
+    });
+    it("порядок заданий не важен — вес по значению b", () => {
+        const b = [2, -2, 0, 1.5, -1.5, 0.5, 1, -1, -0.5];
+        const status = b.map(() => "OK" as const);
+        expect(difficultyWeights(b, status)).toEqual([3, 1, 2, 3, 1, 2, 3, 1, 2]);
+    });
+    it("крайние задания: никто не решил — 3, решили все или нет ответов — 1; в трети не входят", () => {
+        const b = [-1, 0, 1, 8, -8, 0];
+        const status = ["OK", "OK", "OK", "NONE_CORRECT", "ALL_CORRECT", "NO_RESPONSES"] as const;
+        expect(difficultyWeights(b, [...status])).toEqual([1, 2, 3, 3, 1, 1]);
     });
 });
 
 describe("modelTransition — причина ревизии", () => {
     it("выше по ступени — UPGRADE", () => expect(modelTransition("RASCH_1PL", "IRT_2PL")).toBe("UPGRADE"));
-    it("вниз с бэкфилла 3PL — SELECTED", () => expect(modelTransition("IRT_3PL", "RASCH_1PL")).toBe("SELECTED"));
+    it("вниз с бэкфилла 3PL — SELECTED", () => expect(modelTransition("IRT_3PL", "OPLM_1PL")).toBe("SELECTED"));
+    it("Раш → OPLM (та же ступень) — METHOD", () => expect(modelTransition("RASCH_1PL", "OPLM_1PL")).toBe("METHOD"));
     it("та же модель или нет истории — null", () => {
         expect(modelTransition("IRT_3PL", "IRT_3PL")).toBeNull();
         expect(modelTransition(null, "RASCH_1PL")).toBeNull();
@@ -187,5 +214,42 @@ describe("calibrateModel — estimateTheta реально использует �
         const strong = model.estimateTheta(new Array(itemCount).fill(1) as Array<0 | 1>);
         const weak = model.estimateTheta(new Array(itemCount).fill(0) as Array<0 | 1>);
         expect(strong.theta).toBeGreaterThan(weak.theta);
+    });
+});
+
+describe("calibrateModel — OPLM_1PL: веса по сложности входят в θ", () => {
+    const rand = mulberry32(11);
+    const itemCount = 12;
+    const people = 80;
+    const trueB = Array.from({ length: itemCount }, (_, i) => (i - (itemCount - 1) / 2) * 0.4);
+    const items: CalibrationItemInput[] = trueB.map((b) => ({
+        responses: Array.from({ length: people }, (_, p) => {
+            const theta = (p - (people - 1) / 2) * 0.05;
+            return (rand() < 1 / (1 + Math.exp(-(theta - b))) ? 1 : 0) as 0 | 1;
+        }),
+        optionCount: 4,
+    }));
+    const oplm = calibrateModel("OPLM_1PL", items);
+    const rasch = calibrateModel("RASCH_1PL", items);
+
+    it("у каждого задания вес 1/2/3, a = w/D, c = 0; у Раша веса нет", () => {
+        for (const item of oplm.items) {
+            expect([1, 2, 3]).toContain(item.weight);
+            expect(item.a).toBeCloseTo((item.weight as number) / 1.702, 12);
+            expect(item.c).toBe(0);
+        }
+        expect(rasch.items.every((item) => item.weight === null)).toBe(true);
+        expect(oplm.items.filter((i) => i.weight === 3).length).toBeGreaterThan(0);
+    });
+
+    it("одинаковое число верных: у Раша одна θ, у OPLM выше тот, кто решил трудные", () => {
+        const order = oplm.items.map((item, i) => ({ b: item.b, i })).sort((x, y) => x.b - y.b).map((x) => x.i);
+        const easy = new Array(itemCount).fill(0) as Array<0 | 1>;
+        const hard = new Array(itemCount).fill(0) as Array<0 | 1>;
+        order.slice(0, 4).forEach((i) => { easy[i] = 1; });
+        order.slice(-4).forEach((i) => { hard[i] = 1; });
+
+        expect(rasch.estimateTheta(easy).theta).toBeCloseTo(rasch.estimateTheta(hard).theta, 6);
+        expect(oplm.estimateTheta(hard).theta).toBeGreaterThan(oplm.estimateTheta(easy).theta + 0.2);
     });
 });

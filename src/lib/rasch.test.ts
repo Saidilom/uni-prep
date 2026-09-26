@@ -107,6 +107,55 @@ describe("estimateRasch", () => {
     });
 });
 
+describe("estimateRasch с весами (OPLM)", () => {
+    // 12 заданий по возрастанию сложности, веса 1/2/3 по третям. Последние
+    // два ученика решили по 4 задания: A — четыре самых лёгких, B — четыре
+    // самых трудных.
+    const itemCount = 12;
+    const trueB = Array.from({ length: itemCount }, (_, i) => (i - (itemCount - 1) / 2) * 0.4);
+    const weights = trueB.map((_, i) => (i < 4 ? 1 : i < 8 ? 2 : 3));
+    const cohort = 60;
+    const trueTheta = Array.from({ length: cohort }, (_, i) => (i - (cohort - 1) / 2) * 0.08);
+    const base = simulate(cohort, itemCount, trueTheta, trueB, 0, 7);
+    const withPattern = (person: number, solved: (i: number) => boolean): Observation[] =>
+        Array.from({ length: itemCount }, (_, i) => ({ person, item: i, correct: (solved(i) ? 1 : 0) as 0 | 1 }));
+    const A = cohort;
+    const B = cohort + 1;
+    const observations = [
+        ...base,
+        ...withPattern(A, (i) => i < 4),
+        ...withPattern(B, (i) => i >= 8),
+    ];
+
+    it("все веса 1 — результат идентичен классическому Рашу", () => {
+        const plain = estimateRasch(observations, cohort + 2, itemCount);
+        const ones = estimateRasch(observations, cohort + 2, itemCount, { weights: new Array(itemCount).fill(1) });
+        expect(ones).toEqual(plain);
+    });
+
+    it("без весов одинаковый счёт даёт одинаковую θ, с весами трудные задания ставят выше", () => {
+        const plain = estimateRasch(observations, cohort + 2, itemCount);
+        expect(plain.personAbility[A]).toBeCloseTo(plain.personAbility[B], 1);
+
+        const weighted = estimateRasch(observations, cohort + 2, itemCount, { weights });
+        expect(weighted.converged).toBe(true);
+        expect(weighted.personAbility[B]).toBeGreaterThan(weighted.personAbility[A] + 0.3);
+    });
+
+    it("одинаковая взвешенная сумма — одинаковая θ при разных узорах", () => {
+        // C: задание веса 3 (Σw = 3); D: задания весов 1 и 2 (Σw = 3).
+        const C = cohort + 2;
+        const D = cohort + 3;
+        const obs = [
+            ...observations,
+            ...withPattern(C, (i) => i === 8),
+            ...withPattern(D, (i) => i === 0 || i === 4),
+        ];
+        const weighted = estimateRasch(obs, cohort + 4, itemCount, { weights });
+        expect(weighted.personAbility[C]).toBeCloseTo(weighted.personAbility[D], 6);
+    });
+});
+
 // Z-стандартизация по ЭТАЛОННОЙ популяции (μ, σ), а не по сдавшим этот мок.
 // Формула из методики Агентства не менялась — менялось то, относительно кого
 // считать. См. src/lib/reference-population.ts.

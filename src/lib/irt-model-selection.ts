@@ -29,7 +29,11 @@ import { estimateRasch, type Observation } from "./rasch";
 import { calibrate3pl, type CalibrationItemInput, type CalibratedItem } from "./irt-3pl-calibration";
 import { estimateTheta3pl, probability3pl, itemInformation3pl, SCALING_D, type Item3pl, type Theta3plResult } from "./irt-3pl";
 
-export type ModelType = "RASCH_1PL" | "IRT_2PL" | "IRT_3PL";
+// OPLM_1PL — действующая модель нижней ступени с 2026-09-26: Раш с
+// фиксированными целыми весами заданий 1/2/3 по третям сложности (решение
+// владельца, design/RASCH.md «ДЕЙСТВУЮЩИЙ РАСЧЁТ» п. 3). RASCH_1PL остаётся
+// историческим значением у уже посчитанных строк и в калибровочных тестах.
+export type ModelType = "RASCH_1PL" | "OPLM_1PL" | "IRT_2PL" | "IRT_3PL";
 
 /**
  * Единственное значение a, при котором D·a·(θ−b) = (θ−b) — то есть 3PL-формула
@@ -40,12 +44,14 @@ export const RASCH_EQUIVALENT_A = 1 / SCALING_D;
 
 export const MODEL_VERSION: Record<ModelType, string> = {
     RASCH_1PL: "1pl-jmle-1.0",
+    OPLM_1PL: "oplm-b3-1.0",
     IRT_2PL: "2pl-map-1.0",
     IRT_3PL: "3pl-map-1.1",
 };
 
 export const DIFFICULTY_METHOD: Record<ModelType, string> = {
     RASCH_1PL: "1PL_JMLE",
+    OPLM_1PL: "OPLM_JMLE",
     IRT_2PL: "2PL_MMLE",
     IRT_3PL: "3PL_MMLE",
 };
@@ -54,6 +60,7 @@ export const PERSON_ESTIMATOR: Record<ModelType, string> = {
     // Калибровка для 1PL — JMLE, но оценка θ ученику (то, что реально пишется
     // в mock_results) — тот же MAP-Ньютон, что у 2PL/3PL: см. шапку файла.
     RASCH_1PL: "JMLE_NEWTON_1PL",
+    OPLM_1PL: "MAP_NEWTON_OPLM",
     IRT_2PL: "MAP_NEWTON_2PL",
     IRT_3PL: "MAP_NEWTON_3PL",
 };
@@ -66,13 +73,42 @@ export const PERSON_ESTIMATOR: Record<ModelType, string> = {
 export const MIN_N_FOR_2PL = 300;
 export const MIN_N_FOR_3PL = 1000;
 
-const TIER_ORDER: Record<ModelType, number> = { RASCH_1PL: 0, IRT_2PL: 1, IRT_3PL: 2 };
+const TIER_ORDER: Record<ModelType, number> = { RASCH_1PL: 0, OPLM_1PL: 0, IRT_2PL: 1, IRT_3PL: 2 };
 
 /** Модель, соответствующая N сдавших, без учёта истории. */
 export function tierForN(n: number): ModelType {
     if (n >= MIN_N_FOR_3PL) return "IRT_3PL";
     if (n >= MIN_N_FOR_2PL) return "IRT_2PL";
-    return "RASCH_1PL";
+    return "OPLM_1PL";
+}
+
+/**
+ * Веса OPLM по сложности: трети по b среди заданий со статусом OK — лёгкая
+ * треть 1, средняя 2, трудная 3. NONE_CORRECT (никто не решил) — 3,
+ * ALL_CORRECT — 1, NO_RESPONSES — 1: информации о θ они не несут, но вес
+ * записывается у каждого задания.
+ *
+ * Политика владельца (2026-09-26), не оценка по данным: в классическом OPLM
+ * вес отражает дискриминацию. Отклонение записано в design/RASCH.md.
+ */
+export function difficultyWeights(
+    b: readonly number[],
+    status: readonly CalibratedItem["status"][],
+): number[] {
+    const ok = b.map((value, i) => ({ value, i })).filter((x) => status[x.i] === "OK");
+    const sorted = ok.map((x) => x.value).sort((x, y) => x - y);
+    // Граница трети — значение на позиции k/3; равные b по одну сторону
+    // границы, чтобы одинаково трудные задания не получили разные веса.
+    const cut = (fraction: number) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))];
+    const low = sorted.length > 0 ? cut(1 / 3) : 0;
+    const high = sorted.length > 0 ? cut(2 / 3) : 0;
+    return b.map((value, i) => {
+        if (status[i] === "NONE_CORRECT") return 3;
+        if (status[i] !== "OK") return 1;
+        if (value < low) return 1;
+        if (value < high) return 2;
+        return 3;
+    });
 }
 
 /**
@@ -115,18 +151,25 @@ export function selectModelForTest(
 
 /**
  * Направление смены модели для причины ревизии: UPGRADE — выше по ступени,
- * SELECTED — любая другая смена (первый выбор после бэкфилла, в том числе
- * вниз с 3PL), null — модель та же.
+ * METHOD — другая модель той же ступени (RASCH_1PL → OPLM_1PL), SELECTED —
+ * любая другая смена (первый выбор после бэкфилла, в том числе вниз с 3PL),
+ * null — модель та же.
  */
-export function modelTransition(previous: ModelType | null, next: ModelType): "UPGRADE" | "SELECTED" | null {
+export function modelTransition(previous: ModelType | null, next: ModelType): "UPGRADE" | "METHOD" | "SELECTED" | null {
     if (previous === null || previous === next) return null;
-    return TIER_ORDER[next] > TIER_ORDER[previous] ? "UPGRADE" : "SELECTED";
+    if (TIER_ORDER[next] > TIER_ORDER[previous]) return "UPGRADE";
+    if (TIER_ORDER[next] === TIER_ORDER[previous]) return "METHOD";
+    return "SELECTED";
 }
 
 export type ModelCalibration = {
     modelType: ModelType;
-    /** Те же поля, что у 3PL-калибровки (a,b,c,cPrior,sampleSize,...) — единый формат для записи в БД независимо от модели. */
-    items: CalibratedItem[];
+    /**
+     * Те же поля, что у 3PL-калибровки (a,b,c,cPrior,sampleSize,...) — единый
+     * формат для записи в БД независимо от модели. weight — вес OPLM (1/2/3),
+     * у остальных моделей null.
+     */
+    items: Array<CalibratedItem & { weight: number | null }>;
     converged: boolean;
     iterations: number;
     estimateTheta: (examRow: ReadonlyArray<0 | 1>) => Theta3plResult;
@@ -154,8 +197,9 @@ export function calibrateModel(
     let converged: boolean;
     let iterations: number;
     let calibratedItems: CalibratedItem[];
+    let weights: number[] | null = null;
 
-    if (modelType === "RASCH_1PL") {
+    if (modelType === "RASCH_1PL" || modelType === "OPLM_1PL") {
         const itemCount = itemsInput.length;
         const personCount = itemCount > 0 ? itemsInput[0].responses.length : 0;
         const observations: Observation[] = [];
@@ -164,27 +208,41 @@ export function calibrateModel(
                 if (r !== null) observations.push({ person: p, item: i, correct: r });
             });
         });
-        const result = estimateRasch(observations, personCount, itemCount);
-        items3pl = result.itemDifficulty.map((b) => ({ a: RASCH_EQUIVALENT_A, b, c: 0 }));
-        converged = result.converged;
-        iterations = result.iterations;
-        calibratedItems = items3pl.map((item, i) => {
-            const responses = itemsInput[i].responses;
+        const counts = itemsInput.map((item) => {
             let answered = 0;
             let correct = 0;
-            for (const value of responses) {
+            for (const value of item.responses) {
                 if (value === null) continue;
                 answered++;
                 correct += value;
             }
-            return {
-                ...item,
-                cPrior: 0,
-                sampleSize: answered,
-                correctCount: correct,
-                status: calibratedStatus(answered, correct),
-            };
+            return { answered, correct, status: calibratedStatus(answered, correct) };
         });
+
+        let result = estimateRasch(observations, personCount, itemCount);
+        if (modelType === "OPLM_1PL") {
+            // Веса — по сложностям классического Раша на этих же ответах, затем
+            // сложности заново, уже с весами: при другой крутизне кривых
+            // прежние b перестают быть оценкой.
+            weights = difficultyWeights(result.itemDifficulty, counts.map((c) => c.status));
+            result = estimateRasch(observations, personCount, itemCount, { weights });
+        }
+        const w = weights;
+        items3pl = result.itemDifficulty.map((b, i) => ({
+            // a = w/D: D·a·(θ−b) = w·(θ−b) — ровно кривая OPLM (при w = 1 — Раш).
+            a: w ? w[i] / SCALING_D : RASCH_EQUIVALENT_A,
+            b,
+            c: 0,
+        }));
+        converged = result.converged;
+        iterations = result.iterations;
+        calibratedItems = items3pl.map((item, i) => ({
+            ...item,
+            cPrior: 0,
+            sampleSize: counts[i].answered,
+            correctCount: counts[i].correct,
+            status: counts[i].status,
+        }));
     } else {
         // 2PL — тот же MMLE/EM, что и 3PL, но c закреплён нулём у ВСЕХ заданий
         // (existующий механизм fixedC, обычно применяемый только к заданиям со
@@ -202,9 +260,10 @@ export function calibrateModel(
         iterations = calibration.iterations;
     }
 
+    const itemWeights = weights;
     return {
         modelType,
-        items: calibratedItems,
+        items: calibratedItems.map((item, i) => ({ ...item, weight: itemWeights ? itemWeights[i] : null })),
         converged,
         iterations,
         estimateTheta: (examRow) =>

@@ -51,6 +51,9 @@ const MODEL_UPGRADE_REVISION_REASON = "model_upgraded_by_cohort_size";
 // Любая другая смена модели — первый выбор по N после бэкфилла миграции 124,
 // в том числе вниз с 3PL на 1PL. «upgraded» здесь было бы неправдой.
 const MODEL_SELECTED_REVISION_REASON = "model_selected_by_cohort_size";
+// Смена модели внутри ступени: классический Раш → OPLM с весами по сложности
+// (решение владельца от 2026-09-26). N тут ни при чём.
+const MODEL_METHOD_REVISION_REASON = "oplm_difficulty_weights";
 // Модель строк, посчитанных до миграции 124: единственная, что тогда считала балл.
 const PRE_PROVENANCE_MODEL: ModelType = "IRT_3PL";
 
@@ -357,7 +360,7 @@ export async function POST(req: NextRequest) {
     let itemDifficultyByIndex: number[] = new Array(questionIds.length).fill(0);
     // Полные параметры заданий (a, b, c). Нужны и погрешности, и fit, и
     // графикам: под 3PL одной трудности уже недостаточно.
-    let itemParameters: CalibratedItem[] = [];
+    let itemParameters: Array<CalibratedItem & { weight: number | null }> = [];
 
     // ═══ Погрешность балла (ТЗ D.3, D.4, §215, §217) ═══
     //
@@ -796,6 +799,8 @@ export async function POST(req: NextRequest) {
                 discrimination: itemParameters[i].a,
                 guessing: itemParameters[i].c,
                 guessing_prior: itemParameters[i].cPrior,
+                // Вес OPLM (1/2/3); null у остальных моделей.
+                item_weight: itemParameters[i].weight,
                 option_count: optionCountByItem[i],
                 difficulty_se: itemDifficultySe(i),
                 item_status: itemStatus,
@@ -1021,9 +1026,11 @@ export async function POST(req: NextRequest) {
         const transition = modelTransition(previousModel, modelType);
         const reason = transition === "UPGRADE"
             ? MODEL_UPGRADE_REVISION_REASON
-            : transition === "SELECTED"
-                ? MODEL_SELECTED_REVISION_REASON
-                : ROUTINE_REVISION_REASON;
+            : transition === "METHOD"
+                ? MODEL_METHOD_REVISION_REASON
+                : transition === "SELECTED"
+                    ? MODEL_SELECTED_REVISION_REASON
+                    : ROUTINE_REVISION_REASON;
         // scale_version — версия ПРЕЖНЕГО расчёта. Для строк с собственным
         // провенансом (после миграции 124) собирается из него; для более
         // старых строк без provenance — честный фолбэк на последнюю известную

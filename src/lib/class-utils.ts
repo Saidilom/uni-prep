@@ -2037,6 +2037,8 @@ export type Irt3plItem = {
     optionCount: number | null;
     sampleSize: number;
     status: string;
+    /** Вес OPLM (1/2/3); null у остальных моделей. */
+    weight: number | null;
 };
 
 export type Irt3plPerson = {
@@ -2072,7 +2074,7 @@ export const fetchIrt3plReport = async (mockTestId: string): Promise<Irt3plRepor
         const [{ data: items }, { data: people }, { data: test }] = await Promise.all([
             supabase
                 .from("mock_item_calibration")
-                .select("question_id, discrimination, difficulty, guessing, guessing_prior, option_count, sample_size, item_status, difficulty_method, person_estimator, calibrated_at")
+                .select("question_id, discrimination, difficulty, guessing, guessing_prior, option_count, sample_size, item_status, item_weight, difficulty_method, person_estimator, calibrated_at")
                 .eq("mock_test_id", mockTestId)
                 .order("difficulty"),
             supabase
@@ -2136,6 +2138,7 @@ export const fetchIrt3plReport = async (mockTestId: string): Promise<Irt3plRepor
                 optionCount: row.option_count === null ? null : Number(row.option_count),
                 sampleSize: Number(row.sample_size ?? 0),
                 status: (row.item_status as string) ?? "OK",
+                weight: num(row.item_weight),
             })),
             people: personRows.map((row) => ({
                 resultId: row.id as string,

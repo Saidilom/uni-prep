@@ -19,10 +19,12 @@ import { summarizeChanges, type ChangeSummary, type ScorePair } from "@/lib/reca
 //
 // С 2026-09-17 модель выбирается по числу сдавших (1PL/2PL/3PL,
 // src/lib/irt-model-selection.ts). У 1PL a и c технические (a = 1/1.702,
-// c = 0), у 2PL c закреплён нулём — такие колонки не показываются.
+// c = 0), у 2PL c закреплён нулём — такие колонки не показываются. У OPLM
+// вместо a показан вес задания 1/2/3 (a = w/1.702).
 
 const MODEL_LABEL: Record<ModelType, string> = {
     RASCH_1PL: "1PL (Rasch)",
+    OPLM_1PL: "1PL (OPLM)",
     IRT_2PL: "2PL",
     IRT_3PL: "3PL",
 };
@@ -133,7 +135,9 @@ export default function Irt3plPanel({ mockTestId }: { mockTestId: string }) {
 
     // Без модели на тесте — расчёт до миграции 124, а тогда считала только 3PL.
     const modelType: ModelType = report.modelType ?? "IRT_3PL";
-    const showA = modelType !== "RASCH_1PL";
+    const isOplm = modelType === "OPLM_1PL";
+    const showA = modelType === "IRT_2PL" || modelType === "IRT_3PL";
+    const label = (m: ModelType) => (m === "OPLM_1PL" ? t("modelOplm") : MODEL_LABEL[m]);
     const showC = modelType === "IRT_3PL";
     const undetermined = items.filter((i) => i.status === "NONE_CORRECT" || i.status === "ALL_CORRECT" || i.status === "NO_RESPONSES").length;
 
@@ -152,7 +156,7 @@ export default function Irt3plPanel({ mockTestId }: { mockTestId: string }) {
                     <h3 className="mr-1 text-lg font-bold">{t("title")}</h3>
                     {computed && (
                         <>
-                            <span className={chip}>{MODEL_LABEL[modelType]}</span>
+                            <span className={chip}>{label(modelType)}</span>
                             {report.modelSampleSize !== null && <span className={chip}>N = {report.modelSampleSize}</span>}
                             <span className={chip}>{t("chipItems").replace("{n}", String(items.length))}</span>
                             {undetermined > 0 && (
@@ -188,7 +192,7 @@ export default function Irt3plPanel({ mockTestId }: { mockTestId: string }) {
                         {changes.at && <span className="text-muted-foreground">{formatAt(changes.at)}</span>}
                         {changes.modelBefore && changes.modelAfter && changes.modelBefore !== changes.modelAfter && (
                             <span className={`${chip} inline-flex items-center gap-1 border-primary/40 text-primary`}>
-                                {MODEL_LABEL[changes.modelBefore]} <ArrowRight size={12} /> {MODEL_LABEL[changes.modelAfter]}
+                                {label(changes.modelBefore)} <ArrowRight size={12} /> {label(changes.modelAfter)}
                             </span>
                         )}
                         {changes.summary.changed.length === 0 ? (
@@ -300,6 +304,7 @@ export default function Irt3plPanel({ mockTestId }: { mockTestId: string }) {
                             <table className="w-full text-xs">
                                 <thead className="border-b border-border uppercase tracking-wider text-muted-foreground">
                                     <tr>
+                                        {isOplm && <th className="py-1.5 text-right font-semibold">{t("itemsWeight")}</th>}
                                         {showA && <th className="py-1.5 text-right font-semibold">a</th>}
                                         <th className="py-1.5 text-right font-semibold">b</th>
                                         {showC && <th className="py-1.5 text-right font-semibold">c</th>}
@@ -311,6 +316,7 @@ export default function Irt3plPanel({ mockTestId }: { mockTestId: string }) {
                                 <tbody className="divide-y divide-border tabular-nums">
                                     {items.map((item) => (
                                         <tr key={item.questionId}>
+                                            {isOplm && <td className="py-1 text-right font-semibold">{item.weight ?? "—"}</td>}
                                             {showA && <td className="py-1 text-right">{item.discrimination.toFixed(3)}</td>}
                                             <td className="py-1 text-right">{item.difficulty.toFixed(3)}</td>
                                             {showC && <td className="py-1 text-right">{item.guessing.toFixed(3)}</td>}
